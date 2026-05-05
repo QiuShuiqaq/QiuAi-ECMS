@@ -267,4 +267,12 @@ describe('App source', () => {
     expect(source).toContain('批量下载成功，已自动清理已导出的结果文件夹')
     expect(source).toContain('批量下载成功，但部分结果文件夹自动清理失败')
   })
+
+  it('defaults export folders to checked state whenever export items refresh', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/App.vue'), 'utf8')
+
+    expect(source).toContain('function resolveSelectedExportIdsForMenu(menuKey)')
+    expect(source).toContain('selectedExportIds.value = resolveSelectedExportIdsForMenu(activeMenu.value)')
+    expect(source).toContain('selectedExportIds.value = resolveSelectedExportIdsForMenu(menuKey)')
+  })
 })

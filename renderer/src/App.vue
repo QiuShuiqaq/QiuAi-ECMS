@@ -512,6 +512,13 @@ const exportItems = computed(() => {
   return exportItemsByMenu.value[activeMenu.value] || exportItemsByMenu.value.workspace
 })
 
+function resolveSelectedExportIdsForMenu(menuKey) {
+  const currentExportItems = exportItemsByMenu.value[menuKey] || []
+  return currentExportItems
+    .map((item) => item?.id)
+    .filter((itemId) => typeof itemId === 'string' && itemId.trim())
+}
+
 const fixedPromptTemplates = computed(() => {
   return promptTemplates.value.filter((item) => item.source === 'system-fixed')
 })
@@ -573,6 +580,7 @@ function applySnapshot(snapshot = {}, settings = {}, options = {}) {
     ...createEmptyExportItemsByMenu(),
     ...(snapshot.exportItemsByMenu || {})
   }
+  selectedExportIds.value = resolveSelectedExportIdsForMenu(activeMenu.value)
   tasks.value = Array.isArray(snapshot.tasks) ? snapshot.tasks : []
   workspaceDashboard.value = {
     ...createEmptyWorkspaceDashboard(),
@@ -822,6 +830,7 @@ function handleMenuSelect(menuKey) {
   // 菜单点击事件预留：后续可在这里接入真实业务工作区切换。
   activeMenu.value = menuKey
   ensureDraftForMenu(menuKey)
+  selectedExportIds.value = resolveSelectedExportIdsForMenu(menuKey)
 }
 
 async function persistDraftPatch(menuKey, patch) {
