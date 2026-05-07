@@ -266,6 +266,45 @@ describe('studioImageGenerationService', () => {
     expect(result.summary.title).toBe('套图设计 2 组')
   })
 
+  it('uses batch-specific prompts for series-design when differential mode is enabled', async () => {
+    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
+      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
+      prompt
+    }))
+    const service = createService({
+      createDrawTaskDependency
+    })
+
+    await service.generateImageResults({
+      menuKey: 'series-design',
+      taskId: 'task-series-design-differential',
+      outputDirectory: 'C:/output',
+      draft: {
+        model: 'gpt-image-2',
+        globalPrompt: '统一高级电商视觉风格',
+        batchCount: 2,
+        size: '1:1',
+        imageAssignments: [
+          {
+            id: 'image-1',
+            name: 'look-1.png',
+            path: 'C:/input/look-1.png',
+            selected: true,
+            prompt: '默认专属提示词',
+            imageType: '商品主图',
+            differentialEnabled: true,
+            batchPrompts: ['第一组专属提示词', '第二组专属提示词']
+          }
+        ]
+      }
+    })
+
+    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
+      '统一高级电商视觉风格\n第一组专属提示词',
+      '统一高级电商视觉风格\n第二组专属提示词'
+    ])
+  })
+
   it('does not append image-type template instructions again when series-design assignment prompt already contains the selected template content', async () => {
     const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
       id: `remote-${createDrawTaskDependency.mock.calls.length}`,
@@ -549,6 +588,47 @@ describe('studioImageGenerationService', () => {
     expect(result.summary.title).toBe('套图生成 2 组 x 3 张')
   })
 
+  it('uses batch-specific prompts for series-generate when differential mode is enabled', async () => {
+    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
+      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
+      prompt
+    }))
+    const service = createService({
+      createDrawTaskDependency
+    })
+
+    await service.generateImageResults({
+      menuKey: 'series-generate',
+      taskId: 'task-series-generate-differential',
+      outputDirectory: 'C:/output',
+      draft: {
+        model: 'gpt-image-2',
+        sourceImage: {
+          name: 'main.png',
+          path: 'C:/input/main.png'
+        },
+        globalPrompt: '统一高级电商详情页风格',
+        generateCount: 1,
+        batchCount: 2,
+        promptAssignments: [
+          {
+            index: 1,
+            prompt: '默认提示词',
+            imageType: '商品主图',
+            differentialEnabled: true,
+            batchPrompts: ['第一组提示词', '第二组提示词']
+          }
+        ],
+        size: '1:1'
+      }
+    })
+
+    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
+      '统一高级电商详情页风格\n第一组提示词',
+      '统一高级电商详情页风格\n第二组提示词'
+    ])
+  })
+
   it('does not append image-type template instructions again when series-generate prompt already contains the selected template content', async () => {
     const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
       id: `remote-${createDrawTaskDependency.mock.calls.length}`,
@@ -826,6 +906,47 @@ describe('studioImageGenerationService', () => {
     expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
       '统一风格\n突出主体卖点'
     )
+  })
+
+  it('falls back to the original single prompt when differential mode is disabled even if batch prompts exist', async () => {
+    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
+      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
+      prompt
+    }))
+    const service = createService({
+      createDrawTaskDependency
+    })
+
+    await service.generateImageResults({
+      menuKey: 'series-generate',
+      taskId: 'task-series-generate-differential-disabled',
+      outputDirectory: 'C:/output',
+      draft: {
+        model: 'gpt-image-2',
+        sourceImage: {
+          name: 'main.png',
+          path: 'C:/input/main.png'
+        },
+        globalPrompt: '统一风格',
+        generateCount: 1,
+        batchCount: 2,
+        promptAssignments: [
+          {
+            index: 1,
+            prompt: '默认提示词',
+            imageType: '商品主图',
+            differentialEnabled: false,
+            batchPrompts: ['第一组提示词', '第二组提示词']
+          }
+        ],
+        size: '1:1'
+      }
+    })
+
+    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
+      '统一风格\n默认提示词',
+      '统一风格\n默认提示词'
+    ])
   })
 
   it('fails with a stall-timeout message when remote draw result keeps running without progress for too long', async () => {

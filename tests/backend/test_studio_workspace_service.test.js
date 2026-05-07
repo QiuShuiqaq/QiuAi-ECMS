@@ -445,6 +445,76 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.formDrafts['series-generate'].negativePrompt).toBe('')
   })
 
+  it('normalizes legacy differential prompt fields for series drafts', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    store.set(STUDIO_WORKSPACE_KEY, {
+      formDrafts: {
+        'series-design': {
+          globalPrompt: '统一风格',
+          imageAssignments: [
+            {
+              id: 'image-1',
+              name: 'look-1.png',
+              path: 'C:/input/look-1.png',
+              selected: true,
+              prompt: '主图提示词',
+              imageType: '商品主图'
+            }
+          ],
+          batchCount: 3,
+          size: '1:1'
+        },
+        'series-generate': {
+          globalPrompt: '统一风格',
+          sourceImage: {
+            name: 'main.png',
+            path: 'C:/input/main.png'
+          },
+          generateCount: 2,
+          promptAssignments: [
+            {
+              id: 'prompt-1',
+              index: 1,
+              prompt: '提示词-1',
+              imageType: '商品主图'
+            }
+          ],
+          batchCount: 2,
+          size: '1:1'
+        }
+      }
+    })
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      ...createEmptyOutputScanDependencies(),
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const snapshot = service.getSnapshot()
+
+    expect(snapshot.formDrafts['series-design'].imageAssignments[0]).toMatchObject({
+      differentialEnabled: false,
+      batchPrompts: ['', '', '']
+    })
+    expect(snapshot.formDrafts['series-generate'].promptAssignments[0]).toMatchObject({
+      differentialEnabled: false,
+      batchPrompts: ['', '']
+    })
+    expect(snapshot.formDrafts['series-generate'].promptAssignments[1]).toMatchObject({
+      differentialEnabled: false,
+      batchPrompts: ['', '']
+    })
+  })
+
   it('converts orphaned active tasks to pending confirmation before one-key cleanup proceeds', async () => {
     const store = createMemoryStore()
 

@@ -197,8 +197,18 @@ function createImageAsset(file, idPrefix, preview = true) {
   }
 }
 
-function createSeriesGeneratePromptAssignments(count, existingAssignments = []) {
+function normalizeBatchPrompts(batchPrompts = [], batchCount = 1) {
+  const normalizedCount = Math.max(1, Number(batchCount) || 1)
+  const sourcePrompts = Array.isArray(batchPrompts) ? batchPrompts : []
+
+  return Array.from({ length: normalizedCount }, (_unused, index) => {
+    return String(sourcePrompts[index] || '')
+  })
+}
+
+function createSeriesGeneratePromptAssignments(count, existingAssignments = [], batchCount = 1) {
   const normalizedCount = Math.max(1, Math.min(500, Number(count) || 1))
+  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1)
   const sourceAssignments = Array.isArray(existingAssignments) ? existingAssignments : []
 
   return Array.from({ length: normalizedCount }, (_unused, index) => {
@@ -208,9 +218,15 @@ function createSeriesGeneratePromptAssignments(count, existingAssignments = []) 
       id: currentAssignment.id || `series-generate-${index + 1}`,
       index: index + 1,
       prompt: currentAssignment.prompt || '',
-      imageType: currentAssignment.imageType || ''
+      imageType: currentAssignment.imageType || '',
+      differentialEnabled: currentAssignment.differentialEnabled === true,
+      batchPrompts: normalizeBatchPrompts(currentAssignment.batchPrompts, normalizedBatchCount)
     }
   })
+}
+
+function normalizeSeriesGenerateAssignments(assignments = [], count = 1, batchCount = 1) {
+  return createSeriesGeneratePromptAssignments(count, assignments, batchCount)
 }
 
 function createDraftForm(menuKey) {
@@ -385,10 +401,25 @@ function normalizeStoredDraft(menuKey, storedDraft = {}) {
   if (menuKey === 'series-generate') {
     const generateCount = Math.max(1, Math.min(500, Number(normalizedDraft.generateCount) || 1))
     normalizedDraft.generateCount = generateCount
-    normalizedDraft.promptAssignments = createSeriesGeneratePromptAssignments(generateCount, normalizedDraft.promptAssignments)
+    normalizedDraft.promptAssignments = createSeriesGeneratePromptAssignments(
+      generateCount,
+      normalizedDraft.promptAssignments,
+      Math.max(1, Number(normalizedDraft.batchCount) || 1)
+    )
   }
 
   return normalizedDraft
+}
+
+function normalizeSeriesDesignAssignments(assignments = [], batchCount = 1) {
+  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1)
+  return (Array.isArray(assignments) ? assignments : []).map((assignment) => {
+    return {
+      ...assignment,
+      differentialEnabled: assignment.differentialEnabled === true,
+      batchPrompts: normalizeBatchPrompts(assignment.batchPrompts, normalizedBatchCount)
+    }
+  })
 }
 
 function revokePreview(preview) {
@@ -1029,17 +1060,51 @@ function handleFieldUpdate({ field, value }) {
 
   if (activeMenu.value === 'series-generate' && field === 'generateCount') {
     const generateCount = Math.max(1, Math.min(500, Number(value) || 1))
+    const batchCount = Math.max(1, Number(currentDraft.batchCount) || 1)
     nextDraft = {
       ...currentDraft,
       generateCount,
-      promptAssignments: createSeriesGeneratePromptAssignments(generateCount, currentDraft.promptAssignments)
+      promptAssignments: createSeriesGeneratePromptAssignments(generateCount, currentDraft.promptAssignments, batchCount)
+    }
+  }
+
+  if (activeMenu.value === 'series-generate' && field === 'batchCount') {
+    const batchCount = Math.max(1, Number(value) || 1)
+    nextDraft = {
+      ...currentDraft,
+      batchCount,
+      promptAssignments: normalizeSeriesGenerateAssignments(
+        currentDraft.promptAssignments,
+        currentDraft.generateCount,
+        batchCount
+      )
     }
   }
 
   if (activeMenu.value === 'series-generate' && field === 'promptAssignments') {
     nextDraft = {
       ...currentDraft,
-      promptAssignments: createSeriesGeneratePromptAssignments(currentDraft.generateCount, value)
+      promptAssignments: createSeriesGeneratePromptAssignments(
+        currentDraft.generateCount,
+        value,
+        Math.max(1, Number(currentDraft.batchCount) || 1)
+      )
+    }
+  }
+
+  if (activeMenu.value === 'series-design' && field === 'batchCount') {
+    const batchCount = Math.max(1, Number(value) || 1)
+    nextDraft = {
+      ...currentDraft,
+      batchCount,
+      imageAssignments: normalizeSeriesDesignAssignments(currentDraft.imageAssignments, batchCount)
+    }
+  }
+
+  if (activeMenu.value === 'series-design' && field === 'imageAssignments') {
+    nextDraft = {
+      ...currentDraft,
+      imageAssignments: normalizeSeriesDesignAssignments(value, Math.max(1, Number(currentDraft.batchCount) || 1))
     }
   }
 
@@ -1124,6 +1189,8 @@ async function applySeriesDesignSelection(fileList = []) {
     imageType: '',
     size: formDrafts.value['series-design']?.defaultAssignmentRatio || formDrafts.value['series-design']?.size || '1:1',
     model: formDrafts.value['series-design']?.defaultAssignmentModel || formDrafts.value['series-design']?.model || '',
+    differentialEnabled: false,
+    batchPrompts: Array.from({ length: Math.max(1, Number(formDrafts.value['series-design']?.batchCount) || 1) }, () => ''),
     tagIds: [],
     tagNames: []
   }))
@@ -1274,7 +1341,18 @@ function validateCurrentTaskBeforeSubmit() {
   if (activeMenu.value === 'series-design') {
     const assignments = Array.isArray(draft.imageAssignments) ? draft.imageAssignments : []
     const selectedCount = assignments.filter((item) => item.selected !== false).length
-    const hasEmptySelectedPrompt = assignments.some((item) => item.selected !== false && !String(item.prompt || '').trim())
+    const hasEmptySelectedPrompt = assignments.some((item) => {
+      if (item.selected === false) {
+        return false
+      }
+
+      if (item.differentialEnabled === true) {
+        const batchPrompts = normalizeBatchPrompts(item.batchPrompts, Math.max(1, Number(draft.batchCount) || 1))
+        return batchPrompts.some((prompt) => !String(prompt || '').trim())
+      }
+
+      return !String(item.prompt || '').trim()
+    })
 
     if (!assignments.length) {
       return '请先上传一套图片'
@@ -1301,7 +1379,11 @@ function validateCurrentTaskBeforeSubmit() {
 
   if (activeMenu.value === 'series-generate') {
     const generateCount = Math.max(1, Math.min(500, Number(draft.generateCount) || 1))
-    const promptAssignments = createSeriesGeneratePromptAssignments(generateCount, draft.promptAssignments)
+    const promptAssignments = createSeriesGeneratePromptAssignments(
+      generateCount,
+      draft.promptAssignments,
+      Math.max(1, Number(draft.batchCount) || 1)
+    )
 
     if (!draft.sourceImage) {
       return '请先上传一张参考图'
@@ -1311,7 +1393,14 @@ function validateCurrentTaskBeforeSubmit() {
       return '请先输入套图生成的全局风格提示词'
     }
 
-    if (promptAssignments.some((item) => !String(item.prompt || '').trim())) {
+    if (promptAssignments.some((item) => {
+      if (item.differentialEnabled === true) {
+        const batchPrompts = normalizeBatchPrompts(item.batchPrompts, Math.max(1, Number(draft.batchCount) || 1))
+        return batchPrompts.some((prompt) => !String(prompt || '').trim())
+      }
+
+      return !String(item.prompt || '').trim()
+    })) {
       return '请完整填写每一张图片的单独提示词'
     }
 

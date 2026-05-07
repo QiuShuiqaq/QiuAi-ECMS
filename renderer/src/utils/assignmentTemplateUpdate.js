@@ -16,11 +16,17 @@ export function applyTemplateSelectionToAssignment({
       }
     }
 
+    const templatePrompt = template.prompt || ''
+    const nextBatchPrompts = item.differentialEnabled === true && Array.isArray(item.batchPrompts)
+      ? item.batchPrompts.map(() => templatePrompt)
+      : item.batchPrompts
+
     return {
       ...item,
       templateId: template.id || '',
       imageType: template.name || '',
-      prompt: template.prompt || ''
+      prompt: templatePrompt,
+      batchPrompts: nextBatchPrompts
     }
   })
 }

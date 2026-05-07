@@ -64,4 +64,42 @@ describe('assignment template update', () => {
       }
     ])
   })
+
+  it('fills every batch prompt with the selected template prompt when differential mode is enabled', async () => {
+    const { applyTemplateSelectionToAssignment } = await import('../../renderer/src/utils/assignmentTemplateUpdate.js')
+
+    const assignments = [
+      {
+        id: 'image-1',
+        selected: true,
+        prompt: '旧提示词',
+        imageType: '',
+        templateId: '',
+        differentialEnabled: true,
+        batchPrompts: ['', '', '']
+      }
+    ]
+
+    const nextAssignments = applyTemplateSelectionToAssignment({
+      assignments,
+      index: 0,
+      template: {
+        id: 'product-main',
+        name: '商品主图',
+        prompt: '突出主体卖点'
+      }
+    })
+
+    expect(nextAssignments).toEqual([
+      {
+        id: 'image-1',
+        selected: true,
+        prompt: '突出主体卖点',
+        imageType: '商品主图',
+        templateId: 'product-main',
+        differentialEnabled: true,
+        batchPrompts: ['突出主体卖点', '突出主体卖点', '突出主体卖点']
+      }
+    ])
+  })
 })

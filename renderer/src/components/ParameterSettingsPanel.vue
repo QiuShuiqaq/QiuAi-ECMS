@@ -191,6 +191,24 @@ function updateAssignment(index, field, value) {
   emitField('imageAssignments', nextAssignments)
 }
 
+function updateAssignmentBatchPrompt(index, batchPromptIndex, value) {
+  const nextAssignments = seriesAssignments.value.map((item, currentIndex) => {
+    if (currentIndex !== index) {
+      return item
+    }
+
+    const nextBatchPrompts = Array.isArray(item.batchPrompts) ? [...item.batchPrompts] : []
+    nextBatchPrompts[batchPromptIndex] = value
+
+    return {
+      ...item,
+      batchPrompts: nextBatchPrompts
+    }
+  })
+
+  emitField('imageAssignments', nextAssignments)
+}
+
 function replaceAssignments(nextAssignments) {
   emitField('imageAssignments', Array.isArray(nextAssignments) ? nextAssignments : [])
 }
@@ -204,6 +222,24 @@ function updateSeriesGenerateAssignment(index, field, value) {
     return {
       ...item,
       [field]: value
+    }
+  })
+
+  emitField('promptAssignments', nextAssignments)
+}
+
+function updateSeriesGenerateBatchPrompt(index, batchPromptIndex, value) {
+  const nextAssignments = seriesGeneratePromptAssignments.value.map((item, currentIndex) => {
+    if (currentIndex !== index) {
+      return item
+    }
+
+    const nextBatchPrompts = Array.isArray(item.batchPrompts) ? [...item.batchPrompts] : []
+    nextBatchPrompts[batchPromptIndex] = value
+
+    return {
+      ...item,
+      batchPrompts: nextBatchPrompts
     }
   })
 
@@ -573,14 +609,24 @@ function isTagPickerVisible(menuKey) {
 
         <div class="assignment-list">
           <article v-for="(assignment, index) in seriesAssignments" :key="assignment.id || assignment.name" class="assignment-card">
-            <label class="assignment-card__toggle">
-              <input
-                :checked="assignment.selected !== false"
-                type="checkbox"
-                @change="updateAssignment(index, 'selected', $event.target.checked)"
-              />
-              <span>参与本次生成</span>
-            </label>
+            <div class="assignment-card__toggle-row">
+              <label class="assignment-card__toggle">
+                <input
+                  :checked="assignment.selected !== false"
+                  type="checkbox"
+                  @change="updateAssignment(index, 'selected', $event.target.checked)"
+                />
+                <span>参与本次生成</span>
+              </label>
+              <label class="assignment-card__toggle">
+                <input
+                  :checked="assignment.differentialEnabled === true"
+                  type="checkbox"
+                  @change="updateAssignment(index, 'differentialEnabled', $event.target.checked)"
+                />
+                <span>差异化</span>
+              </label>
+            </div>
             <div class="assignment-card__top">
               <div class="assignment-card__media">
                 <div class="assignment-card__media-frame">
@@ -637,7 +683,22 @@ function isTagPickerVisible(menuKey) {
               </div>
             </div>
             <div class="assignment-card__fields">
-              <label class="form-field assignment-card__prompt-field--flush">
+              <template v-if="assignment.differentialEnabled === true">
+                <label
+                  v-for="(batchPrompt, batchPromptIndex) in assignment.batchPrompts || []"
+                  :key="`${assignment.id || index}-batch-${batchPromptIndex}`"
+                  class="form-field assignment-card__prompt-field--flush"
+                >
+                  <span>{{ `专属提示词${batchPromptIndex + 1}` }}</span>
+                  <textarea
+                    :value="batchPrompt"
+                    rows="3"
+                    :placeholder="`输入当前图片第 ${batchPromptIndex + 1} 组的专属提示词`"
+                    @input="updateAssignmentBatchPrompt(index, batchPromptIndex, $event.target.value)"
+                  ></textarea>
+                </label>
+              </template>
+              <label v-else class="form-field assignment-card__prompt-field--flush">
                 <span>图片专属提示词</span>
                 <textarea
                   :value="assignment.prompt"
@@ -822,7 +883,17 @@ function isTagPickerVisible(menuKey) {
               <div class="assignment-card__body assignment-card__body--prompt-only">
                 <div class="assignment-card__fields">
                   <div class="assignment-card__template-row assignment-card__template-row--prompt-only">
-                    <strong>{{ `第 ${index + 1} 张` }}</strong>
+                    <div class="assignment-card__template-meta">
+                      <strong>{{ `第 ${index + 1} 张` }}</strong>
+                      <label class="assignment-card__toggle assignment-card__toggle--inline">
+                        <input
+                          :checked="assignment.differentialEnabled === true"
+                          type="checkbox"
+                          @change="updateSeriesGenerateAssignment(index, 'differentialEnabled', $event.target.checked)"
+                        />
+                        <span>差异化</span>
+                      </label>
+                    </div>
                     <div class="select-icon-field">
                       <img class="select-icon-field__icon" :src="promptTemplateIconUrl" alt="" />
                       <select
@@ -837,7 +908,22 @@ function isTagPickerVisible(menuKey) {
                       </select>
                     </div>
                   </div>
-                  <label class="form-field assignment-card__prompt-field--flush">
+                  <template v-if="assignment.differentialEnabled === true">
+                    <label
+                      v-for="(batchPrompt, batchPromptIndex) in assignment.batchPrompts || []"
+                      :key="`${assignment.id || index}-generate-batch-${batchPromptIndex}`"
+                      class="form-field assignment-card__prompt-field--flush"
+                    >
+                      <span>{{ `专属提示词${batchPromptIndex + 1}` }}</span>
+                      <textarea
+                        :value="batchPrompt"
+                        rows="3"
+                        :placeholder="`输入第 ${index + 1} 张第 ${batchPromptIndex + 1} 组的专属提示词`"
+                        @input="updateSeriesGenerateBatchPrompt(index, batchPromptIndex, $event.target.value)"
+                      ></textarea>
+                    </label>
+                  </template>
+                  <label v-else class="form-field assignment-card__prompt-field--flush">
                     <textarea
                       :value="assignment.prompt"
                       rows="3"

@@ -113,6 +113,30 @@ function composePromptWithNegativeConstraints(parts = [], negativePrompt = '') {
     .join('\n\n')
 }
 
+function normalizeDifferentialBatchPrompts(batchPrompts = [], batchCount = 1) {
+  const normalizedCount = Math.max(1, Number(batchCount) || 1)
+  const sourcePrompts = Array.isArray(batchPrompts) ? batchPrompts : []
+
+  return Array.from({ length: normalizedCount }, (_unused, index) => {
+    return String(sourcePrompts[index] || '').trim()
+  })
+}
+
+function resolveBatchPromptValue({
+  differentialEnabled = false,
+  batchPrompts = [],
+  fallbackPrompt = '',
+  batchIndex = 0,
+  batchCount = 1
+} = {}) {
+  if (differentialEnabled !== true) {
+    return String(fallbackPrompt || '').trim()
+  }
+
+  const normalizedBatchPrompts = normalizeDifferentialBatchPrompts(batchPrompts, batchCount)
+  return normalizedBatchPrompts[batchIndex] || ''
+}
+
 function normalizeSingleImageModels(compareModels = []) {
   const allowedModels = new Set([
     'gpt-image-2',
@@ -248,7 +272,7 @@ function createSeriesFallbackOutput(originalOutput = {}, {
   }
 }
 
-function normalizeSeriesGeneratePromptAssignments(promptAssignments = [], generateCount = 1) {
+function normalizeSeriesGeneratePromptAssignments(promptAssignments = [], generateCount = 1, batchCount = 1) {
   const normalizedGenerateCount = Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(generateCount) || 1))
   const sourceAssignments = Array.isArray(promptAssignments) ? promptAssignments : []
 
@@ -262,7 +286,9 @@ function normalizeSeriesGeneratePromptAssignments(promptAssignments = [], genera
       id: currentAssignment.id || `series-generate-${index + 1}`,
       index: index + 1,
       prompt: String(currentAssignment.prompt || '').trim(),
-      imageType: normalizedImageType
+      imageType: normalizedImageType,
+      differentialEnabled: currentAssignment.differentialEnabled === true,
+      batchPrompts: normalizeDifferentialBatchPrompts(currentAssignment.batchPrompts, batchCount)
     }
   })
 }
@@ -302,6 +328,8 @@ function buildSeriesDesignOutputDescriptors(assignments = []) {
       model: assignment.model || '',
       size: assignment.size || '1:1',
       tagNames: Array.isArray(assignment.tagNames) ? assignment.tagNames : [],
+      differentialEnabled: assignment.differentialEnabled === true,
+      batchPrompts: Array.isArray(assignment.batchPrompts) ? assignment.batchPrompts : [],
       outputTitle: SERIES_GENERATE_IMAGE_TYPE_CONFIG[assignment.imageType]
         ? `${config.outputLabel}${currentCount}`
         : config.outputLabel,
@@ -440,7 +468,14 @@ function validateStudioImageTask({ menuKey, draft }) {
       throw new Error('套图设计需要填写全局风格提示词')
     }
 
-    if (selectedAssignments.some((item) => !String(item.prompt || '').trim())) {
+    if (selectedAssignments.some((item) => {
+      if (item.differentialEnabled === true) {
+        const batchPrompts = normalizeDifferentialBatchPrompts(item.batchPrompts, draft.batchCount)
+        return batchPrompts.some((prompt) => !prompt)
+      }
+
+      return !String(item.prompt || '').trim()
+    })) {
       throw new Error('套图设计需要为每一张选中图片填写单独提示词')
     }
 
@@ -460,8 +495,14 @@ function validateStudioImageTask({ menuKey, draft }) {
       throw new Error('套图生成需要填写全局风格提示词')
     }
 
-    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount)
-    if (promptAssignments.some((item) => !item.prompt)) {
+    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, draft.batchCount)
+    if (promptAssignments.some((item) => {
+      if (item.differentialEnabled === true) {
+        return item.batchPrompts.some((prompt) => !String(prompt || '').trim())
+      }
+
+      return !item.prompt
+    })) {
       throw new Error('套图生成需要为每一张图片填写单独提示词')
     }
 
@@ -747,8 +788,15 @@ function createStudioImageGenerationService({
             const sourceFilePath = assignment.storedPath || assignment.path || ''
             const subtaskIndex = (batchIndex * selectedAssignments.length) + selectedIndex
             try {
+              const batchPrompt = resolveBatchPromptValue({
+                differentialEnabled: assignment.differentialEnabled,
+                batchPrompts: assignment.batchPrompts,
+                fallbackPrompt: assignment.composedPrompt,
+                batchIndex,
+                batchCount
+              })
               const promptFinal = composePromptWithNegativeConstraints(
-                [draft.globalPrompt, assignment.composedPrompt],
+                [draft.globalPrompt, batchPrompt],
                 draft.negativePrompt
               )
               const completedResult = await executeRemoteImageTask({
@@ -835,7 +883,7 @@ function createStudioImageGenerationService({
 
   async function generateSeriesGenerateResults({ draft, taskId, outputDirectory, onProgress }) {
     const batchCount = Math.max(1, Number(draft.batchCount) || 1)
-    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount)
+    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, batchCount)
     const outputDescriptors = buildSeriesGenerateOutputDescriptors(promptAssignments)
     const generateCount = outputDescriptors.length
     const totalImageCount = batchCount * generateCount
@@ -862,8 +910,15 @@ function createStudioImageGenerationService({
         outputDescriptors.map((promptAssignment, outputIndex) => {
           return async () => {
             const subtaskIndex = (batchIndex * generateCount) + outputIndex
+            const batchPrompt = resolveBatchPromptValue({
+              differentialEnabled: promptAssignment.differentialEnabled,
+              batchPrompts: promptAssignment.batchPrompts,
+              fallbackPrompt: promptAssignment.composedPrompt,
+              batchIndex,
+              batchCount
+            })
             const promptFinal = composePromptWithNegativeConstraints(
-              [draft.globalPrompt, promptAssignment.composedPrompt],
+              [draft.globalPrompt, batchPrompt],
               draft.negativePrompt
             )
             const completedResult = await executeRemoteImageTask({

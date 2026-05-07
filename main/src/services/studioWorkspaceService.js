@@ -151,7 +151,16 @@ function normalizeImageAsset(item = {}) {
   }
 }
 
-function normalizeImageAssignments(assignments = []) {
+function normalizeBatchPrompts(batchPrompts = [], batchCount = 1) {
+  const normalizedCount = Math.max(1, Number(batchCount) || 1)
+  const sourcePrompts = Array.isArray(batchPrompts) ? batchPrompts : []
+
+  return Array.from({ length: normalizedCount }, (_unused, index) => {
+    return String(sourcePrompts[index] || '')
+  })
+}
+
+function normalizeImageAssignments(assignments = [], batchCount = 1) {
   return Array.isArray(assignments)
     ? assignments
       .map((item, index) => {
@@ -168,6 +177,8 @@ function normalizeImageAssignments(assignments = []) {
           imageType: item.imageType || '',
           size: item.size || '1:1',
           model: item.model || '',
+          differentialEnabled: item.differentialEnabled === true,
+          batchPrompts: normalizeBatchPrompts(item.batchPrompts, batchCount),
           tagIds: Array.isArray(item.tagIds) ? item.tagIds.filter((tagId) => typeof tagId === 'string' && tagId.trim()) : [],
           tagNames: Array.isArray(item.tagNames) ? item.tagNames.filter((tagName) => typeof tagName === 'string' && tagName.trim()) : []
         }
@@ -176,7 +187,7 @@ function normalizeImageAssignments(assignments = []) {
     : []
 }
 
-function normalizePromptAssignments(promptAssignments = [], count = 1) {
+function normalizePromptAssignments(promptAssignments = [], count = 1, batchCount = 1) {
   const normalizedCount = Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(count) || 1))
   const sourceAssignments = Array.isArray(promptAssignments) ? promptAssignments : []
 
@@ -187,7 +198,9 @@ function normalizePromptAssignments(promptAssignments = [], count = 1) {
       id: currentAssignment.id || `series-generate-${index + 1}`,
       index: index + 1,
       prompt: currentAssignment.prompt || '',
-      imageType: currentAssignment.imageType || ''
+      imageType: currentAssignment.imageType || '',
+      differentialEnabled: currentAssignment.differentialEnabled === true,
+      batchPrompts: normalizeBatchPrompts(currentAssignment.batchPrompts, batchCount)
     }
   })
 }
@@ -232,6 +245,7 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
   }
 
   if (menuKey === 'series-design') {
+    const normalizedBatchCount = Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1)
     return {
       ...defaultDraft,
       ...draft,
@@ -244,14 +258,15 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       selectedGlobalTagIds: Array.isArray(draft.selectedGlobalTagIds) ? draft.selectedGlobalTagIds.filter((item) => typeof item === 'string' && item.trim()) : [],
       defaultAssignmentRatio: draft.defaultAssignmentRatio || defaultDraft.defaultAssignmentRatio || draft.size || '1:1',
       defaultAssignmentModel: draft.defaultAssignmentModel || defaultDraft.defaultAssignmentModel || nextModel,
-      imageAssignments: normalizeImageAssignments(draft.imageAssignments),
-      batchCount: Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1),
+      imageAssignments: normalizeImageAssignments(draft.imageAssignments, normalizedBatchCount),
+      batchCount: normalizedBatchCount,
       size: draft.size || defaultDraft.size
     }
   }
 
   if (menuKey === 'series-generate') {
     const generateCount = Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(draft.generateCount) || defaultDraft.generateCount || 1))
+    const normalizedBatchCount = Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1)
     return {
       ...defaultDraft,
       ...draft,
@@ -264,8 +279,8 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       legacyGlobalPrompt: draft.legacyGlobalPrompt || '',
       selectedGlobalTagIds: Array.isArray(draft.selectedGlobalTagIds) ? draft.selectedGlobalTagIds.filter((item) => typeof item === 'string' && item.trim()) : [],
       generateCount,
-      promptAssignments: normalizePromptAssignments(draft.promptAssignments, generateCount),
-      batchCount: Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1),
+      promptAssignments: normalizePromptAssignments(draft.promptAssignments, generateCount, normalizedBatchCount),
+      batchCount: normalizedBatchCount,
       size: draft.size || defaultDraft.size
     }
   }
