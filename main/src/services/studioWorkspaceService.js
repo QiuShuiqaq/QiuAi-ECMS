@@ -2495,6 +2495,54 @@ function createStudioWorkspaceService({
     return nextDashboardCreditState
   }
 
+  async function syncCreditStateWithRealtimeBalance() {
+    const settings = settingsService.getSettings()
+    const currentDashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
+      ? settings.dashboardCreditState
+      : { totalCredits: 0, remainingCredits: 0 }
+    const currentCreditState = normalizeCreditStateForDisplay(settings.creditState)
+    const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
+      ? await apiKeyCreditService.getRealtimeCredits()
+      : null
+
+    let nextDashboardCreditState = currentDashboardCreditState
+    let resolvedRemainingCredits = null
+
+    if (realtimeCredits && Number.isFinite(Number(realtimeCredits.remainingCredits))) {
+      resolvedRemainingCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
+      nextDashboardCreditState = {
+        totalCredits: Math.max(0, Number(currentDashboardCreditState.totalCredits) || 0),
+        remainingCredits: resolvedRemainingCredits
+      }
+    } else if (Number.isFinite(Number(currentDashboardCreditState.remainingCredits)) && Number(currentDashboardCreditState.remainingCredits) > 0) {
+      resolvedRemainingCredits = Math.max(0, Math.round(Number(currentDashboardCreditState.remainingCredits)))
+    }
+
+    if (resolvedRemainingCredits === null) {
+      return {
+        synced: false,
+        creditState: currentCreditState,
+        dashboardCreditState: currentDashboardCreditState
+      }
+    }
+
+    const nextCreditState = normalizeCreditStateForDisplay({
+      ...currentCreditState,
+      remainingCredits: Math.max(0, resolvedRemainingCredits - currentCreditState.frozenCredits)
+    })
+
+    await settingsService.saveSettings({
+      dashboardCreditState: nextDashboardCreditState,
+      creditState: nextCreditState
+    })
+
+    return {
+      synced: true,
+      creditState: nextCreditState,
+      dashboardCreditState: nextDashboardCreditState
+    }
+  }
+
   async function getDisplaySnapshot() {
     await refreshDashboardCredits({
       target: 'remaining'
@@ -2544,7 +2592,7 @@ function createStudioWorkspaceService({
 
   async function createTask({ menuKey = 'workspace', draft: incomingDraft } = {}) {
     const state = getStoredState()
-    const settings = settingsService.getSettings()
+    let settings = settingsService.getSettings()
     const taskId = createId()
     const taskNumber = createTaskNumber()
     const draft = normalizeDraftForMenu(menuKey, {
@@ -2572,6 +2620,11 @@ function createStudioWorkspaceService({
     })
 
     if (estimatedCredits > 0) {
+      const creditSyncResult = await syncCreditStateWithRealtimeBalance()
+      if (creditSyncResult.synced) {
+        settings = settingsService.getSettings()
+      }
+
       const frozenCreditState = freezeCreditsForTask({
         creditState: settings.creditState,
         taskId,

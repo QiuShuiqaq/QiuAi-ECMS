@@ -2163,4 +2163,171 @@ describe('studioWorkspaceService', () => {
       remainingCredits: 8200
     })
   })
+
+  it('uses realtime remaining credits for task submission when dashboard credits were refreshed but local ledger is still empty', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await settingsService.saveAdminApiKey({
+      apiKey: 'sk-submit-realtime',
+      password: 'qiuai@123'
+    })
+    await settingsService.saveSettings({
+      dashboardCreditState: {
+        totalCredits: 0,
+        remainingCredits: 0
+      }
+    })
+
+    const apiKeyCreditService = {
+      getRealtimeCredits: vi.fn()
+        .mockResolvedValueOnce({
+          remainingCredits: 3600,
+          lastSyncedAt: '2026-05-11T09:20:00.000Z',
+          syncStatus: 'success'
+        })
+        .mockResolvedValueOnce({
+          remainingCredits: 3600,
+          lastSyncedAt: '2026-05-11T09:20:30.000Z',
+          syncStatus: 'success'
+        })
+    }
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      apiKeyCreditService,
+      ...createEmptyOutputScanDependencies(),
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined,
+      generateImageResults: async ({ taskId, draft }) => ({
+        textResults: [],
+        comparisonResults: [
+          {
+            id: `${taskId}-single-design-1`,
+            model: draft.model,
+            title: '实时积分提交结果',
+            preview: createPreviewDataUrl('credit-submit-realtime')
+          }
+        ],
+        groupedResults: [],
+        summary: {
+          title: '单图设计',
+          description: '实时积分提交'
+        }
+      }),
+      createId: () => 'credit-submit-realtime-task-1',
+      createTaskNumber: () => 'QAI-20260511-0001',
+      getNow: () => '2026-05-11T09:21:00.000Z'
+    })
+
+    await service.refreshDashboardCredits({
+      target: 'remaining'
+    })
+
+    await service.saveDraft({
+      menuKey: 'single-design',
+      patch: {
+        taskName: 'RealtimeCreditSubmit',
+        prompt: '生成一张高质量商品主图',
+        model: 'gpt-image-2'
+      }
+    })
+
+    const createdTask = await service.createTask({
+      menuKey: 'single-design'
+    })
+
+    expect(createdTask.estimatedCredits).toBe(600)
+    expect(settingsService.getSettings().creditState).toMatchObject({
+      remainingCredits: 3000,
+      frozenCredits: 600,
+      usedCredits: 0
+    })
+    expect(settingsService.getSettings().dashboardCreditState).toMatchObject({
+      totalCredits: 0,
+      remainingCredits: 3600
+    })
+  })
+
+  it('keeps frozen credits deducted across consecutive task submissions when realtime balance stays unchanged', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await settingsService.saveAdminApiKey({
+      apiKey: 'sk-submit-realtime-repeat',
+      password: 'qiuai@123'
+    })
+
+    const apiKeyCreditService = {
+      getRealtimeCredits: vi.fn()
+        .mockResolvedValue({
+          remainingCredits: 3600,
+          lastSyncedAt: '2026-05-11T09:30:00.000Z',
+          syncStatus: 'success'
+        })
+    }
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      apiKeyCreditService,
+      ...createEmptyOutputScanDependencies(),
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined,
+      generateImageResults: () => new Promise(() => {}),
+      createId: (() => {
+        let sequence = 0
+        return () => {
+          sequence += 1
+          return `credit-submit-repeat-task-${sequence}`
+        }
+      })(),
+      createTaskNumber: (() => {
+        let sequence = 0
+        return () => {
+          sequence += 1
+          return `QAI-20260511-${String(sequence).padStart(4, '0')}`
+        }
+      })(),
+      getNow: () => '2026-05-11T09:31:00.000Z'
+    })
+
+    await service.saveDraft({
+      menuKey: 'single-design',
+      patch: {
+        taskName: 'RealtimeCreditRepeat',
+        prompt: '生成一张高质量商品主图',
+        model: 'gpt-image-2'
+      }
+    })
+
+    await service.createTask({
+      menuKey: 'single-design'
+    })
+
+    expect(settingsService.getSettings().creditState).toMatchObject({
+      remainingCredits: 3000,
+      frozenCredits: 600,
+      usedCredits: 0
+    })
+
+    await service.createTask({
+      menuKey: 'single-design'
+    })
+
+    expect(settingsService.getSettings().creditState).toMatchObject({
+      remainingCredits: 2400,
+      frozenCredits: 1200,
+      usedCredits: 0
+    })
+  })
 })

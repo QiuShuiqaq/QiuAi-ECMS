@@ -163,24 +163,8 @@ const TASK_SCALE_LIMITS = {
 }
 
 const DEFAULT_EMPTY_PROMPT_TEMPLATE_ID = 'system-empty-image-type'
-const DEFAULT_EMPTY_PROMPT_TEMPLATE_NAME = '无类型图片'
-const DEFAULT_EMPTY_PROMPT_TEMPLATE = {
-  id: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-  name: DEFAULT_EMPTY_PROMPT_TEMPLATE_NAME,
-  category: '按钮提示词',
-  prompt: '',
-  source: 'system-fixed'
-}
 
 const DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID = 'system-empty-negative-prompt'
-const DEFAULT_EMPTY_NEGATIVE_TEMPLATE_NAME = '无负向提示词'
-const DEFAULT_EMPTY_NEGATIVE_PROMPT_TEMPLATE = {
-  id: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-  name: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_NAME,
-  category: '反向提示词',
-  prompt: '',
-  source: 'system-fixed'
-}
 
 function resolveDefaultModelForMenu() {
   return imageModelOptions[0].value
