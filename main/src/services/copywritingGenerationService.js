@@ -3,6 +3,9 @@ const { createChatCompletion } = require('./chatCompletionService')
 const { toDataUrl, getMimeTypeFromPath } = require('./localInputAssetService')
 
 const COPYWRITING_TIMEOUT_MS = 120000
+const DEFAULT_COPYWRITING_API_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
+const DEFAULT_COPYWRITING_REQUEST_PATH = '/chat/completions'
+const DEFAULT_COPYWRITING_MODEL = 'glm-4.7-flash'
 
 function getReferenceImagePaths(draft = {}) {
   return Array.isArray(draft.referenceImages)
@@ -13,7 +16,7 @@ function getReferenceImagePaths(draft = {}) {
 }
 
 function buildSystemPrompt() {
-  return '你是资深中文电商文案助手。仅返回最终可直接使用的内容，不要解释，不要加标题，不要加引号，不要输出多余前缀。'
+  return '你是资深中文电商文案助手。只返回最终可直接使用的内容，不要解释，不要加标题，不要加引号，不要输出多余前缀。'
 }
 
 function resolveQuantity(draft = {}) {
@@ -34,7 +37,7 @@ function normalizeResultLines(rawContent = '') {
   return String(rawContent || '')
     .split(/\r?\n/)
     .map((item) => item.trim())
-    .map((item) => item.replace(/^(?:\d+[.、)]\s*|[-*]\s*)/, '').trim())
+    .map((item) => item.replace(/^(?:\d+[.、]\s*|[-*]\s*)/, '').trim())
     .filter(Boolean)
 }
 
@@ -71,6 +74,29 @@ function resolveApiKey(settings = {}) {
   return typeof apiKey === 'string' ? apiKey.trim() : ''
 }
 
+function resolveModel(draft = {}) {
+  return typeof draft.model === 'string' && draft.model.trim()
+    ? draft.model.trim()
+    : DEFAULT_COPYWRITING_MODEL
+}
+
+function resolveApiBaseUrl(draft = {}, settings = {}) {
+  return draft.apiBaseUrl || settings.copywritingApiBaseUrl || DEFAULT_COPYWRITING_API_BASE_URL
+}
+
+function resolveRequestPath(draft = {}, settings = {}) {
+  return draft.requestPath || settings.copywritingRequestPath || DEFAULT_COPYWRITING_REQUEST_PATH
+}
+
+function toProviderErrorMessage(error) {
+  const providerMessage = error?.response?.data?.error?.message
+  if (typeof providerMessage === 'string' && providerMessage.trim()) {
+    return providerMessage.trim()
+  }
+
+  return error?.message || '文案模型请求失败'
+}
+
 function createCopywritingGenerationService({
   settingsService,
   messageRecorder,
@@ -88,7 +114,7 @@ function createCopywritingGenerationService({
     }
 
     const httpClient = createHttpClientServiceDependency({
-      apiBaseUrl: settings.apiBaseUrl,
+      apiBaseUrl: resolveApiBaseUrl(draft, settings),
       apiKey,
       messageRecorder,
       timeoutMs: COPYWRITING_TIMEOUT_MS
@@ -126,12 +152,19 @@ function createCopywritingGenerationService({
       })
     }
 
-    const completion = await createChatCompletionDependency({
-      model: draft.model,
-      messages
-    }, {
-      httpClient
-    })
+    let completion
+
+    try {
+      completion = await createChatCompletionDependency({
+        model: resolveModel(draft),
+        messages,
+        requestPath: resolveRequestPath(draft, settings)
+      }, {
+        httpClient
+      })
+    } catch (error) {
+      throw new Error(`GLM 请求失败：${toProviderErrorMessage(error)}`)
+    }
 
     const resultLines = normalizeResultLines(completion.content).slice(0, resolveQuantity(draft))
 

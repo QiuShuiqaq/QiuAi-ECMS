@@ -809,3 +809,11 @@ export function clearStudioRuntimeState () {
 
   return invoke(getChannel('STUDIO_CLEAR_RUNTIME_STATE'))
 }
+
+export function generateEcmsText (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(new Error('文本生成功能仅支持桌面应用环境'))
+  }
+
+  return invoke(getChannel('ECMS_TEXT_GENERATE'), payload)
+}

@@ -28,6 +28,8 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['send-to-draft'])
+
 const showModelPricing = computed(() => props.activeMenu === 'model-pricing')
 const showSingleImage = computed(() => props.activeMenu === 'single-image')
 const showSingleDesign = computed(() => props.activeMenu === 'single-design')
@@ -123,6 +125,30 @@ function resolvePromptFinal(value) {
   return String(value || '').trim()
 }
 
+function sendToDraft(item, groupTitle = '') {
+  if (!item) {
+    return
+  }
+
+  const promptFinal = resolvePromptFinal(item.promptFinal)
+
+  emit('send-to-draft', {
+    source: 'image',
+    module: props.menuLabel,
+    section: groupTitle || props.menuLabel,
+    title: item.title || item.name || item.model || '未命名结果',
+    summary: promptFinal || '来自生图工作台的效果结果，待进入草稿区继续整理。',
+    preview: item.preview || '',
+    model: item.model || '',
+    tags: [props.menuLabel, item.model].filter(Boolean),
+    metadata: [
+      { label: '来源', value: props.menuLabel },
+      { label: '模型', value: item.model || '--' }
+    ],
+    raw: item
+  })
+}
+
 // 模型价格主区示例：
 // gpt-image-2
 // 3000 / 次
@@ -203,6 +229,9 @@ function resolvePromptFinal(value) {
               <span>发送提示词</span>
               <textarea :value="resolvePromptFinal(image.promptFinal)" rows="3" readonly></textarea>
             </label>
+            <button class="secondary-action secondary-action--compact comparison-card__draft-button" type="button" @click="sendToDraft(image)">
+              发送到草稿
+            </button>
           </article>
         </div>
       </section>
@@ -221,6 +250,9 @@ function resolvePromptFinal(value) {
               <span>发送提示词</span>
               <textarea :value="resolvePromptFinal(image.promptFinal)" rows="3" readonly></textarea>
             </label>
+            <button class="secondary-action secondary-action--compact comparison-card__draft-button" type="button" @click="sendToDraft(image)">
+              发送到草稿
+            </button>
           </article>
         </div>
       </section>
@@ -242,6 +274,9 @@ function resolvePromptFinal(value) {
                 <span>发送提示词</span>
                 <textarea :value="resolvePromptFinal(output.promptFinal)" rows="3" readonly></textarea>
               </label>
+              <button class="secondary-action secondary-action--compact comparison-card__draft-button" type="button" @click="sendToDraft(output, group.groupTitle)">
+                发送到草稿
+              </button>
             </article>
           </div>
         </article>
@@ -264,6 +299,9 @@ function resolvePromptFinal(value) {
                 <span>发送提示词</span>
                 <textarea :value="resolvePromptFinal(output.promptFinal)" rows="3" readonly></textarea>
               </label>
+              <button class="secondary-action secondary-action--compact comparison-card__draft-button" type="button" @click="sendToDraft(output, group.groupTitle)">
+                发送到草稿
+              </button>
             </article>
           </div>
         </article>

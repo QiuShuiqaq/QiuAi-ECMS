@@ -147,7 +147,8 @@ const emit = defineEmits([
   'save-negative-prompt-template',
   'remove-negative-prompt-template',
   'confirm-clear-runtime-state',
-  'close-clear-runtime-confirm'
+  'close-clear-runtime-confirm',
+  'send-to-draft'
 ])
 </script>
 
@@ -190,6 +191,7 @@ const emit = defineEmits([
           :model-pricing-catalog="modelPricingCatalog"
           :recharge-pricing-catalog="rechargePricingCatalog"
           :latest-task="latestTask"
+          @send-to-draft="emit('send-to-draft', $event)"
         />
       </section>
     </template>

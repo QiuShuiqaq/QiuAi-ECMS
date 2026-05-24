@@ -23,6 +23,7 @@ const { exportTaskDirectory } = require('../services/taskExportService')
 const { createDataTraceService } = require('../services/dataTraceService')
 const { attachConsoleCapture } = require('../services/consoleCaptureService')
 const { ensureDataLayout } = require('../services/dataPathsService')
+const { createCopywritingGenerationService } = require('../services/copywritingGenerationService')
 
 function registerIpc () {
   ensureDataLayout().catch(() => {})
@@ -67,6 +68,10 @@ function registerIpc () {
     localTaskStoreService,
     runtimeLogger: dataTraceService
   })
+  const copywritingGenerationService = createCopywritingGenerationService({
+    settingsService,
+    messageRecorder: dataTraceService
+  })
 
   registerSettingsIpc({ settingsService })
   registerLicenseIpc({ licenseService })
@@ -93,7 +98,8 @@ function registerIpc () {
     studioWorkspaceService,
     settingsService,
     dataTraceService,
-    activationGuard
+    activationGuard,
+    copywritingGenerationService
   })
 
   return {

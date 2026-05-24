@@ -17,10 +17,18 @@ defineProps({
   activationSummary: {
     type: Object,
     default: null
+  },
+  navItems: {
+    type: Array,
+    default: () => []
+  },
+  activeNav: {
+    type: String,
+    default: ''
   }
 })
 
-const emit = defineEmits(['brand-click', 'theme-change', 'cleanup-click'])
+const emit = defineEmits(['brand-click', 'theme-change', 'cleanup-click', 'nav-select'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -90,7 +98,20 @@ function closeContactPreview() {
       <span class="brand-copy">{{ brandLabel }}</span>
     </button>
 
-    <label v-if="themeOptions.length > 1" class="topbar-theme">
+    <nav v-if="navItems.length" class="topbar-nav" aria-label="页面切换">
+      <button
+        v-for="item in navItems"
+        :key="item.key"
+        :class="['topbar-nav-button', { 'topbar-nav-button--active': item.key === activeNav }]"
+        type="button"
+        @click="emit('nav-select', item.key)"
+      >
+        <span>{{ item.label }}</span>
+        <small v-if="item.badge">{{ item.badge }}</small>
+      </button>
+    </nav>
+
+    <label v-else-if="themeOptions.length > 1" class="topbar-theme">
       <span>主题</span>
       <select :value="activeTheme" @change="onThemeChange">
         <option v-for="option in themeOptions" :key="option.value" :value="option.value">
@@ -100,14 +121,14 @@ function closeContactPreview() {
     </label>
 
     <div class="topbar-right-actions">
-      <div v-if="activationSummary" class="topbar-activation-pill">
-        <span>已激活</span>
-        <strong>{{ activationSummary.customerName || '已授权设备' }}</strong>
-      </div>
-
       <button class="topbar-clean-button" type="button" aria-label="一键清理" @click="onCleanupClick">
         一键清理
       </button>
+
+      <div v-if="activationSummary" class="topbar-activation-pill">
+        <span>激活状态</span>
+        <strong>{{ activationSummary.customerName || '已授权设备' }}</strong>
+      </div>
 
       <div class="topbar-contact-actions">
         <button

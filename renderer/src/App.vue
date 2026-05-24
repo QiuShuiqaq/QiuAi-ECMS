@@ -1,64 +1,209 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
-import AdminPasswordDialog from './components/AdminPasswordDialog.vue'
-import AdminApiKeyDialog from './components/AdminApiKeyDialog.vue'
-import ActivationGate from './components/ActivationGate.vue'
-import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
-import DesignWorkspace from './components/DesignWorkspace.vue'
-import TaskManagerSidebar from './components/TaskManagerSidebar.vue'
+import LegacyStudioApp from './components/LegacyStudioApp.vue'
+import HotProductsPage from './components/ecms/HotProductsPage.vue'
+import DraftBoardPage from './components/ecms/DraftBoardPage.vue'
+import ListingCenterPage from './components/ecms/ListingCenterPage.vue'
+import EcmsStudioPage from './components/ecms/EcmsStudioPage.vue'
 import {
   clearStudioRuntimeState,
-  createStudioTask,
-  deleteStudioExportItem,
-  exportStudioResults,
+  generateEcmsText,
   getActivationStatus,
   getSettings,
-  refreshDashboardCredits,
   getStudioSnapshot,
-  importLicenseFile,
-  listPromptTemplates,
   listNegativePromptTemplates,
-  openOutputDirectory,
-  pickStudioInputAssets,
-  reloadActivation,
+  listPromptTemplates,
   removeNegativePromptTemplate,
   removePromptTemplate,
-  saveAdminApiKey,
   saveNegativePromptTemplate,
-  saveSettings,
-  savePromptTemplate,
-  saveStudioDraft,
-  stopStudioTask
+  savePromptTemplate
 } from './services/desktopBridge'
 
-const themeOptions = [
-  { label: '暗黑', value: 'dark' }
-]
+const themeOptions = [{ label: 'Dark', value: 'dark' }]
+const activeTheme = ref('dark')
+const activePage = ref('image')
+const legacyStudioKey = ref(0)
+const draftItems = ref([])
+const activationState = ref(null)
+const promptTemplates = ref([])
+const negativePromptTemplates = ref([])
+const sharedHostInfo = ref(createEmptyHostInfo())
+const sharedCreditOverview = ref(createDefaultCreditOverview())
+const sharedCreditMessages = ref(createDefaultCreditMessages())
+const sharedNetworkMonitor = ref(createDefaultNetworkMonitor())
 
-const menuItems = [
-  { key: 'workspace', label: '工作台' },
-  { key: 'single-image', label: '单图测试' },
-  { key: 'single-design', label: '单图设计' },
-  { key: 'series-design', label: '套图设计' },
-  { key: 'series-generate', label: '套图生成' },
-  { key: 'model-pricing', label: '模型价格' },
-  { key: 'prompt-library', label: '提示词库' }
-]
+const notice = reactive({
+  visible: false,
+  type: 'success',
+  title: '',
+  message: ''
+})
 
-const imageModelOptions = [
-  { label: 'gpt-image-2', value: 'gpt-image-2' },
-  { label: 'nano-banana-pro', value: 'nano-banana-pro' },
-  { label: 'nano-banana-fast', value: 'nano-banana-fast' },
-  { label: 'nano-banana-2', value: 'nano-banana-2' },
-  { label: 'nano-banana-pro-vt', value: 'nano-banana-pro-vt' },
-  { label: 'nano-banana-pro-cl', value: 'nano-banana-pro-cl' },
-  { label: 'nano-banana-2-cl', value: 'nano-banana-2-cl' },
-  { label: 'nano-banana-pro-vip', value: 'nano-banana-pro-vip' },
-  { label: 'nano-banana-2-4k-cl', value: 'nano-banana-2-4k-cl' },
-  { label: 'nano-banana-pro-4k-vip', value: 'nano-banana-pro-4k-vip' },
-  { label: 'nano-banana', value: 'nano-banana' }
-]
+let noticeTimer = null
+
+function createStatsCard(title, items) {
+  return {
+    title,
+    items
+  }
+}
+
+function createEmptyHostInfo() {
+  return {
+    systemName: '--',
+    platformName: '--',
+    architecture: '--',
+    cpuModel: '--',
+    userName: '--',
+    runtimeName: 'QiuAi Desktop'
+  }
+}
+
+function createDefaultCreditOverview() {
+  return {
+    title: '积分仪表盘',
+    items: [
+      { label: '剩余积分', value: '0' },
+      { label: '冻结积分', value: '0' },
+      { label: '已用积分', value: '0' },
+      { label: '累计充值积分', value: '0' },
+      { label: '最近调整', value: '--' },
+      { label: '按 gpt-image-2 约可生成', value: '0' }
+    ]
+  }
+}
+
+function createDefaultCreditMessages() {
+  return {
+    title: '积分消息记录',
+    helperText: '当前先复用生图工作台的积分视图，后续可按文本/视频任务单独计费。',
+    items: [
+      {
+        id: 'credit-message-text-video-1',
+        label: '电商内容工坊已接入统一积分面板',
+        description: '文本 / 视频当前与生图共用积分口径，后续再拆分到独立任务维度。',
+        amountDisplay: '系统说明',
+        createdAt: '刚刚'
+      }
+    ]
+  }
+}
+
+function createDefaultNetworkMonitor() {
+  return {
+    title: '网络监控',
+    summary: {
+      latestLatencyMs: 186,
+      averageLatencyMs: 214,
+      successRate: '99.2%'
+    },
+    items: [
+      { id: 'network-1', method: 'POST', requestPath: '/ecms/text/tasks', elapsedMs: 228, status: 'completed', timeLabel: '刚刚' },
+      { id: 'network-2', method: 'POST', requestPath: '/ecms/video/tasks', elapsedMs: 242, status: 'completed', timeLabel: '1 分钟前' },
+      { id: 'network-3', method: 'GET', requestPath: '/ecms/prompts', elapsedMs: 154, status: 'completed', timeLabel: '2 分钟前' },
+      { id: 'network-4', method: 'GET', requestPath: '/studio/dashboard', elapsedMs: 196, status: 'completed', timeLabel: '3 分钟前' },
+      { id: 'network-5', method: 'POST', requestPath: '/drafts/create', elapsedMs: 266, status: 'completed', timeLabel: '5 分钟前' },
+      { id: 'network-6', method: 'GET', requestPath: '/activation/status', elapsedMs: 124, status: 'completed', timeLabel: '8 分钟前' }
+    ]
+  }
+}
+
+function normalizeHostInfo(hostInfo = {}, runtimeName) {
+  return {
+    systemName: hostInfo.systemName || '--',
+    platformName: hostInfo.platformName || '--',
+    architecture: hostInfo.architecture || '--',
+    cpuModel: hostInfo.cpuModel || '--',
+    userName: hostInfo.userName || '--',
+    runtimeName: runtimeName || hostInfo.runtimeName || 'QiuAi Desktop'
+  }
+}
+
+function createTextWorkspaceDashboard() {
+  return {
+    singleImageStats: createStatsCard('标题生成统计', [
+      { label: '标题任务数', value: '32' },
+      { label: '已产出标题', value: '286' },
+      { label: '发送到草稿', value: '18' },
+      { label: 'AB 测试轮次', value: '6' },
+      { label: '高点击方向', value: '结果感前置' },
+      { label: '当前平台', value: '抖音 / 淘宝' }
+    ]),
+    singleDesignStats: createStatsCard('描述生成统计', [
+      { label: '描述任务数', value: '21' },
+      { label: '已产出描述', value: '148' },
+      { label: '详情首屏方案', value: '12' },
+      { label: '字幕描述方案', value: '9' },
+      { label: '平均长度', value: '96 字' },
+      { label: '当前结构', value: '痛点 -> 卖点 -> 收口' }
+    ]),
+    seriesDesignStats: createStatsCard('文本联动统计', [
+      { label: '关联商品数', value: '14' },
+      { label: '关联草稿数', value: '37' },
+      { label: '待上架链接', value: '11' },
+      { label: '跨页联动', value: '标题 / 描述' },
+      { label: '重点类目', value: '家居 / 宠物 / 美妆' },
+      { label: '更新频率', value: '按任务实时' }
+    ]),
+    seriesGenerateStats: createStatsCard('内容质量统计', [
+      { label: '高转化模板', value: '8' },
+      { label: '待优化模板', value: '3' },
+      { label: '提示词版本', value: 'V1.0' },
+      { label: '合规提醒数', value: '2' },
+      { label: '常用风格', value: '强转化 / 场景型' },
+      { label: '草稿回写率', value: '61%' }
+    ]),
+    creditOverview: sharedCreditOverview.value,
+    creditMessages: sharedCreditMessages.value,
+    networkMonitor: sharedNetworkMonitor.value
+  }
+}
+
+function createVideoWorkspaceDashboard() {
+  return {
+    singleImageStats: createStatsCard('视频生成统计', [
+      { label: '视频任务数', value: '16' },
+      { label: '已产出视频', value: '48' },
+      { label: '发送到草稿', value: '9' },
+      { label: '成片时长', value: '15-30 秒' },
+      { label: '当前平台', value: '抖音 / 小红书' },
+      { label: '当前节奏', value: '先结果后过程' }
+    ]),
+    singleDesignStats: createStatsCard('脚本结构统计', [
+      { label: '镜头脚本数', value: '22' },
+      { label: '封面方向数', value: '13' },
+      { label: '口播钩子数', value: '19' },
+      { label: '场景切换版', value: '7' },
+      { label: '转化型脚本', value: '10' },
+      { label: '种草型脚本', value: '12' }
+    ]),
+    seriesDesignStats: createStatsCard('视频联动统计', [
+      { label: '已绑定标题', value: '15' },
+      { label: '已绑定描述', value: '12' },
+      { label: '草稿待补口播', value: '6' },
+      { label: '草稿待补封面', value: '5' },
+      { label: '重点场景', value: '厨房 / 宿舍 / 浴室' },
+      { label: '封面方向', value: '前后对比' }
+    ]),
+    seriesGenerateStats: createStatsCard('投放准备统计', [
+      { label: '待分发平台', value: '4' },
+      { label: '待补素材', value: '8' },
+      { label: '高表现题材', value: '安装演示' },
+      { label: '常用片头', value: '痛点钩子' },
+      { label: '平均镜头数', value: '6 镜头' },
+      { label: '草稿回写率', value: '56%' }
+    ]),
+    creditOverview: sharedCreditOverview.value,
+    creditMessages: sharedCreditMessages.value,
+    networkMonitor: sharedNetworkMonitor.value
+  }
+}
+
+const textWorkspaceDashboard = computed(() => createTextWorkspaceDashboard())
+const videoWorkspaceDashboard = computed(() => createVideoWorkspaceDashboard())
+const textHostInfo = computed(() => normalizeHostInfo(sharedHostInfo.value, 'QiuAi ECMS / 文本工坊'))
+const videoHostInfo = computed(() => normalizeHostInfo(sharedHostInfo.value, 'QiuAi ECMS / 视频工坊'))
 
 const modelPricingCatalog = [
   { name: 'nano-banana-fast', credits: '440 / 次' },
@@ -74,1927 +219,952 @@ const modelPricingCatalog = [
   { name: 'nano-banana-pro-4k-vip', credits: '16000 / 次' }
 ]
 
-const rechargePricingCatalog = [
-  { price: '30¥', credits: '100000积分', validity: '一周', bonus: '' },
-  { price: '60¥', credits: '250000积分', validity: '一月', bonus: '送25%' },
-  { price: '150¥', credits: '750000积分', validity: '一季', bonus: '送50%' },
-  { price: '300¥', credits: '1600000积分', validity: '半年', bonus: '送60%' },
-  { price: '1500¥', credits: '9000000积分', validity: '一年', bonus: '送80%' },
-  { price: '3000¥', credits: '20000000积分', validity: '三年', bonus: '送100%' }
+const textModelPricingCatalog = [
+  { name: 'GLM-4.7-Flash', credits: '免费模型' }
 ]
 
-const batchOptions = [
-  { label: '单批 4 个结果', value: 'batch-4' },
-  { label: '单批 8 个结果', value: 'batch-8' },
-  { label: '单批 12 个结果', value: 'batch-12' }
-]
-
-const ratioOptions = [
-  { label: '1:1', value: '1:1' },
-  { label: '4:3', value: '4:3' },
-  { label: '3:4', value: '3:4' },
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
-  { label: 'A4 竖版', value: 'a4-portrait' },
-  { label: 'A4 横版', value: 'a4-landscape' },
-  { label: 'A5 竖版', value: 'a5-portrait' },
-  { label: 'A5 横版', value: 'a5-landscape' },
-  { label: '8K 横版', value: '8k-landscape' },
-  { label: '8K 竖版', value: '8k-portrait' }
-]
-
-const activeTheme = ref('dark')
-const activeMenu = ref('workspace')
-const downloadCleanupEnabled = ref(true)
-const selectedExportIds = ref([])
-const selectedExportIdsByMenu = ref(createEmptyExportSelectionsByMenu())
-const submitButtonState = ref('idle')
-const tasks = ref([])
-const formDrafts = ref(createDefaultFormDrafts())
-const resultsByMenu = ref(createEmptyResultsByMenu())
-const exportItemsByMenu = ref(createEmptyExportItemsByMenu())
-const previousExportItemsByMenu = ref(createEmptyExportItemsByMenu())
-const workspaceDashboard = ref(createEmptyWorkspaceDashboard())
-const hostInfo = ref(createEmptyHostInfo())
-const promptTemplates = ref([])
-const negativePromptTemplates = ref([])
-const actionNotice = reactive({
-  visible: false,
-  type: 'success',
-  title: '',
-  message: ''
-})
-const uploadDirectoryDrafts = reactive(createEmptyUploadDirectoryDrafts())
-const activationState = ref(createDefaultActivationState())
-const isActivationLoading = ref(true)
-const isRefreshingTotalCredits = ref(false)
-const isRefreshingRemainingCredits = ref(false)
-const adminLogoClickCount = ref(0)
-const isAdminPasswordDialogVisible = ref(false)
-const isAdminPasswordSubmitting = ref(false)
-const adminPasswordDraft = ref('')
-const isAdminApiConfigUnlocked = ref(false)
-const isAdminApiKeyDialogVisible = ref(false)
-const adminApiKeyDraft = ref('')
-const isAdminApiKeySaving = ref(false)
-const adminPasswordFeedback = ref('')
-const adminApiKeyFeedback = ref('')
-const isClearRuntimeConfirmVisible = ref(false)
-const isClearingRuntimeState = ref(false)
-const runtimeResetSequence = ref(0)
-const previousTaskStatusMap = new Map()
-let actionNoticeTimer = null
-let submitButtonStateTimer = null
-let studioRuntimePollTimer = null
-let isRefreshingStudioRuntime = false
-const draftPersistTimers = new Map()
-
-const HIGH_RISK_PROMPT_PATTERNS = ['和原图一致', '保持原样', '不改动布局', '复刻原图', '完全一致', '不要变化']
-const MEDIUM_RISK_PROMPT_PATTERNS = ['尽量不变', '保留原图风格', '轻微修改', '只改一点', '背景不动']
-const TASK_SCALE_LIMITS = {
-  'series-generate': {
-    warn: 40,
-    block: 120
-  },
-  'series-design': {
-    warn: 30,
-    block: 80
-  }
-}
-
-const DEFAULT_EMPTY_PROMPT_TEMPLATE_ID = 'system-empty-image-type'
-const DEFAULT_EMPTY_PROMPT_TEMPLATE_NAME = '无类型图片'
-
-const DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID = 'system-empty-negative-prompt'
-const DEFAULT_EMPTY_NEGATIVE_TEMPLATE_NAME = '无负向提示词'
-
-function resolveDefaultModelForMenu() {
-  return imageModelOptions[0].value
-}
-
-function createEmptyUploadDirectoryDrafts() {
-  return {
-    'single-image': '',
-    'single-design': '',
-    'series-design': '',
-    'series-generate': ''
-  }
-}
-
-function normalizeUploadDirectoryDrafts(uploadDirectories = {}) {
-  return {
-    ...createEmptyUploadDirectoryDrafts(),
-    ...(uploadDirectories || {})
-  }
-}
-
-function createImageAsset(file, idPrefix, preview = true) {
-  const previewValue = typeof file.preview === 'string' ? file.preview : ''
-  return {
-    id: `${idPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: file.name,
-    path: file.path || '',
-    sizeLabel: `${Math.max(1, Math.round((Number(file.size) || 0) / 1024))} KB`,
-    preview: preview
-      ? (previewValue || (file instanceof File ? URL.createObjectURL(file) : ''))
-      : '',
-    storedPath: ''
-  }
-}
-
-function normalizeBatchPrompts(batchPrompts = [], batchCount = 1) {
-  const normalizedCount = Math.max(1, Number(batchCount) || 1)
-  const sourcePrompts = Array.isArray(batchPrompts) ? batchPrompts : []
-
-  return Array.from({ length: normalizedCount }, (_unused, index) => {
-    return String(sourcePrompts[index] || '')
-  })
-}
-
-function createSeriesGeneratePromptAssignments(count, existingAssignments = [], batchCount = 1) {
-  const normalizedCount = Math.max(1, Math.min(500, Number(count) || 1))
-  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1)
-  const sourceAssignments = Array.isArray(existingAssignments) ? existingAssignments : []
-
-  return Array.from({ length: normalizedCount }, (_unused, index) => {
-    const currentAssignment = sourceAssignments[index] || {}
-
-    return {
-      id: currentAssignment.id || `series-generate-${index + 1}`,
-      index: index + 1,
-      prompt: currentAssignment.prompt || '',
-      templateId: currentAssignment.templateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-      imageType: currentAssignment.imageType || '',
-      differentialEnabled: currentAssignment.differentialEnabled === true,
-      batchPrompts: normalizeBatchPrompts(currentAssignment.batchPrompts, normalizedBatchCount)
-    }
-  })
-}
-
-function normalizeSeriesGenerateAssignments(assignments = [], count = 1, batchCount = 1) {
-  return createSeriesGeneratePromptAssignments(count, assignments, batchCount)
-}
-
-function createDraftForm(menuKey) {
-  if (menuKey === 'single-image') {
-    return {
-      prompt: '保持主体不变，测试不同模型效果',
-      model: resolveDefaultModelForMenu(menuKey),
-      taskName: '',
-      sourceImage: null,
-      compareModels: ['nano-banana-fast', 'gpt-image-2', 'nano-banana-2', 'nano-banana-2-cl'],
-      quantity: 1,
-      size: '1:1',
-      notes: ''
-    }
-  }
-
-  if (menuKey === 'single-design') {
-    return {
-      prompt: '生成一张适合电商展示的高质量商品图',
-      model: resolveDefaultModelForMenu(menuKey),
-      taskName: '',
-      sourceImage: null,
-      quantity: 1,
-      size: '1:1',
-      notes: ''
-    }
-  }
-
-  if (menuKey === 'series-design') {
-    return {
-      globalPrompt: '统一商品图整体风格',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
-      legacyGlobalPrompt: '',
-      defaultAssignmentRatio: '1:1',
-      defaultAssignmentModel: resolveDefaultModelForMenu(menuKey),
-      model: resolveDefaultModelForMenu(menuKey),
-      taskName: '',
-      imageAssignments: [],
-      batchCount: 1,
-      size: '1:1'
-    }
-  }
-
-  if (menuKey === 'series-generate') {
-    return {
-      globalPrompt: '统一商品详情图整体风格',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
-      legacyGlobalPrompt: '',
-      model: resolveDefaultModelForMenu(menuKey),
-      taskName: '',
-      sourceImage: null,
-      generateCount: 1,
-      promptAssignments: createSeriesGeneratePromptAssignments(1),
-      batchCount: 1,
-      size: '1:1'
-    }
-  }
-
-  return {
-    prompt: '',
-    model: resolveDefaultModelForMenu('single-image')
-  }
-}
-
-function createDefaultFormDrafts() {
-  return Object.fromEntries(menuItems.map((item) => [item.key, createDraftForm(item.key)]))
-}
-
-function createEmptyResultsByMenu() {
-  return Object.fromEntries(menuItems.map((item) => [
-    item.key,
-    {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    }
-  ]))
-}
-
-function createEmptyExportItemsByMenu() {
-  return Object.fromEntries(menuItems.map((item) => [item.key, []]))
-}
-
-function createEmptyExportSelectionsByMenu() {
-  return Object.fromEntries(menuItems.map((item) => [item.key, []]))
-}
-
-function createEmptyStatsCard(title) {
-  return {
-    title,
-    items: [
-      { label: '模型调用次数', value: '0' },
-      { label: '任务总数', value: '0' },
-      { label: '已完成任务', value: '0' },
-      { label: '失败任务', value: '0' },
-      { label: '当前结果数', value: '0' },
-      { label: '已存储结果', value: '0' }
-    ]
-  }
-}
-
-function createEmptyCreditOverview() {
-  return {
-    title: '积分仪表盘',
-    items: [
-      { label: '剩余积分', value: '0' },
-      { label: '冻结积分', value: '0' },
-      { label: '已用积分', value: '0' },
-      { label: '累计充值积分', value: '0' },
-      { label: '最近调整', value: '--' },
-      { label: '按 gpt-image-2 约可生成', value: '0' }
-    ]
-  }
-}
-
-function createEmptyCreditMessages() {
-  return {
-    title: '积分消息记录',
-    items: []
-  }
-}
-
-function createEmptyWorkspaceDashboard() {
-  return {
-    seriesDesignStats: createEmptyStatsCard('套图设计统计'),
-    singleImageStats: createEmptyStatsCard('单图测试统计'),
-    singleDesignStats: createEmptyStatsCard('单图设计统计'),
-    seriesGenerateStats: createEmptyStatsCard('套图生成统计'),
-    creditOverview: createEmptyCreditOverview(),
-    creditMessages: createEmptyCreditMessages()
-  }
-}
-
-function createEmptyHostInfo() {
-  return {
-    systemName: '--',
-    platformName: '--',
-    architecture: '--',
-    cpuModel: '--',
-    userName: '--',
-    runtimeName: '--'
-  }
-}
-
-function createDefaultActivationState() {
-  return {
-    status: 'not_found',
-    customerName: '',
-    deviceCode: '',
-    activatedAt: '',
-    message: ''
-  }
-}
-
-function ensureEmptyPromptTemplate(templates = []) {
-  const sourceTemplates = Array.isArray(templates) ? templates : []
-  const hasDefaultTemplate = sourceTemplates.some((template) => template?.id === DEFAULT_EMPTY_PROMPT_TEMPLATE_ID)
-  if (hasDefaultTemplate) {
-    return sourceTemplates
-  }
-
+const navItems = computed(() => {
   return [
-    {
-      id: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-      name: DEFAULT_EMPTY_PROMPT_TEMPLATE_NAME,
-      category: '系统提示词',
-      prompt: '',
-      source: 'system-fixed'
-    },
-    ...sourceTemplates
+    { key: 'hot', label: '爆款' },
+    { key: 'text', label: '文本' },
+    { key: 'image', label: '生图' },
+    { key: 'video', label: '视频' },
+    { key: 'draft', label: '草稿', badge: draftItems.value.length ? String(draftItems.value.length) : '' },
+    { key: 'publish', label: '上架' }
   ]
-}
-
-function ensureEmptyNegativePromptTemplate(templates = []) {
-  const sourceTemplates = Array.isArray(templates) ? templates : []
-  const hasDefaultTemplate = sourceTemplates.some((template) => template?.id === DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID)
-  if (hasDefaultTemplate) {
-    return sourceTemplates
-  }
-
-  return [
-    {
-      id: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      name: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_NAME,
-      category: '反向提示词',
-      prompt: '',
-      source: 'system-fixed'
-    },
-    ...sourceTemplates
-  ]
-}
-
-function normalizeStoredDraft(menuKey, storedDraft = {}) {
-  const normalizedDraft = {
-    ...createDraftForm(menuKey),
-    ...storedDraft
-  }
-
-  if (menuKey === 'series-design' || menuKey === 'series-generate') {
-    normalizedDraft.legacyGlobalPrompt = String(normalizedDraft.legacyGlobalPrompt || '')
-    normalizedDraft.globalPrompt = String(normalizedDraft.globalPrompt || '')
-    normalizedDraft.negativeTemplateId = String(normalizedDraft.negativeTemplateId || DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID)
-    normalizedDraft.negativePrompt = String(normalizedDraft.negativePrompt || '')
-  }
-
-  if (menuKey === 'series-generate') {
-    const generateCount = Math.max(1, Math.min(500, Number(normalizedDraft.generateCount) || 1))
-    normalizedDraft.generateCount = generateCount
-    normalizedDraft.promptAssignments = createSeriesGeneratePromptAssignments(
-      generateCount,
-      normalizedDraft.promptAssignments,
-      Math.max(1, Number(normalizedDraft.batchCount) || 1)
-    )
-  }
-
-  return normalizedDraft
-}
-
-function normalizeSeriesDesignAssignments(assignments = [], batchCount = 1) {
-  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1)
-  return (Array.isArray(assignments) ? assignments : []).map((assignment) => {
-    return {
-      ...assignment,
-      templateId: assignment.templateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-      imageType: assignment.imageType || '',
-      differentialEnabled: assignment.differentialEnabled === true,
-      batchPrompts: normalizeBatchPrompts(assignment.batchPrompts, normalizedBatchCount)
-    }
-  })
-}
-
-function revokePreview(preview) {
-  if (preview && preview.startsWith('blob:')) {
-    URL.revokeObjectURL(preview)
-  }
-}
-
-function revokeDraftPreviews(draft = {}) {
-  const imageAssignments = draft.imageAssignments || []
-
-  imageAssignments.forEach((item) => revokePreview(item.preview))
-  revokePreview(draft.sourceImage?.preview)
-}
-
-function replaceDraft(menuKey, nextDraft) {
-  formDrafts.value = {
-    ...formDrafts.value,
-    [menuKey]: nextDraft
-  }
-}
-
-function upsertTaskIntoState(task) {
-  if (!task || !task.id) {
-    return
-  }
-
-  tasks.value = [
-    task,
-    ...tasks.value.filter((item) => item.id !== task.id)
-  ]
-}
-
-function clearDraftPersistTimer(menuKey) {
-  const existingTimer = draftPersistTimers.get(menuKey)
-  if (!existingTimer) {
-    return
-  }
-
-  clearTimeout(existingTimer)
-  draftPersistTimers.delete(menuKey)
-}
-
-function clearAllDraftPersistTimers() {
-  for (const timer of draftPersistTimers.values()) {
-    clearTimeout(timer)
-  }
-  draftPersistTimers.clear()
-}
-
-function clearSubmitButtonStateTimer() {
-  if (submitButtonStateTimer) {
-    clearTimeout(submitButtonStateTimer)
-    submitButtonStateTimer = null
-  }
-}
-
-function setSubmitButtonState(nextState) {
-  clearSubmitButtonStateTimer()
-  submitButtonState.value = nextState
-
-  if (nextState === 'success') {
-    submitButtonStateTimer = setTimeout(() => {
-      submitButtonState.value = 'idle'
-      submitButtonStateTimer = null
-    }, 1000)
-  }
-}
-
-function clearActionFeedback() {
-  if (actionNoticeTimer) {
-    clearTimeout(actionNoticeTimer)
-    actionNoticeTimer = null
-  }
-
-  actionNotice.visible = false
-}
-
-function buildErrorMessage(error, fallbackMessage = '未知错误') {
-  if (typeof error === 'string' && error.trim()) {
-    return error.trim()
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim()
-  }
-
-  if (error && typeof error === 'object') {
-    if (typeof error.message === 'string' && error.message.trim()) {
-      return error.message.trim()
-    }
-
-    if (typeof error.error === 'string' && error.error.trim()) {
-      return error.error.trim()
-    }
-
-    if (typeof error.msg === 'string' && error.msg.trim()) {
-      return error.msg.trim()
-    }
-  }
-
-  return fallbackMessage
-}
-
-function buildTaskFailureFeedbackMessage(task = {}) {
-  const rawError = String(task.error || '').trim()
-
-  if (!rawError) {
-    return '生图失败，请稍后重试或检查当前任务参数'
-  }
-
-  if (rawError.includes('输出内容触发审核限制')) {
-    return '生图失败：图片内容触发平台审核限制，请调整提示词、图片内容或生成方向后重试'
-  }
-
-  if (rawError.includes('输入内容触发审核限制')) {
-    return '生图失败：提示词或输入内容触发平台审核限制，请修改提示词后重试'
-  }
-
-  if (rawError.includes('图片任务执行超时')) {
-    return '生图失败：本次生成超时，建议减少数量或拆分任务后重试'
-  }
-
-  if (rawError.includes('图片任务长时间无进展')) {
-    return '生图失败：图片生成长时间没有进展，建议稍后重试'
-  }
-
-  if (rawError.includes('请先保存可用的 API-Key')) {
-    return '生图失败：服务配置无效，请先检查并保存可用的 API-Key'
-  }
-
-  return `生图失败：${rawError}`
-}
-
-function showActionFeedback({ type = 'success', title, message }) {
-  clearActionFeedback()
-  actionNotice.type = type
-  actionNotice.title = title
-  actionNotice.message = message
-  actionNotice.visible = true
-  actionNoticeTimer = setTimeout(() => {
-    actionNotice.visible = false
-    actionNoticeTimer = null
-  }, 3200)
-}
-
-function handleFailedTaskNotifications(nextTasks = []) {
-  const normalizedTasks = Array.isArray(nextTasks) ? nextTasks : []
-
-  for (const task of normalizedTasks) {
-    if (!task?.id) {
-      continue
-    }
-
-    const previousStatus = previousTaskStatusMap.get(task.id)
-    previousTaskStatusMap.set(task.id, task.status)
-
-    if (task.status !== '失败') {
-      continue
-    }
-
-    if (previousStatus === '失败') {
-      continue
-    }
-
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: buildTaskFailureFeedbackMessage(task)
-    })
-  }
-}
-
-const menuLabelMap = computed(() => {
-  return Object.fromEntries(menuItems.map((item) => [item.key, item.label]))
-})
-
-const currentMenuLabel = computed(() => {
-  return menuLabelMap.value[activeMenu.value] || '工作台'
-})
-
-const isActivated = computed(() => {
-  return activationState.value.status === 'activated'
 })
 
 const activationSummary = computed(() => {
-  if (!isActivated.value) {
+  if (!activationState.value) {
     return null
   }
 
   return {
-    customerName: activationState.value.customerName || '已授权设备',
-    deviceCode: activationState.value.deviceCode || ''
+    customerName: activationState.value.customerName || '已激活'
   }
 })
 
-const currentModelOptions = computed(() => {
-  return imageModelOptions
-})
+const hotPlatformCards = [
+  { platform: '淘宝', hotCount: '126', description: '适合主图与详情页联动出图' },
+  { platform: '抖音', hotCount: '84', description: '适合先跑标题、视频、封面组合' },
+  { platform: '小红书', hotCount: '59', description: '更偏种草内容与场景图' },
+  { platform: '拼多多', hotCount: '71', description: '转化逻辑更偏价格和卖点直给' }
+]
 
-const sortedTasks = computed(() => {
-  return [...tasks.value].sort((left, right) => {
-    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-  })
-})
-
-const hasActiveStudioTasks = computed(() => {
-  return sortedTasks.value.some((task) => ['等待中', '进行中'].includes(task.status))
-})
-
-const latestTaskForActiveMenu = computed(() => {
-  const matchedTask = sortedTasks.value.find((task) => task.menuKey === activeMenu.value)
-  return matchedTask || null
-})
-
-const resultPayload = computed(() => {
-  return resultsByMenu.value[activeMenu.value] || resultsByMenu.value.workspace
-})
-
-const exportItems = computed(() => {
-  return exportItemsByMenu.value[activeMenu.value] || exportItemsByMenu.value.workspace
-})
-
-function syncSelectedExportIdsForMenu(menuKey) {
-  const currentExportItems = exportItemsByMenu.value[menuKey] || []
-  const previousItems = previousExportItemsByMenu.value[menuKey] || []
-  const previousSelection = new Set(selectedExportIdsByMenu.value[menuKey] || [])
-  const existingIds = new Set(previousItems.map((item) => item?.id).filter((itemId) => typeof itemId === 'string' && itemId.trim()))
-
-  const nextSelectedIds = currentExportItems
-    .map((item) => item?.id)
-    .filter((itemId) => typeof itemId === 'string' && itemId.trim())
-    .filter((itemId) => !existingIds.has(itemId) || previousSelection.has(itemId))
-
-  selectedExportIdsByMenu.value = {
-    ...selectedExportIdsByMenu.value,
-    [menuKey]: nextSelectedIds
+const hotTrendProducts = [
+  {
+    id: 'hot-1',
+    platform: '抖音',
+    growth: '+188%',
+    title: '免打孔旋转纸巾架',
+    summary: '适合走“前后对比 + 安装过程 + 场景展示”的内容路线。',
+    searchHeat: '9.4w',
+    conversion: '6.8%',
+    assetDirection: '主图 / 标题 / 视频联动',
+    tags: ['家居收纳', '厨房', '前后对比']
+  },
+  {
+    id: 'hot-2',
+    platform: '淘宝',
+    growth: '+126%',
+    title: '宠物净味豆腐猫砂',
+    summary: '适合把文本卖点、生图细节图和短视频体验感一起联动。',
+    searchHeat: '7.8w',
+    conversion: '5.2%',
+    assetDirection: '详情图 / 卖点描述 / 测评视频',
+    tags: ['宠物', '复购品', '除臭']
+  },
+  {
+    id: 'hot-3',
+    platform: '小红书',
+    growth: '+94%',
+    title: '轻氧奶油腮红棒',
+    summary: '内容驱动明显，适合标题、妆效图、试色视频一起做。',
+    searchHeat: '6.1w',
+    conversion: '4.6%',
+    assetDirection: '色号图 / 种草文案 / 妆效短视频',
+    tags: ['美妆', '种草', '场景感']
+  },
+  {
+    id: 'hot-4',
+    platform: '拼多多',
+    growth: '+142%',
+    title: '速干冰丝防晒披肩',
+    summary: '更适合季节节点型打法，重点突出场景、价格带和即时需求。',
+    searchHeat: '8.3w',
+    conversion: '7.4%',
+    assetDirection: '主图海报 / 标题 / 场景视频',
+    tags: ['服饰', '夏季', '防晒']
   }
+]
 
-  if (menuKey === activeMenu.value) {
-    selectedExportIds.value = nextSelectedIds
+const scoutingSteps = [
+  { title: '站点白名单', description: '只抓你明确给出的站点和栏目，不做泛化爬取。' },
+  { title: '少量采样', description: '默认只拉少量商品样本，先验证字段质量和可用性。' },
+  { title: '限频执行', description: '默认低频、低并发，避免对目标站造成压力。' },
+  { title: '人工复核', description: '热榜结果先人工确认，再流向文本、生图、视频流程。' }
+]
+
+const textMenuItems = [
+  { key: 'workspace', label: '工作台' },
+  { key: 'title-generate', label: '标题生成' },
+  { key: 'description-generate', label: '描述生成' },
+  { key: 'model-pricing', label: '模型价格' },
+  { key: 'prompt-library', label: '提示词库' }
+]
+
+const videoMenuItems = [
+  { key: 'workspace', label: '工作台' },
+  { key: 'video-generate', label: '视频生成' },
+  { key: 'model-pricing', label: '模型价格' },
+  { key: 'prompt-library', label: '提示词库' }
+]
+
+const textOverviewCards = [
+  { title: '标题流', description: '围绕点击率做单条标题生成，一条标题视为一组结果。', tags: ['标题生成', '点击率', '草稿联动'] },
+  { title: '描述流', description: '围绕卖点与详情描述做分组生成，一条描述视为一组结果。', tags: ['描述生成', '详情页', '上架预备'] },
+  { title: '价格与模板', description: '模型价格和提示词库沿用生图体系，方便后续统一参数。', tags: ['模型价格', '提示词库'] }
+]
+
+const videoOverviewCards = [
+  { title: '视频流', description: '围绕单个视频任务做分组输出，一个视频视为一组结果。', tags: ['视频生成', '镜头脚本', '草稿联动'] },
+  { title: '封面与口播', description: '后续会继续接文本页标题和描述成果，让视频页自然复用。', tags: ['封面', '口播', '联动'] },
+  { title: '价格与模板', description: '模型价格和提示词库继续沿用生图体系，保证系统感统一。', tags: ['模型价格', '提示词库'] }
+]
+
+const textParameterSections = {
+  'title-generate': {
+    description: '标题生成先按照真实电商场景拆成任务基础、商品信息、风格约束和输出规则。',
+    groups: [
+      {
+        title: '任务基础',
+        copy: '先确定本轮标题任务的用途和平台。',
+        fields: [
+          { key: 'text_title_task_name', label: '任务名称', placeholder: '例如：旋转纸巾架标题首轮', value: '旋转纸巾架标题首轮' },
+          { key: 'text_title_platform', label: '目标平台', type: 'select', options: ['淘宝', '抖音', '小红书', '拼多多'], value: '抖音' },
+          { key: 'text_title_channel', label: '投放位置', type: 'select', options: ['搜索标题', '主图大字', '商品卡标题', '短视频封面'], value: '商品卡标题' },
+          { key: 'text_title_batch_count', label: '输出组数', type: 'number', placeholder: '例如 12', value: 12, hint: '每一条标题视作一组结果。' }
+        ]
+      },
+      {
+        title: '商品信息',
+        copy: '把商品本身、卖点和人群讲清楚，后面标题会更稳。',
+        fields: [
+          { key: 'text_title_product_name', label: '商品名称', placeholder: '输入商品名称', value: '免打孔旋转纸巾架' },
+          { key: 'text_title_core_selling_points', label: '核心卖点', type: 'textarea', rows: 4, placeholder: '输入 3-6 个核心卖点', value: '免打孔安装、旋转抽取、防潮防油烟、转角利用、台面整洁' },
+          { key: 'text_title_target_people', label: '目标人群', placeholder: '例如：厨房收纳人群 / 宿舍党', value: '厨房收纳人群、租房用户、宿舍党' },
+          { key: 'text_title_scene_words', label: '场景词', placeholder: '例如：厨房、宿舍、浴室', value: '厨房、宿舍、浴室、转角墙面' }
+        ]
+      },
+      {
+        title: '风格约束',
+        copy: '控制标题长度、口吻和禁用词，方便更贴近平台风格。',
+        fields: [
+          { key: 'text_title_style', label: '标题风格', type: 'select', options: ['强转化', '种草型', '场景型', '价格刺激型'], value: '强转化' },
+          { key: 'text_title_length_limit', label: '字数限制', placeholder: '例如：24-30 字', value: '24-30 字' },
+          { key: 'text_title_must_keywords', label: '必带关键词', placeholder: '例如：免打孔 / 旋转纸巾架', value: '免打孔、旋转纸巾架' },
+          { key: 'text_title_banned_words', label: '禁用词', placeholder: '例如：绝对 / 全网最低', value: '绝对、全网最低、唯一' }
+        ]
+      },
+      {
+        title: '输出规则',
+        copy: '先用规则化方式控制结果，后面更好衔接草稿与上架。',
+        fields: [
+          { key: 'text_title_output_goal', label: '本轮目标', type: 'select', options: ['测试点击率', '详情页首屏', '主图副标题', '封面大字'], value: '测试点击率' },
+          { key: 'text_title_reference_direction', label: '参考方向', type: 'textarea', rows: 4, placeholder: '输入希望靠近的标题表达', value: '突出结果感、痛点前置、场景清晰、前 8 个字就要有抓力。' }
+        ]
+      }
+    ]
+  },
+  'description-generate': {
+    description: '描述生成先按照详情页、商品卡和视频字幕会用到的方式拆字段。',
+    groups: [
+      {
+        title: '任务基础',
+        copy: '先确定描述要服务的页面位置。',
+        fields: [
+          { key: 'text_desc_task_name', label: '任务名称', placeholder: '例如：旋转纸巾架详情描述首轮', value: '旋转纸巾架详情描述首轮' },
+          { key: 'text_desc_platform', label: '目标平台', type: 'select', options: ['淘宝', '抖音', '小红书', '拼多多'], value: '淘宝' },
+          { key: 'text_desc_channel', label: '描述位置', type: 'select', options: ['详情页首屏', '详情页模块', '商品描述', '视频字幕'], value: '详情页首屏' },
+          { key: 'text_desc_batch_count', label: '输出组数', type: 'number', placeholder: '例如 8', value: 8, hint: '每一条描述视作一组结果。' }
+        ]
+      },
+      {
+        title: '商品与卖点',
+        copy: '把卖点层级与使用场景拆出来，方便后续链接草稿直接承接。',
+        fields: [
+          { key: 'text_desc_product_name', label: '商品名称', placeholder: '输入商品名称', value: '免打孔旋转纸巾架' },
+          { key: 'text_desc_top_benefits', label: '优先卖点', type: 'textarea', rows: 4, placeholder: '输入排序后的卖点', value: '1. 安装不伤墙 2. 抽取顺手 3. 转角利用 4. 防潮防油烟' },
+          { key: 'text_desc_usage_scene', label: '使用场景', type: 'textarea', rows: 4, placeholder: '输入典型场景', value: '厨房灶台边、宿舍书桌旁、浴室墙面、冰箱侧面' },
+          { key: 'text_desc_specs', label: '规格信息', placeholder: '例如：尺寸 / 材质 / 安装方式', value: 'ABS 材质，免打孔粘贴安装，可旋转抽取' }
+        ]
+      },
+      {
+        title: '详情结构',
+        copy: '提前把描述按模块组织，方便草稿页按链接逻辑继续收口。',
+        fields: [
+          { key: 'text_desc_structure', label: '结构模板', type: 'textarea', rows: 5, placeholder: '例如：痛点 -> 卖点 -> 场景 -> 规格 -> 收口', value: '痛点开场 -> 安装优势 -> 使用细节 -> 场景展示 -> 规格补充 -> 收口促转化' },
+          { key: 'text_desc_tone', label: '表达口吻', type: 'select', options: ['直给转化', '生活化', '专业说明', '种草型'], value: '直给转化' },
+          { key: 'text_desc_length_limit', label: '长度限制', placeholder: '例如：80-120 字', value: '80-120 字' },
+          { key: 'text_desc_cta', label: '收口动作', placeholder: '例如：引导收藏加购', value: '引导收藏加购，强调安装方便和台面整洁结果' }
+        ]
+      },
+      {
+        title: '风险与禁用',
+        copy: '先把禁用表达写进来，减少后续清洗成本。',
+        fields: [
+          { key: 'text_desc_banned_words', label: '禁用词', placeholder: '例如：根治 / 唯一 / 最低价', value: '根治、唯一、最低价、绝对无味' },
+          { key: 'text_desc_compliance_hint', label: '合规提醒', type: 'textarea', rows: 3, placeholder: '输入需要规避的表达', value: '避免医疗化、绝对化和夸大承重的描述，强调体验而不是绝对承诺。' }
+        ]
+      }
+    ]
   }
 }
 
-function syncAllSelectedExportIds() {
-  menuItems.forEach((item) => {
-    syncSelectedExportIdsForMenu(item.key)
-  })
-
-  previousExportItemsByMenu.value = Object.fromEntries(menuItems.map((item) => [
-    item.key,
-    Array.isArray(exportItemsByMenu.value[item.key]) ? [...exportItemsByMenu.value[item.key]] : []
-  ]))
+const videoParameterSections = {
+  'video-generate': {
+    description: '视频生成先按任务基础、镜头脚本、口播封面和发布要求来拆参数。',
+    groups: [
+      {
+        title: '任务基础',
+        copy: '先确定平台、时长和本轮任务目标。',
+        fields: [
+          { key: 'video_task_name', label: '任务名称', placeholder: '例如：旋转纸巾架视频首轮', value: '旋转纸巾架视频首轮' },
+          { key: 'video_platform', label: '发布平台', type: 'select', options: ['抖音', '快手', '视频号', '小红书'], value: '抖音' },
+          { key: 'video_duration', label: '时长', type: 'select', options: ['15 秒', '20 秒', '30 秒', '45 秒'], value: '30 秒' },
+          { key: 'video_batch_count', label: '输出组数', type: 'number', placeholder: '例如 6', value: 6, hint: '每一个视频方案视作一组结果。' }
+        ]
+      },
+      {
+        title: '商品与镜头',
+        copy: '先把商品信息和镜头节奏放进来，后面更容易扩成完整视频流。',
+        fields: [
+          { key: 'video_product_name', label: '商品名称', placeholder: '输入商品名称', value: '免打孔旋转纸巾架' },
+          { key: 'video_storyline', label: '镜头思路', type: 'textarea', rows: 5, placeholder: '输入镜头结构', value: '痛点开场 -> 安装过程 -> 抽取演示 -> 使用场景 -> 收口转化' },
+          { key: 'video_scene_list', label: '场景列表', placeholder: '例如：厨房 / 宿舍 / 浴室', value: '厨房、宿舍、浴室' },
+          { key: 'video_proof_points', label: '证据点', type: 'textarea', rows: 4, placeholder: '输入镜头里必须出现的证据', value: '安装过程、承重效果、转角使用、潮湿环境抽取' }
+        ]
+      },
+      {
+        title: '口播与封面',
+        copy: '封面和口播后续会继续与文本页联动，这里先把基础字段补齐。',
+        fields: [
+          { key: 'video_hook', label: '开场钩子', type: 'textarea', rows: 3, placeholder: '输入开头 3 秒钩子', value: '你家厨房纸巾是不是永远放得又油又乱？' },
+          { key: 'video_voice_tone', label: '口播风格', type: 'select', options: ['强转化', '生活化', '测评型', '教程型'], value: '生活化' },
+          { key: 'video_cover_title', label: '封面标题方向', placeholder: '例如：三秒装好，台面立刻清爽', value: '三秒装好，台面立刻清爽' },
+          { key: 'video_cta', label: '结尾动作', placeholder: '例如：引导收藏加购', value: '引导收藏加购，突出好装不占地' }
+        ]
+      },
+      {
+        title: '发布约束',
+        copy: '先把平台限制和禁用表达前置，方便后面生成更稳。',
+        fields: [
+          { key: 'video_output_goal', label: '本轮目标', type: 'select', options: ['起量测试', '商品转化', '详情视频位', '种草引流'], value: '商品转化' },
+          { key: 'video_banned_words', label: '禁用词', placeholder: '例如：绝对 / 全网第一', value: '绝对、全网第一、唯一' },
+          { key: 'video_style_reference', label: '风格参考', type: 'textarea', rows: 4, placeholder: '输入希望靠近的节奏和表达', value: '节奏快、画面清晰、先结果后过程、镜头切换不要过杂。' }
+        ]
+      }
+    ]
+  }
 }
 
-const fixedPromptTemplates = computed(() => {
-  return promptTemplates.value.filter((item) => item.source === 'system-fixed')
-})
-
-const customPromptTemplates = computed(() => {
-  return promptTemplates.value.filter((item) => item.source === 'custom')
-})
-
-const fixedNegativePromptTemplates = computed(() => {
-  return negativePromptTemplates.value.filter((item) => item.source === 'system-fixed')
-})
-
-const customNegativePromptTemplates = computed(() => {
-  return negativePromptTemplates.value.filter((item) => item.source === 'custom')
-})
-
-const allPromptTemplates = computed(() => {
-  return [...fixedPromptTemplates.value, ...customPromptTemplates.value]
-})
-
-const currentDraftForm = computed(() => {
-  return formDrafts.value[activeMenu.value] || createDraftForm(activeMenu.value)
-})
-
-const currentLongRunningHint = computed(() => {
-  const draft = currentDraftForm.value
-
-  if (activeMenu.value === 'series-generate') {
-    const totalSubtasks = Math.max(1, Number(draft.generateCount) || 1) * Math.max(1, Number(draft.batchCount) || 1)
-    if (totalSubtasks > 300) {
-      return '当前任务量很大，将进入长队列执行。'
-    }
-    if (totalSubtasks > 100) {
-      return '当前任务量较大，生成时间会明显变长。'
-    }
+const initialTextResultSections = {
+  'title-generate': {
+    description: '效果展示保持与生图一致的结果区结构，单个标题就是一组。',
+    groups: [
+      {
+        id: 'title-1',
+        title: '标题组 01',
+        subtitle: '单标题结果',
+        outputTitle: '免打孔旋转纸巾架，厨房台面立刻清爽一半',
+        summary: '这一组强调结果感和场景痛点，适合先拉点击。',
+        detail: '适用方向：抖音短标题 / 主图大字 / 首屏卖点',
+        metadata: [
+          { label: '平台', value: '抖音' },
+          { label: '风格', value: '点击导向' }
+        ],
+        tags: ['标题', '点击率', '厨房'],
+        draftPayload: {
+          draftType: 'listing_title',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '抖音',
+          contentType: '标题',
+          listingTitle: '免打孔旋转纸巾架，厨房台面立刻清爽一半',
+          sellingPoint: '结果感强，适合点击率测试',
+          nextAction: '进入草稿后可与主图方案绑定'
+        }
+      },
+      {
+        id: 'title-2',
+        title: '标题组 02',
+        subtitle: '单标题结果',
+        outputTitle: '不占台面不伤墙，宿舍厨房都能挂的旋转纸巾架',
+        summary: '这一组更适合双场景扩展，兼顾宿舍与厨房。',
+        detail: '适用方向：详情标题 / 场景切换素材 / 平台标题 AB 测试',
+        metadata: [
+          { label: '平台', value: '淘宝' },
+          { label: '风格', value: '场景导向' }
+        ],
+        tags: ['标题', '场景化'],
+        draftPayload: {
+          draftType: 'listing_title',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '淘宝',
+          contentType: '标题',
+          listingTitle: '不占台面不伤墙，宿舍厨房都能挂的旋转纸巾架',
+          sellingPoint: '双场景覆盖，适合详情页与商品卡',
+          nextAction: '进入草稿后可继续关联详情描述'
+        }
+      }
+    ]
+  },
+  'description-generate': {
+    description: '效果展示保持与生图一致的结果区结构，单个描述就是一组。',
+    groups: [
+      {
+        id: 'desc-1',
+        title: '描述组 01',
+        subtitle: '单描述结果',
+        outputTitle: '详情描述文案',
+        summary: '免打孔安装，抽取顺手，防潮防油烟，转角也能充分利用，让厨房纸巾真正回到顺手的位置。',
+        detail: '适用方向：详情页首屏 / 商品描述 / 主图副标题',
+        metadata: [
+          { label: '平台', value: '淘宝 / 拼多多' },
+          { label: '层级', value: '首屏卖点' }
+        ],
+        tags: ['描述', '详情页', '卖点'],
+        draftPayload: {
+          draftType: 'listing_description',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '淘宝 / 拼多多',
+          contentType: '描述',
+          listingDescription: '免打孔安装，抽取顺手，防潮防油烟，转角也能充分利用，让厨房纸巾真正回到顺手的位置。',
+          sellingPoint: '适合详情页首屏承接',
+          nextAction: '进入草稿后可直接作为详情模块初稿'
+        }
+      },
+      {
+        id: 'desc-2',
+        title: '描述组 02',
+        subtitle: '单描述结果',
+        outputTitle: '场景型描述文案',
+        summary: '厨房、宿舍、浴室都能快速上墙，整洁不占地，抽纸时不用再一手扶盒一手抽纸。',
+        detail: '适用方向：场景描述 / 短视频字幕 / 图文详情补充',
+        metadata: [
+          { label: '平台', value: '抖音 / 小红书' },
+          { label: '层级', value: '场景扩展' }
+        ],
+        tags: ['描述', '场景', '字幕'],
+        draftPayload: {
+          draftType: 'listing_description',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '抖音 / 小红书',
+          contentType: '描述',
+          listingDescription: '厨房、宿舍、浴室都能快速上墙，整洁不占地，抽纸时不用再一手扶盒一手抽纸。',
+          sellingPoint: '场景扩展强，适合短视频字幕与图文详情',
+          nextAction: '进入草稿后可继续和视频脚本绑定'
+        }
+      }
+    ]
   }
+}
 
-  if (activeMenu.value === 'series-design') {
-    const selectedCount = Array.isArray(draft.imageAssignments)
-      ? draft.imageAssignments.filter((item) => item.selected !== false).length
-      : 0
-    const totalSubtasks = selectedCount * Math.max(1, Number(draft.batchCount) || 1)
-    if (totalSubtasks > 300) {
-      return '当前任务量很大，将进入长队列执行。'
-    }
-    if (totalSubtasks > 100) {
-      return '当前任务量较大，生成时间会明显变长。'
-    }
+function createPreview(title, accent) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+      <defs>
+        <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+          <stop offset="0%" stop-color="#18122b" />
+          <stop offset="100%" stop-color="${accent}" />
+        </linearGradient>
+      </defs>
+      <rect width="640" height="360" rx="28" fill="url(#bg)" />
+      <rect x="34" y="34" width="240" height="292" rx="22" fill="rgba(255,255,255,0.08)" />
+      <rect x="308" y="52" width="250" height="16" rx="8" fill="rgba(255,255,255,0.72)" />
+      <rect x="308" y="88" width="198" height="12" rx="6" fill="rgba(255,255,255,0.34)" />
+      <rect x="308" y="122" width="280" height="98" rx="18" fill="rgba(255,255,255,0.1)" />
+      <rect x="308" y="240" width="140" height="40" rx="20" fill="rgba(255,255,255,0.82)" />
+      <text x="308" y="316" fill="white" font-size="28" font-family="Segoe UI, PingFang SC, sans-serif">${title}</text>
+    </svg>
+  `
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
+const videoResultSections = {
+  'video-generate': {
+    description: '效果展示保持与生图一致的结果区结构，单个视频就是一组。',
+    groups: [
+      {
+        id: 'video-1',
+        title: '视频组 01',
+        subtitle: '单视频结果',
+        outputTitle: '30 秒转化短视频',
+        summary: '先展示台面凌乱，再演示安装，最后展示抽取和收纳效果，节奏清晰。',
+        detail: '适用方向：抖音短视频 / 商品橱窗内容 / 详情页视频位',
+        metadata: [
+          { label: '平台', value: '抖音' },
+          { label: '时长', value: '30 秒' }
+        ],
+        tags: ['视频', '转化', '安装演示'],
+        preview: createPreview('视频方案 01', '#f97316'),
+        draftPayload: {
+          draftType: 'listing_video',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '抖音',
+          contentType: '视频',
+          videoTheme: '30 秒转化短视频',
+          coverDirection: '台面整洁前后对比',
+          sellingPoint: '安装快、结果明显、镜头转化路径清晰',
+          nextAction: '进入草稿后可继续绑定封面和标题'
+        }
+      },
+      {
+        id: 'video-2',
+        title: '视频组 02',
+        subtitle: '单视频结果',
+        outputTitle: '场景型种草短视频',
+        summary: '突出宿舍与厨房双场景切换，强化“不占地、不伤墙、顺手抽取”的体验感。',
+        detail: '适用方向：小红书 / 场景种草 / 多平台分发',
+        metadata: [
+          { label: '平台', value: '小红书' },
+          { label: '时长', value: '20 秒' }
+        ],
+        tags: ['视频', '种草', '双场景'],
+        preview: createPreview('视频方案 02', '#22c55e'),
+        draftPayload: {
+          draftType: 'listing_video',
+          productName: '免打孔旋转纸巾架',
+          targetPlatform: '小红书',
+          contentType: '视频',
+          videoTheme: '双场景种草短视频',
+          coverDirection: '宿舍 / 厨房切换感',
+          sellingPoint: '更适合种草与生活化内容',
+          nextAction: '进入草稿后可继续补口播和配图'
+        }
+      }
+    ]
   }
+}
 
-  return ''
+const textQueueCards = [
+  { title: '草稿联动', description: '标题生成与描述生成的每一组结果都可以直接发送到草稿。' },
+  { title: '后续细化', description: '参数设置部分先占位，后面你补规则我再按你的逻辑展开。' },
+  { title: '上架承接', description: '草稿页会继续按上架链接逻辑承接这些文本结果。' }
+]
+
+const videoQueueCards = [
+  { title: '草稿联动', description: '视频生成的每一组结果都可以直接发送到草稿。' },
+  { title: '后续细化', description: '参数设置部分先占位，后面你补镜头、封面、口播规则我再展开。' },
+  { title: '跨页协同', description: '后续可以继续把文本页标题与描述自动带入视频页。' }
+]
+
+const TEXT_MODEL_NAME = 'glm-4.7-flash'
+const textResultSections = ref(cloneResultSections(initialTextResultSections))
+const textSubmitStates = reactive({
+  'title-generate': false,
+  'description-generate': false
+})
+const textStatusStates = reactive({
+  'title-generate': createTextStatusState({
+    tone: 'info',
+    title: '文本模型待命',
+    badge: '未检测',
+    message: '正在准备 GLM-4.7-Flash 文本能力。',
+    detail: '当前模型：GLM-4.7-Flash'
+  }),
+  'description-generate': createTextStatusState({
+    tone: 'info',
+    title: '文本模型待命',
+    badge: '未检测',
+    message: '正在准备 GLM-4.7-Flash 文本能力。',
+    detail: '当前模型：GLM-4.7-Flash'
+  })
 })
 
-function resolveTaskScaleSummary(menuKey, draft = {}) {
-  if (menuKey !== 'series-generate' && menuKey !== 'series-design') {
-    return null
-  }
+function cloneResultSections(sectionMap = {}) {
+  return JSON.parse(JSON.stringify(sectionMap))
+}
 
-  const limits = TASK_SCALE_LIMITS[menuKey]
-  const totalOutputs = menuKey === 'series-generate'
-    ? Math.max(1, Number(draft.generateCount) || 1) * Math.max(1, Number(draft.batchCount) || 1)
-    : (
-        (Array.isArray(draft.imageAssignments)
-          ? draft.imageAssignments.filter((item) => item.selected !== false).length
-          : 0) * Math.max(1, Number(draft.batchCount) || 1)
-      )
-
-  let level = 'safe'
-  let levelLabel = '正常'
-  if (totalOutputs > limits.block) {
-    level = 'block'
-    levelLabel = '禁止提交'
-  } else if (totalOutputs > limits.warn) {
-    level = 'warn'
-    levelLabel = '谨慎提交'
-  }
-
-  const estimatedCredits = latestTaskForActiveMenu.value?.estimatedCredits && latestTaskForActiveMenu.value.menuKey === menuKey
-    ? latestTaskForActiveMenu.value.estimatedCredits
-    : 0
-
+function createTextStatusState({
+  tone = 'info',
+  title = '',
+  badge = '',
+  message = '',
+  detail = ''
+} = {}) {
   return {
-    totalOutputs,
-    estimatedCredits,
-    level,
-    levelLabel
+    tone,
+    title,
+    badge,
+    message,
+    detail
   }
 }
 
-const currentTaskScaleSummary = computed(() => {
-  return resolveTaskScaleSummary(activeMenu.value, currentDraftForm.value)
-})
+function applyTextStatusState(statusState = {}) {
+  const nextStatusState = createTextStatusState(statusState)
+  textStatusStates['title-generate'] = { ...nextStatusState }
+  textStatusStates['description-generate'] = { ...nextStatusState }
+}
 
-function applySnapshot(snapshot = {}, settings = {}, options = {}) {
-  const {
-    preserveDrafts = false,
-    preserveApiConfig = false,
-    preserveUploadDirectoryDrafts = false
-  } = options
+function buildReadyTextStatusState() {
+  return createTextStatusState({
+    tone: 'info',
+    title: 'GLM-4.7-Flash 已就绪',
+    badge: '可提交',
+    message: '已检测到本机可用 API-Key，提交后会直接请求智谱官方文本接口。',
+    detail: '当前模型：GLM-4.7-Flash'
+  })
+}
 
-  if (!preserveDrafts) {
-    formDrafts.value = Object.fromEntries(menuItems.map((item) => {
-      return [item.key, normalizeStoredDraft(item.key, snapshot.formDrafts?.[item.key] || {})]
+function buildMissingKeyTextStatusState() {
+  return createTextStatusState({
+    tone: 'warning',
+    title: '未检测到 API-Key',
+    badge: '需配置',
+    message: '当前文本功能没有可用的 API-Key，提交任务前需要先在本机设置里保存可用密钥。',
+    detail: '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function buildSuccessTextStatusState(groupCount) {
+  return createTextStatusState({
+    tone: 'success',
+    title: '接口调用成功',
+    badge: '已连通',
+    message: `本次请求已成功返回 ${groupCount} 组文本结果，可以继续发送到草稿。`,
+    detail: '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function buildRateLimitTextStatusState(errorMessage = '') {
+  return createTextStatusState({
+    tone: 'warning',
+    title: '接口被限流',
+    badge: '429',
+    message: '智谱官方当前拒绝了这次请求，请降低调用频率或等待一段时间后重试。',
+    detail: errorMessage || '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function buildTimeoutTextStatusState(errorMessage = '') {
+  return createTextStatusState({
+    tone: 'error',
+    title: '网络请求超时',
+    badge: '超时',
+    message: '请求已经发出，但等待模型返回时超时。通常是网络波动或服务端响应较慢。',
+    detail: errorMessage || '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function buildNetworkTextStatusState(errorMessage = '') {
+  return createTextStatusState({
+    tone: 'error',
+    title: '无法连接到文本接口',
+    badge: '网络异常',
+    message: '当前桌面应用未能稳定连接到智谱官方接口，请检查网络、代理或防火墙设置。',
+    detail: errorMessage || '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function buildGenericErrorTextStatusState(errorMessage = '') {
+  return createTextStatusState({
+    tone: 'error',
+    title: '文本接口返回异常',
+    badge: '请求失败',
+    message: '模型请求没有成功完成，请根据错误信息排查后重试。',
+    detail: errorMessage || '当前模型：GLM-4.7-Flash'
+  })
+}
+
+function classifyTextStatusState(error) {
+  const errorMessage = String(error?.message || '').trim()
+  const normalizedMessage = errorMessage.toLowerCase()
+
+  if (!errorMessage) {
+    return buildGenericErrorTextStatusState('当前模型：GLM-4.7-Flash')
+  }
+
+  if (normalizedMessage.includes('api-key') || normalizedMessage.includes('api key') || errorMessage.includes('API-Key')) {
+    return buildMissingKeyTextStatusState()
+  }
+
+  if (errorMessage.includes('速率限制') || normalizedMessage.includes('429') || normalizedMessage.includes('1302')) {
+    return buildRateLimitTextStatusState(errorMessage)
+  }
+
+  if (normalizedMessage.includes('timeout') || errorMessage.includes('超时')) {
+    return buildTimeoutTextStatusState(errorMessage)
+  }
+
+  if (
+    normalizedMessage.includes('network') ||
+    normalizedMessage.includes('enotfound') ||
+    normalizedMessage.includes('econnrefused') ||
+    normalizedMessage.includes('socket hang up') ||
+    normalizedMessage.includes('failed to fetch') ||
+    errorMessage.includes('无法连接')
+  ) {
+    return buildNetworkTextStatusState(errorMessage)
+  }
+
+  return buildGenericErrorTextStatusState(errorMessage)
+}
+
+function resolveHasApiKey(settings = {}) {
+  if (typeof settings.apiKey === 'string' && settings.apiKey.trim()) {
+    return true
+  }
+
+  const activeIndex = Number.isInteger(settings.activeApiKeyIndex) ? settings.activeApiKeyIndex : 0
+  const apiKey = Array.isArray(settings.apiKeys) ? settings.apiKeys[activeIndex] : ''
+  return typeof apiKey === 'string' && Boolean(apiKey.trim())
+}
+
+async function initializeTextStatusState() {
+  try {
+    const settings = await getSettings()
+    applyTextStatusState(resolveHasApiKey(settings) ? buildReadyTextStatusState() : buildMissingKeyTextStatusState())
+  } catch {
+    applyTextStatusState(createTextStatusState({
+      tone: 'info',
+      title: '文本配置待确认',
+      badge: '未读取',
+      message: '当前未能读取本机设置，提交任务时会再次检测文本接口配置。',
+      detail: '当前模型：GLM-4.7-Flash'
     }))
   }
-  resultsByMenu.value = {
-    ...createEmptyResultsByMenu(),
-    ...(snapshot.resultsByMenu || {})
-  }
-  exportItemsByMenu.value = {
-    ...createEmptyExportItemsByMenu(),
-    ...(snapshot.exportItemsByMenu || {})
-  }
-  syncAllSelectedExportIds()
-  tasks.value = Array.isArray(snapshot.tasks) ? snapshot.tasks : []
-  handleFailedTaskNotifications(tasks.value)
-  workspaceDashboard.value = {
-    ...createEmptyWorkspaceDashboard(),
-    ...(snapshot.workspaceDashboard || {})
-  }
-  hostInfo.value = {
-    ...createEmptyHostInfo(),
-    ...(snapshot.hostInfo || {})
-  }
-  activeTheme.value = settings.themeMode || snapshot.themeMode || 'dark'
-  downloadCleanupEnabled.value = settings.downloadCleanupEnabled !== false
-
-  if (!preserveApiConfig) {
-    adminApiKeyDraft.value = settings.apiKey || ''
-  }
-
-  if (!preserveUploadDirectoryDrafts) {
-    const nextUploadDirectories = normalizeUploadDirectoryDrafts(settings.uploadDirectories)
-    Object.assign(uploadDirectoryDrafts, nextUploadDirectories)
-  }
-
 }
 
-async function loadStudioSnapshot(options = {}) {
-  try {
-    const [snapshot, settings] = await Promise.all([
-      getStudioSnapshot(),
-      getSettings()
-    ])
-    applySnapshot(snapshot, settings, options)
-  } catch (error) {
-    console.error('Failed to load studio snapshot', error)
-  }
+function padGroupIndex(index) {
+  return String(index + 1).padStart(2, '0')
 }
 
-async function loadActivationState({ silent = false } = {}) {
-  if (!silent) {
-    isActivationLoading.value = true
+function normalizeTextCount(value, fallback = 6) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return fallback
   }
 
-  try {
-    const fetchActivation = silent ? reloadActivation : getActivationStatus
-    activationState.value = {
-      ...createDefaultActivationState(),
-      ...(await fetchActivation())
-    }
-  } catch (error) {
-    activationState.value = {
-      ...createDefaultActivationState(),
-      message: buildErrorMessage(error, '授权状态读取失败')
-    }
-  } finally {
-    isActivationLoading.value = false
-  }
+  return Math.min(20, Math.max(1, Math.round(numericValue)))
 }
 
-async function loadPromptTemplateState() {
-  try {
-    promptTemplates.value = ensureEmptyPromptTemplate(await listPromptTemplates())
-  } catch (error) {
-    console.error('Failed to load prompt templates', error)
-  }
+function buildTitlePrompt(formState = {}) {
+  return [
+    `商品名称：${formState.text_title_product_name || ''}`,
+    `目标平台：${formState.text_title_platform || ''}`,
+    `投放位置：${formState.text_title_channel || ''}`,
+    `目标人群：${formState.text_title_target_people || ''}`,
+    `场景词：${formState.text_title_scene_words || ''}`,
+    `核心卖点：${formState.text_title_core_selling_points || ''}`,
+    `标题风格：${formState.text_title_style || ''}`,
+    `字数限制：${formState.text_title_length_limit || ''}`,
+    `必须包含关键词：${formState.text_title_must_keywords || ''}`,
+    `禁用词：${formState.text_title_banned_words || ''}`,
+    `本轮目标：${formState.text_title_output_goal || ''}`,
+    `参考方向：${formState.text_title_reference_direction || ''}`,
+    '请输出适合电商使用的中文标题，每条都要有明确吸引力，并尽量避免重复表达。'
+  ].filter(Boolean).join('\n')
 }
 
-async function loadNegativePromptTemplateState() {
-  try {
-    negativePromptTemplates.value = ensureEmptyNegativePromptTemplate(await listNegativePromptTemplates())
-  } catch (error) {
-    console.error('Failed to load negative prompt templates', error)
-  }
+function buildDescriptionPrompt(formState = {}) {
+  return [
+    `商品名称：${formState.text_desc_product_name || ''}`,
+    `目标平台：${formState.text_desc_platform || ''}`,
+    `描述位置：${formState.text_desc_channel || ''}`,
+    `优先卖点：${formState.text_desc_top_benefits || ''}`,
+    `使用场景：${formState.text_desc_usage_scene || ''}`,
+    `规格信息：${formState.text_desc_specs || ''}`,
+    `结构模板：${formState.text_desc_structure || ''}`,
+    `表达口吻：${formState.text_desc_tone || ''}`,
+    `长度要求：${formState.text_desc_length_limit || ''}`,
+    `收口动作：${formState.text_desc_cta || ''}`,
+    `禁用词：${formState.text_desc_banned_words || ''}`,
+    `合规提醒：${formState.text_desc_compliance_hint || ''}`,
+    '请输出可直接用于电商详情、商品卖点或字幕文案的中文描述，每条单独成组。'
+  ].filter(Boolean).join('\n')
 }
 
-async function refreshStudioRuntimeState() {
-  if (!isActivated.value) {
-    return
-  }
-
-  if (isRefreshingStudioRuntime) {
-    return
-  }
-
-  isRefreshingStudioRuntime = true
-
-  try {
-    await loadStudioSnapshot({
-      preserveDrafts: true,
-      preserveApiConfig: true,
-      preserveUploadDirectoryDrafts: true
-    })
-  } finally {
-    isRefreshingStudioRuntime = false
-  }
-}
-
-function handleBrandClick() {
-  // Logo 点击事件预留：后续可在这里接入返回首页或重置工作区逻辑。
-  activeMenu.value = 'workspace'
-  adminLogoClickCount.value += 1
-
-  if (adminLogoClickCount.value >= 5) {
-    adminLogoClickCount.value = 0
-    adminPasswordDraft.value = ''
-    isAdminPasswordDialogVisible.value = true
-  }
-}
-
-async function handleCopyDeviceCode() {
-  const deviceCode = activationState.value.deviceCode || ''
-  if (!deviceCode) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '复制失败：未获取到设备码'
-    })
-    return
-  }
-
-  try {
-    if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(deviceCode)
-      showActionFeedback({
-        type: 'success',
-        title: '成功',
-        message: '设备码已复制'
-      })
-      return
-    }
-  } catch (error) {
-    console.error('Failed to copy device code', error)
-  }
-
-  showActionFeedback({
-    type: 'error',
-    title: '失败',
-    message: '复制失败：当前环境不支持自动复制'
-  })
-}
-
-async function handleImportLicense() {
-  try {
-    const result = await importLicenseFile()
-    if (result?.canceled) {
-      return
-    }
-
-    activationState.value = {
-      ...createDefaultActivationState(),
-      ...result
-    }
-
-    if (result.status === 'activated') {
-      await Promise.all([
-        loadStudioSnapshot(),
-        loadPromptTemplateState(),
-        loadNegativePromptTemplateState()
-      ])
-      showActionFeedback({
-        type: 'success',
-        title: '成功',
-        message: result.message || '导入授权成功'
-      })
-      return
-    }
-
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: result.message || '授权校验失败，请重新导入授权文件'
-    })
-  } catch (error) {
-    console.error('Failed to import license file', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `导入授权文件失败：${buildErrorMessage(error, '授权导入未完成')}`
-    })
-  }
-}
-
-async function handleThemeChange() {
-  // 主题切换事件预留：后续可在这里接入本地存储或桌面端配置同步。
-  activeTheme.value = 'dark'
-
-  try {
-    await saveSettings({
-      themeMode: 'dark'
-    })
-  } catch (error) {
-    console.error('Failed to persist theme', error)
-  }
-}
-
-function openClearRuntimeConfirm() {
-  isClearRuntimeConfirmVisible.value = true
-}
-
-function closeClearRuntimeConfirm() {
-  if (isClearingRuntimeState.value) {
-    return
-  }
-
-  isClearRuntimeConfirmVisible.value = false
-}
-
-async function confirmClearRuntimeState() {
-  isClearingRuntimeState.value = true
-
-  try {
-    clearAllDraftPersistTimers()
-    Object.values(formDrafts.value).forEach((draft) => {
-      revokeDraftPreviews(draft || {})
-    })
-
-    await clearStudioRuntimeState()
-    runtimeResetSequence.value += 1
-    selectedExportIds.value = []
-    await loadStudioSnapshot()
-    isClearRuntimeConfirmVisible.value = false
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '一键清理已完成，参数草稿与日志缓存已重置'
-    })
-  } catch (error) {
-    console.error('Failed to clear studio runtime state', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `一键清理失败：${buildErrorMessage(error, '清理未完成')}`
-    })
-  } finally {
-    isClearingRuntimeState.value = false
-  }
-}
-
-function ensureDraftForMenu(menuKey) {
-  if (formDrafts.value[menuKey]) {
-    return
-  }
-
-  replaceDraft(menuKey, createDraftForm(menuKey))
-}
-
-function handleMenuSelect(menuKey) {
-  // 菜单点击事件预留：后续可在这里接入真实业务工作区切换。
-  activeMenu.value = menuKey
-  ensureDraftForMenu(menuKey)
-  selectedExportIds.value = [...(selectedExportIdsByMenu.value[menuKey] || [])]
-}
-
-async function persistDraftPatch(menuKey, patch) {
-  try {
-    await saveStudioDraft({
-      menuKey,
-      patch
-    })
-  } catch (error) {
-    console.error('Failed to save studio draft', error)
-  }
-}
-
-function scheduleDraftPersist(menuKey, nextDraft) {
-  clearDraftPersistTimer(menuKey)
-  const timer = window.setTimeout(async () => {
-    draftPersistTimers.delete(menuKey)
-    await persistDraftPatch(menuKey, nextDraft)
-  }, 320)
-  draftPersistTimers.set(menuKey, timer)
-}
-
-function handleFieldUpdate({ field, value }) {
-  ensureDraftForMenu(activeMenu.value)
-  const currentDraft = currentDraftForm.value
-  let nextDraft = {
-    ...currentDraft,
-    [field]: value
-  }
-
-  if (activeMenu.value === 'series-generate' && field === 'generateCount') {
-    const generateCount = Math.max(1, Math.min(500, Number(value) || 1))
-    const batchCount = Math.max(1, Number(currentDraft.batchCount) || 1)
-    nextDraft = {
-      ...currentDraft,
-      generateCount,
-      promptAssignments: createSeriesGeneratePromptAssignments(generateCount, currentDraft.promptAssignments, batchCount)
+function buildTextGenerationDraft(menuKey, formState = {}) {
+  if (menuKey === 'title-generate') {
+    return {
+      mode: 'title-generate',
+      model: TEXT_MODEL_NAME,
+      quantity: normalizeTextCount(formState.text_title_batch_count, 12),
+      prompt: buildTitlePrompt(formState)
     }
   }
 
-  if (activeMenu.value === 'series-generate' && field === 'batchCount') {
-    const batchCount = Math.max(1, Number(value) || 1)
-    nextDraft = {
-      ...currentDraft,
-      batchCount,
-      promptAssignments: normalizeSeriesGenerateAssignments(
-        currentDraft.promptAssignments,
-        currentDraft.generateCount,
-        batchCount
-      )
-    }
-  }
-
-  if (activeMenu.value === 'series-generate' && field === 'promptAssignments') {
-    nextDraft = {
-      ...currentDraft,
-      promptAssignments: createSeriesGeneratePromptAssignments(
-        currentDraft.generateCount,
-        value,
-        Math.max(1, Number(currentDraft.batchCount) || 1)
-      )
-    }
-  }
-
-  if (activeMenu.value === 'series-design' && field === 'batchCount') {
-    const batchCount = Math.max(1, Number(value) || 1)
-    nextDraft = {
-      ...currentDraft,
-      batchCount,
-      imageAssignments: normalizeSeriesDesignAssignments(currentDraft.imageAssignments, batchCount)
-    }
-  }
-
-  if (activeMenu.value === 'series-design' && field === 'imageAssignments') {
-    nextDraft = {
-      ...currentDraft,
-      imageAssignments: normalizeSeriesDesignAssignments(value, Math.max(1, Number(currentDraft.batchCount) || 1))
-    }
-  }
-
-  if ((activeMenu.value === 'series-design' || activeMenu.value === 'series-generate') && field === 'negativeTemplateId') {
-    nextDraft = applyNegativeTemplateSelection(currentDraft, value)
-  }
-
-  replaceDraft(activeMenu.value, nextDraft)
-  scheduleDraftPersist(activeMenu.value, nextDraft)
-}
-
-function applyNegativeTemplateSelection(currentDraft, templateId) {
-  const matchedTemplate = [...fixedNegativePromptTemplates.value, ...customNegativePromptTemplates.value]
-    .find((item) => item.id === templateId)
   return {
-    ...currentDraft,
-    negativeTemplateId: templateId,
-    negativePrompt: matchedTemplate?.prompt || ''
+    mode: 'description-generate',
+    model: TEXT_MODEL_NAME,
+    quantity: normalizeTextCount(formState.text_desc_batch_count, 8),
+    prompt: buildDescriptionPrompt(formState)
   }
 }
 
-async function applySingleImageSelection(file) {
-  ensureDraftForMenu('single-image')
-  revokePreview(formDrafts.value['single-image']?.sourceImage?.preview)
-  const sourceImage = createImageAsset(file, 'single-image')
-  const nextDraft = {
-    ...formDrafts.value['single-image'],
-    sourceImage
-  }
+function createTextResultGroup(menuKey, item, index, formState = {}) {
+  const order = padGroupIndex(index)
 
-  replaceDraft('single-image', nextDraft)
-  scheduleDraftPersist('single-image', {
-    sourceImage
-  })
-}
-
-async function applySingleDesignSelection(file) {
-  ensureDraftForMenu('single-design')
-  revokePreview(formDrafts.value['single-design']?.sourceImage?.preview)
-  const sourceImage = createImageAsset(file, 'single-design')
-  const nextDraft = {
-    ...formDrafts.value['single-design'],
-    sourceImage
-  }
-
-  replaceDraft('single-design', nextDraft)
-  scheduleDraftPersist('single-design', {
-    sourceImage
-  })
-}
-
-async function applySeriesDesignSelection(fileList = []) {
-  if (!fileList.length) {
-    return
-  }
-
-  if (fileList.length > 30) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '套图设计一次最多上传 30 张图片'
-    })
-    return
-  }
-
-  ensureDraftForMenu('series-design')
-  revokeDraftPreviews(formDrafts.value['series-design'])
-  const imageAssignments = fileList.map((file) => ({
-    ...createImageAsset(file, 'series-design'),
-    selected: true,
-    prompt: '',
-    imageType: '',
-    size: formDrafts.value['series-design']?.defaultAssignmentRatio || formDrafts.value['series-design']?.size || '1:1',
-    model: formDrafts.value['series-design']?.defaultAssignmentModel || formDrafts.value['series-design']?.model || '',
-    templateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-    differentialEnabled: false,
-    batchPrompts: Array.from({ length: Math.max(1, Number(formDrafts.value['series-design']?.batchCount) || 1) }, () => ''),
-    tagIds: [],
-    tagNames: []
-  }))
-  const nextDraft = {
-    ...formDrafts.value['series-design'],
-    imageAssignments
-  }
-
-  replaceDraft('series-design', nextDraft)
-  scheduleDraftPersist('series-design', {
-    imageAssignments
-  })
-}
-
-async function applySeriesGenerateSelection(file) {
-  ensureDraftForMenu('series-generate')
-  revokePreview(formDrafts.value['series-generate']?.sourceImage?.preview)
-  const sourceImage = createImageAsset(file, 'series-generate')
-  const nextDraft = {
-    ...formDrafts.value['series-generate'],
-    sourceImage
-  }
-
-  replaceDraft('series-generate', nextDraft)
-  scheduleDraftPersist('series-generate', {
-    sourceImage
-  })
-}
-
-async function pickInputAssetsForMenu({ menuKey, allowMultiple = false }) {
-  const pickedResult = await pickStudioInputAssets({
-    menuKey,
-    allowMultiple
-  })
-
-  if (pickedResult?.canceled) {
-    return null
-  }
-
-  const files = Array.isArray(pickedResult?.files) ? pickedResult.files : []
-  if (!files.length) {
-    throw new Error('未选择可用的图片文件')
-  }
-
-  return files
-}
-
-async function handleOpenSingleImagePicker() {
-  try {
-    const files = await pickInputAssetsForMenu({
-      menuKey: 'single-image'
-    })
-    if (!files) {
-      return
-    }
-    await applySingleImageSelection(files[0])
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `上传测试图片失败：${buildErrorMessage(error, '未能选择图片')}`
-    })
-  }
-}
-
-async function handleOpenSingleDesignImagePicker() {
-  try {
-    const files = await pickInputAssetsForMenu({
-      menuKey: 'single-design'
-    })
-    if (!files) {
-      return
-    }
-    await applySingleDesignSelection(files[0])
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `上传参考图片失败：${buildErrorMessage(error, '未能选择图片')}`
-    })
-  }
-}
-
-async function handleOpenSeriesDesignPicker() {
-  try {
-    const files = await pickInputAssetsForMenu({
-      menuKey: 'series-design',
-      allowMultiple: true
-    })
-    if (!files) {
-      return
-    }
-    await applySeriesDesignSelection(files)
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `上传套图素材失败：${buildErrorMessage(error, '未能选择图片')}`
-    })
-  }
-}
-
-async function handleOpenSeriesGeneratePicker() {
-  try {
-    const files = await pickInputAssetsForMenu({
-      menuKey: 'series-generate'
-    })
-    if (!files) {
-      return
-    }
-    await applySeriesGenerateSelection(files[0])
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `上传参考图失败：${buildErrorMessage(error, '未能选择图片')}`
-    })
-  }
-}
-
-function validateCurrentTaskBeforeSubmit() {
-  const draft = currentDraftForm.value
-
-  if (!String(draft.taskName || '').trim()) {
-    return '请先输入任务名称'
-  }
-
-  if (activeMenu.value === 'single-image') {
-    if (!draft.sourceImage) {
-      return '请先上传一张测试图片'
-    }
-
-    if (!String(draft.prompt || '').trim()) {
-      return '请先输入单图测试提示词'
-    }
-
-    return ''
-  }
-
-  if (activeMenu.value === 'single-design') {
-    if (!String(draft.prompt || '').trim()) {
-      return '请先输入单图设计提示词'
-    }
-
-    return ''
-  }
-
-  if (activeMenu.value === 'series-design') {
-    const assignments = Array.isArray(draft.imageAssignments) ? draft.imageAssignments : []
-    const selectedCount = assignments.filter((item) => item.selected !== false).length
-    const hasEmptySelectedPrompt = assignments.some((item) => {
-      if (item.selected === false) {
-        return false
-      }
-
-      if (item.differentialEnabled === true) {
-        const batchPrompts = normalizeBatchPrompts(item.batchPrompts, Math.max(1, Number(draft.batchCount) || 1))
-        return batchPrompts.some((prompt) => !String(prompt || '').trim())
-      }
-
-      return !String(item.prompt || '').trim()
-    })
-
-    if (!assignments.length) {
-      return '请先上传一套图片'
-    }
-
-    if (!String(draft.globalPrompt || '').trim()) {
-      return '请先输入套图设计的全局风格提示词'
-    }
-
-    if (!selectedCount) {
-      return '请至少选择 1 张需要替换的图片'
-    }
-
-    if (hasEmptySelectedPrompt) {
-      return '请为每一张选中图片填写单独提示词'
-    }
-
-    if (assignments.some((item) => item.selected !== false && !String(item.templateId || '').trim())) {
-      return '请为每一张选中图片选择图片类型'
-    }
-
-    return ''
-  }
-
-  if (activeMenu.value === 'series-generate') {
-    const generateCount = Math.max(1, Math.min(500, Number(draft.generateCount) || 1))
-    const promptAssignments = createSeriesGeneratePromptAssignments(
-      generateCount,
-      draft.promptAssignments,
-      Math.max(1, Number(draft.batchCount) || 1)
-    )
-
-    if (!draft.sourceImage) {
-      return '请先上传一张参考图'
-    }
-
-    if (!String(draft.globalPrompt || '').trim()) {
-      return '请先输入套图生成的全局风格提示词'
-    }
-
-    if (promptAssignments.some((item) => {
-      if (item.differentialEnabled === true) {
-        const batchPrompts = normalizeBatchPrompts(item.batchPrompts, Math.max(1, Number(draft.batchCount) || 1))
-        return batchPrompts.some((prompt) => !String(prompt || '').trim())
-      }
-
-      return !String(item.prompt || '').trim()
-    })) {
-      return '请完整填写每一张图片的单独提示词'
-    }
-
-    if (promptAssignments.some((item) => !String(item.templateId || '').trim())) {
-      return '请为每一张图片选择图片类型'
-    }
-  }
-
-  return ''
-}
-
-function detectPromptRisk(promptText = '') {
-  const normalizedPrompt = String(promptText || '')
-  const highRiskKeyword = HIGH_RISK_PROMPT_PATTERNS.find((item) => normalizedPrompt.includes(item))
-  if (highRiskKeyword) {
+  if (menuKey === 'title-generate') {
     return {
-      level: 'warning',
-      keyword: highRiskKeyword,
-      message: `检测到高风险提示词“${highRiskKeyword}”，可能导致保留原图或生成失败`
-    }
-  }
-
-  const mediumRiskKeyword = MEDIUM_RISK_PROMPT_PATTERNS.find((item) => normalizedPrompt.includes(item))
-  if (mediumRiskKeyword) {
-    return {
-      level: 'warning',
-      keyword: mediumRiskKeyword,
-      message: `检测到风险提示词“${mediumRiskKeyword}”，可能导致保留原图或生成失败`
-    }
-  }
-
-  return null
-}
-
-function notifyPromptRiskIfNeeded(promptText = '') {
-  const promptRisk = detectPromptRisk(promptText)
-  if (!promptRisk) {
-    return
-  }
-
-  showActionFeedback({
-    type: promptRisk.level,
-    title: '提示',
-    message: promptRisk.message
-  })
-}
-
-function buildDraftForSubmit(menuKey) {
-  const draft = normalizeStoredDraft(menuKey, currentDraftForm.value)
-
-  if (menuKey === 'series-design' || menuKey === 'series-generate') {
-    return {
-      ...draft,
-      globalPrompt: String(draft.globalPrompt || ''),
-      negativeTemplateId: String(draft.negativeTemplateId || DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID),
-      negativePrompt: String(draft.negativePrompt || ''),
-      legacyGlobalPrompt: String(draft.legacyGlobalPrompt || '')
-    }
-  }
-
-  return draft
-}
-
-async function handleSubmitTask() {
-  if (submitButtonState.value !== 'idle') {
-    return
-  }
-
-  if (activeMenu.value === 'workspace' || activeMenu.value === 'model-pricing') {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '当前页面不支持提交任务'
-    })
-    return
-  }
-
-  ensureDraftForMenu(activeMenu.value)
-  const validationMessage = validateCurrentTaskBeforeSubmit()
-  if (validationMessage) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: validationMessage
-    })
-    return
-  }
-
-  try {
-    setSubmitButtonState('submitting')
-    clearDraftPersistTimer(activeMenu.value)
-    const draftToSubmit = buildDraftForSubmit(activeMenu.value)
-    if (currentTaskScaleSummary.value?.level === 'block') {
-      setSubmitButtonState('idle')
-      showActionFeedback({
-        type: 'error',
-        title: '失败',
-        message: '当前任务量过大，请拆分后再提交'
-      })
-      return
-    }
-    const promptRisk = detectPromptRisk(draftToSubmit.globalPrompt)
-    if (promptRisk) {
-      showActionFeedback({
-        type: promptRisk.level,
-        title: '提示',
-        message: promptRisk.message
-      })
-    }
-    const createdTask = await createStudioTask({
-      menuKey: activeMenu.value,
-      draft: draftToSubmit
-    })
-    upsertTaskIntoState(createdTask)
-    selectedExportIds.value = []
-    selectedExportIdsByMenu.value = {
-      ...selectedExportIdsByMenu.value,
-      [activeMenu.value]: []
-    }
-    setSubmitButtonState('success')
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '任务已提交并加入任务队列'
-    })
-    void refreshStudioRuntimeState()
-  } catch (error) {
-    console.error('Failed to submit studio task', error)
-    setSubmitButtonState('idle')
-    await loadStudioSnapshot()
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `提交任务失败：${buildErrorMessage(error, '任务提交未完成')}`
-    })
-  }
-}
-
-function handleToggleExportItem(itemId) {
-  if (selectedExportIds.value.includes(itemId)) {
-    selectedExportIds.value = selectedExportIds.value.filter((currentId) => currentId !== itemId)
-    selectedExportIdsByMenu.value = {
-      ...selectedExportIdsByMenu.value,
-      [activeMenu.value]: selectedExportIds.value
-    }
-    return
-  }
-
-  selectedExportIds.value = [...selectedExportIds.value, itemId]
-  selectedExportIdsByMenu.value = {
-    ...selectedExportIdsByMenu.value,
-    [activeMenu.value]: selectedExportIds.value
-  }
-}
-
-async function handleBatchDownload() {
-  if (!selectedExportIds.value.length) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '批量下载失败：请选择至少一个导出结果'
-    })
-    return
-  }
-
-  try {
-    const exportedIds = [...selectedExportIds.value]
-    const exportedArchive = await exportStudioResults({
-      menuKey: activeMenu.value,
-      selectedExportIds: exportedIds
-    })
-
-    if (exportedArchive?.canceled) {
-      showActionFeedback({
-        type: 'error',
-        title: '失败',
-        message: '批量下载失败：已取消保存'
-      })
-      return
-    }
-
-    if (downloadCleanupEnabled.value) {
-      const cleanupResults = await Promise.allSettled(exportedIds.map((exportItemId) => deleteStudioExportItem({
-        menuKey: activeMenu.value,
-        exportItemId
-      })))
-      const hasCleanupFailure = cleanupResults.some((result) => result.status === 'rejected')
-      selectedExportIds.value = []
-      selectedExportIdsByMenu.value = {
-        ...selectedExportIdsByMenu.value,
-        [activeMenu.value]: []
+      id: item.id || `title-${order}`,
+      title: `标题组 ${order}`,
+      subtitle: '单标题结果',
+      outputTitle: item.content,
+      summary: '已按当前参数生成，可直接发送到草稿。',
+      detail: `适用方向：${formState.text_title_channel || '标题生成'} / ${formState.text_title_output_goal || '电商标题'} / ${formState.text_title_platform || '默认平台'}`,
+      metadata: [
+        { label: '平台', value: formState.text_title_platform || '未设置' },
+        { label: '风格', value: formState.text_title_style || '未设置' }
+      ],
+      tags: ['标题', formState.text_title_style || '文案', formState.text_title_platform || '电商'].filter(Boolean),
+      draftPayload: {
+        draftType: 'listing_title',
+        productName: formState.text_title_product_name || '',
+        targetPlatform: formState.text_title_platform || '',
+        contentType: '标题',
+        listingTitle: item.content,
+        sellingPoint: formState.text_title_core_selling_points || '',
+        nextAction: '可继续补充描述或直接进入草稿整理'
       }
-      await loadStudioSnapshot({
-        preserveDrafts: true,
-        preserveApiConfig: true,
-        preserveUploadDirectoryDrafts: true
-      })
-      showActionFeedback({
-        type: hasCleanupFailure ? 'error' : 'success',
-        title: hasCleanupFailure ? '失败' : '成功',
-        message: hasCleanupFailure
-          ? '批量下载成功，但部分结果文件夹自动清理失败'
-          : '批量下载成功，源结果文件夹已自动删除'
-      })
-      return
+    }
+  }
+
+  return {
+    id: item.id || `desc-${order}`,
+    title: `描述组 ${order}`,
+    subtitle: '单描述结果',
+    outputTitle: '商品描述文案',
+    summary: item.content,
+    detail: `适用方向：${formState.text_desc_channel || '描述生成'} / ${formState.text_desc_tone || '默认口吻'} / ${formState.text_desc_platform || '默认平台'}`,
+    metadata: [
+      { label: '平台', value: formState.text_desc_platform || '未设置' },
+      { label: '口吻', value: formState.text_desc_tone || '未设置' }
+    ],
+    tags: ['描述', formState.text_desc_tone || '文案', formState.text_desc_platform || '电商'].filter(Boolean),
+    draftPayload: {
+      draftType: 'listing_description',
+      productName: formState.text_desc_product_name || '',
+      targetPlatform: formState.text_desc_platform || '',
+      contentType: '描述',
+      listingDescription: item.content,
+      sellingPoint: formState.text_desc_top_benefits || '',
+      nextAction: '可继续补充标题或进入草稿整理'
+    }
+  }
+}
+
+function updateTextResultGroups(menuKey, groups = []) {
+  const currentSections = textResultSections.value || {}
+  const currentSection = currentSections[menuKey] || initialTextResultSections[menuKey] || { description: '', groups: [] }
+
+  textResultSections.value = {
+    ...currentSections,
+    [menuKey]: {
+      ...currentSection,
+      groups
+    }
+  }
+}
+
+async function handleTextSubmit({ menuKey, formState } = {}) {
+  if (!['title-generate', 'description-generate'].includes(menuKey) || textSubmitStates[menuKey]) {
+    return
+  }
+
+  textSubmitStates[menuKey] = true
+
+  try {
+    const draft = buildTextGenerationDraft(menuKey, formState)
+    const results = await generateEcmsText({
+      taskId: `ecms-text-${menuKey}-${Date.now()}`,
+      draft
+    })
+    const groups = (Array.isArray(results) ? results : []).map((item, index) => {
+      return createTextResultGroup(menuKey, item, index, formState)
+    })
+
+    if (!groups.length) {
+      throw new Error('文本模型没有返回可展示的结果')
     }
 
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '批量下载成功，请确认压缩包完整后再手动清理源结果文件夹'
-    })
+    updateTextResultGroups(menuKey, groups)
+    applyTextStatusState(buildSuccessTextStatusState(groups.length))
+    showNotice('success', '文本生成完成', `已生成 ${groups.length} 组${menuKey === 'title-generate' ? '标题' : '描述'}结果`)
   } catch (error) {
-    console.error('Failed to batch download studio results', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `批量下载失败：${buildErrorMessage(error, '导出压缩包未完成')}`
-    })
+    const statusState = classifyTextStatusState(error)
+    applyTextStatusState(statusState)
+    showNotice('error', statusState.title || '文本生成失败', statusState.detail || statusState.message || error?.message || '请检查 API-Key 或网络后重试')
+  } finally {
+    textSubmitStates[menuKey] = false
   }
 }
 
-async function handleOpenOutputDirectory(outputPath) {
-  if (!outputPath) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '打开输出目录失败：未找到可用的输出路径'
-    })
-    return
+function showNotice(type, title, message) {
+  if (noticeTimer) {
+    clearTimeout(noticeTimer)
   }
 
-  const normalizedOutputDirectory = outputPath.replace(/[\\/][^\\/]+\.[^\\/]+$/, '')
+  notice.visible = true
+  notice.type = type
+  notice.title = title
+  notice.message = message
 
-  try {
-    await openOutputDirectory({
-      outputDirectory: normalizedOutputDirectory
-    })
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '已打开结果输出目录'
-    })
-  } catch (error) {
-    console.error('Failed to open output directory', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `打开输出目录失败：${buildErrorMessage(error, '目录打开未完成')}`
-    })
-  }
+  noticeTimer = setTimeout(() => {
+    notice.visible = false
+    noticeTimer = null
+  }, 2200)
 }
 
-async function handleDeleteExportItem(exportItemId) {
-  if (!exportItemId) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '删除失败：未找到可删除的结果项'
-    })
-    return
-  }
+function createDraftEditorPayload(payload = {}, createdAt = '') {
+  const baseDraft = payload.draftPayload || {}
+  const draftType = baseDraft.draftType || 'listing_content'
+  const productName = baseDraft.productName || '待补商品名'
+  const targetPlatform = baseDraft.targetPlatform || '待选平台'
+  const contentType = baseDraft.contentType || '待定内容'
+  const listingTitle = baseDraft.listingTitle || payload.title || ''
+  const listingDescription = baseDraft.listingDescription || payload.summary || ''
+  const videoTheme = baseDraft.videoTheme || ''
+  const coverDirection = baseDraft.coverDirection || ''
+  const sellingPoint = baseDraft.sellingPoint || ''
+  const nextAction = baseDraft.nextAction || '继续补齐上架字段'
+  const preview = payload.preview || ''
 
-  const shouldDelete = typeof window !== 'undefined' && typeof window.confirm === 'function'
-    ? window.confirm('确认删除该结果文件夹吗？删除后无法恢复。')
-    : true
-
-  if (!shouldDelete) {
-    return
-  }
-
-  try {
-    await deleteStudioExportItem({
-      menuKey: activeMenu.value,
-      exportItemId
-    })
-    selectedExportIds.value = selectedExportIds.value.filter((currentId) => currentId !== exportItemId)
-    selectedExportIdsByMenu.value = {
-      ...selectedExportIdsByMenu.value,
-      [activeMenu.value]: selectedExportIds.value
+  return {
+    ...baseDraft,
+    draftType,
+    productName,
+    targetPlatform,
+    contentType,
+    listingTitle,
+    listingDescription,
+    videoTheme,
+    coverDirection,
+    sellingPoint,
+    nextAction,
+    editor: {
+      categoryPath: baseDraft.editor?.categoryPath || '',
+      brandName: baseDraft.editor?.brandName || '',
+      storeName: baseDraft.editor?.storeName || '',
+      priceMin: baseDraft.editor?.priceMin || '',
+      priceMax: baseDraft.editor?.priceMax || '',
+      marketPrice: baseDraft.editor?.marketPrice || '',
+      skuName: baseDraft.editor?.skuName || '默认款',
+      skuValue: baseDraft.editor?.skuValue || '标准版',
+      inventory: baseDraft.editor?.inventory || '100',
+      shippingTemplate: baseDraft.editor?.shippingTemplate || '',
+      coverImage: baseDraft.editor?.coverImage || preview,
+      mainImagePlan: baseDraft.editor?.mainImagePlan || (preview ? '已从来源结果挂载一张主视觉' : ''),
+      detailImagePlan: baseDraft.editor?.detailImagePlan || '',
+      videoAssetPlan: baseDraft.editor?.videoAssetPlan || videoTheme,
+      videoScriptNote: baseDraft.editor?.videoScriptNote || '',
+      publishStatus: baseDraft.editor?.publishStatus || '待整理',
+      publishWindow: baseDraft.editor?.publishWindow || '',
+      operator: baseDraft.editor?.operator || '',
+      remarks: baseDraft.editor?.remarks || '',
+      lastSyncedAt: createdAt
+    },
+    checklist: {
+      titleReady: baseDraft.checklist?.titleReady ?? Boolean(listingTitle),
+      descriptionReady: baseDraft.checklist?.descriptionReady ?? Boolean(listingDescription),
+      imageReady: baseDraft.checklist?.imageReady ?? Boolean(preview || baseDraft.editor?.mainImagePlan),
+      videoReady: baseDraft.checklist?.videoReady ?? Boolean(videoTheme || baseDraft.editor?.videoAssetPlan),
+      categoryReady: baseDraft.checklist?.categoryReady ?? false,
+      priceReady: baseDraft.checklist?.priceReady ?? false,
+      skuReady: baseDraft.checklist?.skuReady ?? false,
+      complianceReady: baseDraft.checklist?.complianceReady ?? false
     }
-    await loadStudioSnapshot()
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '结果文件夹已删除'
-    })
-  } catch (error) {
-    console.error('Failed to delete studio export item', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `删除结果文件夹失败：${buildErrorMessage(error, '结果删除未完成')}`
-    })
   }
 }
 
-function handleUploadDirectoryDraftUpdate({ menuKey, value }) {
-  if (!Object.prototype.hasOwnProperty.call(uploadDirectoryDrafts, menuKey)) {
-    return
+function updateNestedValue(target, path, value) {
+  const segments = Array.isArray(path) ? path : String(path || '').split('.').filter(Boolean)
+  if (!segments.length) {
+    return target
   }
 
-  uploadDirectoryDrafts[menuKey] = value
+  const clone = Array.isArray(target) ? [...target] : { ...(target || {}) }
+  let current = clone
+
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index]
+    const nextValue = current[segment]
+    current[segment] = Array.isArray(nextValue) ? [...nextValue] : { ...(nextValue || {}) }
+    current = current[segment]
+  }
+
+  current[segments[segments.length - 1]] = value
+  return clone
 }
 
-async function handleSaveUploadDirectory(menuKey) {
-  if (!Object.prototype.hasOwnProperty.call(uploadDirectoryDrafts, menuKey)) {
-    return
-  }
-
+async function handleCleanupClick() {
   try {
-    const savedSettings = await saveSettings({
-      uploadDirectories: {
-        [menuKey]: String(uploadDirectoryDrafts[menuKey] || '').trim()
-      }
-    })
-    Object.assign(uploadDirectoryDrafts, normalizeUploadDirectoryDrafts(savedSettings.uploadDirectories))
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: uploadDirectoryDrafts[menuKey]
-        ? '默认打开目录已保存'
-        : '默认打开目录已清空'
-    })
+    await clearStudioRuntimeState()
+    legacyStudioKey.value += 1
+    showNotice('success', '清理完成', '运行态数据已清理，生图页会重新加载。')
   } catch (error) {
-    console.error('Failed to save upload directory', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `保存目录失败：${buildErrorMessage(error, '目录保存未完成')}`
-    })
+    showNotice('error', '清理失败', error?.message || '一键清理未完成')
   }
 }
 
-function handleCloseAdminPasswordDialog() {
-  isAdminPasswordDialogVisible.value = false
-  isAdminPasswordSubmitting.value = false
-  isAdminApiConfigUnlocked.value = false
-  isAdminApiKeyDialogVisible.value = false
-  adminPasswordDraft.value = ''
-  adminPasswordFeedback.value = ''
-  adminApiKeyFeedback.value = ''
+function handleSendToDraft(payload) {
+  const createdAt = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(new Date())
+
+  draftItems.value = [
+    {
+      id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt,
+      source: payload.source || '未知来源',
+      module: payload.module || '未命名模块',
+      section: payload.section || '默认分组',
+      title: payload.title || '未命名草稿',
+      summary: payload.summary || '待补充摘要',
+      preview: payload.preview || '',
+      tags: Array.isArray(payload.tags) ? payload.tags : [],
+      metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
+      draftPayload: createDraftEditorPayload(payload, createdAt),
+      raw: payload.raw || null
+    },
+    ...draftItems.value
+  ]
+
+  showNotice('success', '已加入草稿', `${payload.title || '当前结果'} 已发送到草稿。`)
 }
 
-function handleConfirmAdminPassword() {
-  isAdminPasswordSubmitting.value = true
-  adminPasswordFeedback.value = ''
-
-  if (adminPasswordDraft.value !== 'qiuai@123') {
-    isAdminPasswordSubmitting.value = false
-    adminPasswordFeedback.value = '密码错误，请重新输入'
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '管理员验证失败：密码错误'
-    })
+function handleDraftFieldUpdate({ draftId, path, value }) {
+  if (!draftId || !path) {
     return
   }
 
-  isAdminPasswordSubmitting.value = false
-  isAdminPasswordDialogVisible.value = false
-  isAdminApiConfigUnlocked.value = true
-  isAdminApiKeyDialogVisible.value = true
-  adminApiKeyFeedback.value = '管理员验证通过，请继续保存 API-Key'
-  showActionFeedback({
-    type: 'success',
-    title: '成功',
-    message: '管理员验证通过，请继续保存 API-Key'
+  draftItems.value = draftItems.value.map((item) => {
+    if (item.id !== draftId) {
+      return item
+    }
+
+    return {
+      ...item,
+      draftPayload: updateNestedValue(item.draftPayload || {}, path, value)
+    }
   })
-}
-
-function handleCloseAdminApiKeyDialog() {
-  isAdminApiKeyDialogVisible.value = false
-  isAdminApiConfigUnlocked.value = false
-  adminPasswordDraft.value = ''
-  adminPasswordFeedback.value = ''
-  adminApiKeyFeedback.value = ''
-}
-
-async function handleSaveAdminApiKey() {
-  isAdminApiKeySaving.value = true
-  adminApiKeyFeedback.value = ''
-
-  try {
-    const savedSettings = await saveAdminApiKey({
-      apiKey: adminApiKeyDraft.value,
-      password: adminPasswordDraft.value
-    })
-
-    adminApiKeyDraft.value = savedSettings.apiKey || ''
-    isAdminApiConfigUnlocked.value = true
-    adminApiKeyFeedback.value = 'API-Key 已保存成功'
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: 'API-Key 已保存成功'
-    })
-  } catch (error) {
-    console.error('Failed to save admin api key', error)
-    adminApiKeyFeedback.value = buildErrorMessage(error, '保存未完成')
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `管理员保存 API-Key 失败：${buildErrorMessage(error, '保存未完成')}`
-    })
-  } finally {
-    isAdminApiKeySaving.value = false
-  }
-}
-
-async function handleToggleDownloadCleanup(value) {
-  try {
-    const savedSettings = await saveSettings({
-      downloadCleanupEnabled: value
-    })
-    downloadCleanupEnabled.value = savedSettings.downloadCleanupEnabled !== false
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: downloadCleanupEnabled.value ? '已开启下载后自动清理' : '已关闭下载后自动清理'
-    })
-  } catch (error) {
-    console.error('Failed to save download cleanup preference', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `保存下载清理设置失败：${buildErrorMessage(error, '设置保存未完成')}`
-    })
-  }
-}
-
-async function handleStopTask(task) {
-  if (!task?.id) {
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: '结束任务失败：未找到可结束的任务'
-    })
-    return
-  }
-
-  const shouldStop = typeof window !== 'undefined' && typeof window.confirm === 'function'
-    ? window.confirm('确认结束这个任务吗？结束后任务将标记为失败，已冻结积分会返还，已生成结果会保留。')
-    : true
-
-  if (!shouldStop) {
-    return
-  }
-
-  try {
-    await stopStudioTask({
-      taskId: task.id
-    })
-    await loadStudioSnapshot({
-      preserveDrafts: true,
-      preserveApiConfig: true,
-      preserveUploadDirectoryDrafts: true
-    })
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '任务已结束'
-    })
-  } catch (error) {
-    console.error('Failed to stop studio task', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `结束任务失败：${buildErrorMessage(error, '任务结束未完成')}`
-    })
-  }
-}
-
-async function handleRefreshDashboardTotalCredits() {
-  isRefreshingTotalCredits.value = true
-
-  try {
-    await refreshDashboardCredits({
-      target: 'total'
-    })
-    await loadStudioSnapshot({
-      preserveDrafts: true,
-      preserveApiConfig: true,
-      preserveUploadDirectoryDrafts: true
-    })
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '总积分已更新'
-    })
-  } catch (error) {
-    console.error('Failed to refresh dashboard total credits', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `更新总积分失败：${buildErrorMessage(error, '已保留上次成功值')}`
-    })
-  } finally {
-    isRefreshingTotalCredits.value = false
-  }
-}
-
-async function handleRefreshDashboardRemainingCredits() {
-  isRefreshingRemainingCredits.value = true
-
-  try {
-    await refreshDashboardCredits({
-      target: 'remaining'
-    })
-    await loadStudioSnapshot({
-      preserveDrafts: true,
-      preserveApiConfig: true,
-      preserveUploadDirectoryDrafts: true
-    })
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '剩余积分已更新'
-    })
-  } catch (error) {
-    console.error('Failed to refresh dashboard remaining credits', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `更新剩余积分失败：${buildErrorMessage(error, '已保留上次成功值')}`
-    })
-  } finally {
-    isRefreshingRemainingCredits.value = false
-  }
 }
 
 async function handleSavePromptTemplate(payload) {
   try {
     await savePromptTemplate(payload)
-    await loadPromptTemplateState()
-    notifyPromptRiskIfNeeded(payload.prompt)
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '提示词模板已保存'
-    })
+    promptTemplates.value = await listPromptTemplates().catch(() => promptTemplates.value)
+    showNotice('success', '保存成功', '提示词模板已更新。')
   } catch (error) {
-    console.error('Failed to save prompt template', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `提示词模板保存失败：${buildErrorMessage(error, '模板保存未完成')}`
-    })
+    showNotice('error', '保存失败', error?.message || '提示词模板保存未完成')
   }
 }
 
@@ -2003,38 +1173,20 @@ async function handleRemovePromptTemplate(templateId) {
     await removePromptTemplate({
       id: templateId
     })
-    await loadPromptTemplateState()
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '提示词模板已删除'
-    })
+    promptTemplates.value = await listPromptTemplates().catch(() => promptTemplates.value)
+    showNotice('success', '删除成功', '提示词模板已删除。')
   } catch (error) {
-    console.error('Failed to remove prompt template', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `提示词模板删除失败：${buildErrorMessage(error, '模板删除未完成')}`
-    })
+    showNotice('error', '删除失败', error?.message || '提示词模板删除未完成')
   }
 }
 
 async function handleSaveNegativePromptTemplate(payload) {
   try {
     await saveNegativePromptTemplate(payload)
-    await loadNegativePromptTemplateState()
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '反向提示词模板已保存'
-    })
+    negativePromptTemplates.value = await listNegativePromptTemplates().catch(() => negativePromptTemplates.value)
+    showNotice('success', '保存成功', '反向提示词模板已更新。')
   } catch (error) {
-    console.error('Failed to save negative prompt template', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `反向提示词模板保存失败：${buildErrorMessage(error, '模板保存未完成')}`
-    })
+    showNotice('error', '保存失败', error?.message || '反向提示词模板保存未完成')
   }
 }
 
@@ -2043,197 +1195,140 @@ async function handleRemoveNegativePromptTemplate(templateId) {
     await removeNegativePromptTemplate({
       id: templateId
     })
-    await loadNegativePromptTemplateState()
-    showActionFeedback({
-      type: 'success',
-      title: '成功',
-      message: '反向提示词模板已删除'
-    })
+    negativePromptTemplates.value = await listNegativePromptTemplates().catch(() => negativePromptTemplates.value)
+    showNotice('success', '删除成功', '反向提示词模板已删除。')
   } catch (error) {
-    console.error('Failed to remove negative prompt template', error)
-    showActionFeedback({
-      type: 'error',
-      title: '失败',
-      message: `反向提示词模板删除失败：${buildErrorMessage(error, '模板删除未完成')}`
-    })
+    showNotice('error', '删除失败', error?.message || '反向提示词模板删除未完成')
   }
 }
 
-onMounted(() => {
-  void (async () => {
-    await loadActivationState()
-    if (isActivated.value) {
-      await Promise.all([
-        loadStudioSnapshot(),
-        loadPromptTemplateState(),
-        loadNegativePromptTemplateState()
-      ])
-    }
-  })()
-  studioRuntimePollTimer = window.setInterval(() => {
-    if (!isActivated.value || !hasActiveStudioTasks.value) {
-      return
-    }
-    void refreshStudioRuntimeState()
-  }, 3000)
+onMounted(async () => {
+  const [activation, , prompts, negativePrompts, snapshot] = await Promise.all([
+    getActivationStatus().catch(() => null),
+    initializeTextStatusState(),
+    listPromptTemplates().catch(() => []),
+    listNegativePromptTemplates().catch(() => []),
+    getStudioSnapshot().catch(() => null)
+  ])
+
+  activationState.value = activation
+  promptTemplates.value = Array.isArray(prompts) ? prompts : []
+  negativePromptTemplates.value = Array.isArray(negativePrompts) ? negativePrompts : []
+
+  if (snapshot?.hostInfo) {
+    sharedHostInfo.value = normalizeHostInfo(snapshot.hostInfo)
+  }
+
+  if (snapshot?.workspaceDashboard?.creditOverview) {
+    sharedCreditOverview.value = snapshot.workspaceDashboard.creditOverview
+  }
+
+  if (snapshot?.workspaceDashboard?.creditMessages) {
+    sharedCreditMessages.value = snapshot.workspaceDashboard.creditMessages
+  }
+
+  if (snapshot?.workspaceDashboard?.networkMonitor) {
+    sharedNetworkMonitor.value = snapshot.workspaceDashboard.networkMonitor
+  }
 })
 
 onBeforeUnmount(() => {
-  clearActionFeedback()
-  clearSubmitButtonStateTimer()
-  if (studioRuntimePollTimer) {
-    clearInterval(studioRuntimePollTimer)
-    studioRuntimePollTimer = null
+  if (noticeTimer) {
+    clearTimeout(noticeTimer)
   }
-  clearAllDraftPersistTimers()
-  Object.values(formDrafts.value).forEach((draft) => {
-    revokeDraftPreviews(draft || {})
-  })
 })
 </script>
 
 <template>
   <main class="app-shell" :data-theme="activeTheme">
     <AppTopBar
-      brand-label="秋 Ai"
+      brand-label="QiuAi"
       :theme-options="themeOptions"
       :active-theme="activeTheme"
       :activation-summary="activationSummary"
-      @brand-click="handleBrandClick"
-      @cleanup-click="openClearRuntimeConfirm"
-      @theme-change="handleThemeChange"
+      :nav-items="navItems"
+      :active-nav="activePage"
+      @nav-select="activePage = $event"
+      @cleanup-click="handleCleanupClick"
     />
 
-    <div v-if="actionNotice.visible" class="app-notice-layer" role="status" aria-live="polite">
-      <div class="app-notice" :class="`app-notice--${actionNotice.type}`">
-        <strong>{{ actionNotice.title }}</strong>
-        <span>{{ actionNotice.message }}</span>
+    <div v-if="notice.visible" class="app-notice-layer" role="status" aria-live="polite">
+      <div class="app-notice" :class="`app-notice--${notice.type}`">
+        <strong>{{ notice.title }}</strong>
+        <span>{{ notice.message }}</span>
       </div>
     </div>
 
-    <section
-      v-if="isActivationLoading"
-      class="activation-shell"
-    >
-      <ActivationGate
-        :activation-state="activationState"
-        :is-loading="true"
-        @copy-device-code="handleCopyDeviceCode"
-        @import-license="handleImportLicense"
-        @refresh-license="loadActivationState"
+    <section class="ecms-shell">
+      <HotProductsPage
+        v-if="activePage === 'hot'"
+        :platform-cards="hotPlatformCards"
+        :trend-products="hotTrendProducts"
+        :scouting-steps="scoutingSteps"
       />
-    </section>
 
-    <section
-      v-else-if="!isActivated"
-      class="activation-shell"
-    >
-      <ActivationGate
-        :activation-state="activationState"
-        :is-loading="false"
-        @copy-device-code="handleCopyDeviceCode"
-        @import-license="handleImportLicense"
-        @refresh-license="loadActivationState"
+      <EcmsStudioPage
+        v-else-if="activePage === 'text'"
+        title="文本工坊"
+        description="严格参照生图页的布局和切换逻辑，当前聚焦标题生成与描述生成。"
+        :menu-items="textMenuItems"
+        :overview-cards="textOverviewCards"
+        :parameter-sections="textParameterSections"
+        :result-sections="textResultSections"
+        :queue-cards="textQueueCards"
+        :workspace-dashboard="textWorkspaceDashboard"
+        :host-info="textHostInfo"
+        :model-pricing-catalog="textModelPricingCatalog"
+        :status-states="textStatusStates"
+        :submit-states="textSubmitStates"
+        :prompt-templates="promptTemplates"
+        :negative-prompt-templates="negativePromptTemplates"
+        default-menu="workspace"
+        @send-to-draft="handleSendToDraft"
+        @submit-task="handleTextSubmit"
+        @save-template="handleSavePromptTemplate"
+        @remove-template="handleRemovePromptTemplate"
+        @save-negative-template="handleSaveNegativePromptTemplate"
+        @remove-negative-template="handleRemoveNegativePromptTemplate"
       />
-    </section>
 
-    <section v-else class="shell-grid">
-      <aside class="shell-grid__sidebar">
-        <WorkspaceSidebar
-          :menu-items="menuItems"
-          :active-menu="activeMenu"
-          @menu-select="handleMenuSelect"
-        />
-      </aside>
-
-      <section class="shell-grid__workspace">
-        <DesignWorkspace
-          :active-menu="activeMenu"
-          :menu-label="currentMenuLabel"
-          :draft-form="currentDraftForm"
-          :model-options="currentModelOptions"
-          :batch-options="batchOptions"
-          :ratio-options="ratioOptions"
-          :upload-directory-drafts="uploadDirectoryDrafts"
-          :submit-button-state="submitButtonState"
-          :long-running-hint="currentLongRunningHint"
-          :task-scale-summary="currentTaskScaleSummary"
-          :model-pricing-catalog="modelPricingCatalog"
-          :recharge-pricing-catalog="rechargePricingCatalog"
-          :result-payload="resultPayload"
-          :export-items="exportItems"
-          :selected-export-ids="selectedExportIds"
-          :latest-task="latestTaskForActiveMenu"
-          :workspace-dashboard="workspaceDashboard"
-          :host-info="hostInfo"
-          :is-refreshing-total-credits="isRefreshingTotalCredits"
-          :is-refreshing-remaining-credits="isRefreshingRemainingCredits"
-          :runtime-reset-sequence="runtimeResetSequence"
-          :is-clear-runtime-confirm-visible="isClearRuntimeConfirmVisible"
-          :is-clearing-runtime-state="isClearingRuntimeState"
-          :fixed-prompt-templates="fixedPromptTemplates"
-          :custom-prompt-templates="customPromptTemplates"
-          :fixed-negative-prompt-templates="fixedNegativePromptTemplates"
-          :custom-negative-prompt-templates="customNegativePromptTemplates"
-          :all-prompt-templates="allPromptTemplates"
-          @update-field="handleFieldUpdate"
-          @submit-task="handleSubmitTask"
-          @toggle-export-item="handleToggleExportItem"
-          @batch-download="handleBatchDownload"
-          @select-single-image="handleOpenSingleImagePicker"
-          @select-single-design-image="handleOpenSingleDesignImagePicker"
-          @select-series-design-images="handleOpenSeriesDesignPicker"
-          @select-series-generate-image="handleOpenSeriesGeneratePicker"
-          @open-output-directory="handleOpenOutputDirectory"
-          @refresh-total-credits="handleRefreshDashboardTotalCredits"
-          @refresh-remaining-credits="handleRefreshDashboardRemainingCredits"
-          @save-prompt-template="handleSavePromptTemplate"
-          @remove-prompt-template="handleRemovePromptTemplate"
-          @save-negative-prompt-template="handleSaveNegativePromptTemplate"
-          @remove-negative-prompt-template="handleRemoveNegativePromptTemplate"
-          @confirm-clear-runtime-state="confirmClearRuntimeState"
-          @close-clear-runtime-confirm="closeClearRuntimeConfirm"
-          @update-upload-directory-draft="handleUploadDirectoryDraftUpdate"
-          @save-upload-directory="handleSaveUploadDirectory"
-        />
+      <section v-else-if="activePage === 'image'" class="ecms-page ecms-page--legacy">
+        <LegacyStudioApp :key="legacyStudioKey" embedded @send-to-draft="handleSendToDraft" />
       </section>
 
-      <AdminPasswordDialog
-        :visible="isAdminPasswordDialogVisible"
-        :password="adminPasswordDraft"
-        :is-submitting="isAdminPasswordSubmitting"
-        :feedback-message="adminPasswordFeedback"
-        @update-password="adminPasswordDraft = $event"
-        @confirm="handleConfirmAdminPassword"
-        @close="handleCloseAdminPasswordDialog"
+      <EcmsStudioPage
+        v-else-if="activePage === 'video'"
+        title="视频工坊"
+        description="严格参照生图页的布局和切换逻辑，当前聚焦视频生成。"
+        :menu-items="videoMenuItems"
+        :overview-cards="videoOverviewCards"
+        :parameter-sections="videoParameterSections"
+        :result-sections="videoResultSections"
+        :queue-cards="videoQueueCards"
+        :workspace-dashboard="videoWorkspaceDashboard"
+        :host-info="videoHostInfo"
+        :model-pricing-catalog="modelPricingCatalog"
+        :prompt-templates="promptTemplates"
+        :negative-prompt-templates="negativePromptTemplates"
+        default-menu="workspace"
+        @send-to-draft="handleSendToDraft"
+        @save-template="handleSavePromptTemplate"
+        @remove-template="handleRemovePromptTemplate"
+        @save-negative-template="handleSaveNegativePromptTemplate"
+        @remove-negative-template="handleRemoveNegativePromptTemplate"
       />
 
-      <AdminApiKeyDialog
-        :visible="isAdminApiConfigUnlocked && isAdminApiKeyDialogVisible"
-        :api-key="adminApiKeyDraft"
-        :is-saving="isAdminApiKeySaving"
-        :feedback-message="adminApiKeyFeedback"
-        @update-api-key="adminApiKeyDraft = $event"
-        @save="handleSaveAdminApiKey"
-        @close="handleCloseAdminApiKeyDialog"
+      <DraftBoardPage
+        v-else-if="activePage === 'draft'"
+        :draft-items="draftItems"
+        @update-draft-field="handleDraftFieldUpdate"
       />
 
-      <aside class="shell-grid__tasks">
-        <TaskManagerSidebar
-          :tasks="sortedTasks"
-          :active-menu="activeMenu"
-          :menu-label="currentMenuLabel"
-          :export-items="exportItems"
-          :selected-export-ids="selectedExportIds"
-          :download-cleanup-enabled="downloadCleanupEnabled"
-          @toggle-export-item="handleToggleExportItem"
-          @batch-download="handleBatchDownload"
-          @open-output-directory="handleOpenOutputDirectory"
-          @delete-export-item="handleDeleteExportItem"
-          @toggle-download-cleanup="handleToggleDownloadCleanup"
-          @stop-task="handleStopTask"
-        />
-      </aside>
+      <ListingCenterPage
+        v-else
+        :draft-items="draftItems"
+        @update-draft-field="handleDraftFieldUpdate"
+      />
     </section>
   </main>
 </template>

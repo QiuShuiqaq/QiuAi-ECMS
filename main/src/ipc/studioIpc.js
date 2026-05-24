@@ -21,7 +21,7 @@ function resolveUploadDefaultPath (settingsService, menuKey = '') {
   return process.cwd()
 }
 
-function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceService, activationGuard }) {
+function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceService, activationGuard, copywritingGenerationService }) {
   ipcMain.handle(ipcChannels.STUDIO_GET_SNAPSHOT, async () => {
     return studioWorkspaceService.getDisplaySnapshot()
   })
@@ -74,6 +74,23 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
     await dataTraceService?.clearRuntimeFiles?.()
 
     return clearedState
+  })
+
+  ipcMain.handle(ipcChannels.ECMS_TEXT_GENERATE, async (_event, payload = {}) => {
+    await activationGuard?.assertActivated?.()
+
+    if (!copywritingGenerationService || typeof copywritingGenerationService.generateCopywritingResults !== 'function') {
+      throw new Error('文本生成服务未就绪')
+    }
+
+    const taskId = typeof payload.taskId === 'string' && payload.taskId.trim()
+      ? payload.taskId.trim()
+      : `ecms-text-${Date.now()}`
+
+    return copywritingGenerationService.generateCopywritingResults({
+      taskId,
+      draft: payload.draft || {}
+    })
   })
 
   ipcMain.handle(ipcChannels.STUDIO_EXPORT_RESULTS, async (_event, payload = {}) => {

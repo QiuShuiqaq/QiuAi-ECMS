@@ -1,5 +1,5 @@
-async function createChatCompletion ({ model, messages }, { httpClient }) {
-  const response = await httpClient.post('/v1/chat/completions', {
+async function createChatCompletion ({ model, messages, requestPath = '/v1/chat/completions' }, { httpClient }) {
+  const response = await httpClient.post(requestPath, {
     model,
     stream: false,
     messages
