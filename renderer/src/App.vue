@@ -56,7 +56,7 @@ function createEmptyHostInfo() {
     architecture: '--',
     cpuModel: '--',
     userName: '--',
-    runtimeName: 'QiuAi Desktop'
+    runtimeName: 'QiuAi-ECMS Desktop'
   }
 }
 
@@ -116,7 +116,7 @@ function normalizeHostInfo(hostInfo = {}, runtimeName) {
     architecture: hostInfo.architecture || '--',
     cpuModel: hostInfo.cpuModel || '--',
     userName: hostInfo.userName || '--',
-    runtimeName: runtimeName || hostInfo.runtimeName || 'QiuAi Desktop'
+    runtimeName: runtimeName || hostInfo.runtimeName || 'QiuAi-ECMS Desktop'
   }
 }
 
@@ -1242,7 +1242,7 @@ onBeforeUnmount(() => {
 <template>
   <main class="app-shell" :data-theme="activeTheme">
     <AppTopBar
-      brand-label="QiuAi"
+      brand-label="QiuAi-ECMS"
       :theme-options="themeOptions"
       :active-theme="activeTheme"
       :activation-summary="activationSummary"

@@ -22,7 +22,7 @@ const emit = defineEmits(['nav-select'])
     <div class="ecms-header__brand">
       <span class="ecms-header__mark">Q</span>
       <div class="ecms-header__copy">
-        <strong>QiuAi</strong>
+        <strong>QiuAi-ECMS</strong>
         <span>ECMS commerce cockpit</span>
       </div>
     </div>

@@ -11,7 +11,7 @@ const registerIpc = require('./src/bootstrap/registerIpc')
 
 async function bootstrap () {
   await app.whenReady()
-  app.setAppUserModelId('com.qiuai.desktop')
+  app.setAppUserModelId('com.qiuai.ecms.desktop')
   const { studioTaskManagerService } = registerIpc()
   registerAppEvents(createMainWindow, {
     onBeforeQuit: () => studioTaskManagerService?.flushPendingWrites?.()
@@ -20,6 +20,6 @@ async function bootstrap () {
 }
 
 bootstrap().catch((error) => {
-  console.error('Failed to bootstrap QiuAi:', error)
+  console.error('Failed to bootstrap QiuAi-ECMS:', error)
   app.quit()
 })

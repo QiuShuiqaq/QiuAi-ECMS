@@ -1,11 +1,11 @@
 {
-  "name": "qiuai",
-  "productName": "QiuAi",
-  "version": "1.2.5",
+  "name": "qiuai-ecms",
+  "productName": "QiuAi-ECMS",
+  "version": "2.0.0",
   "private": true,
-  "description": "Desktop image generation tool for gpt-image-2.",
+  "description": "Desktop e-commerce content management system for text, image, video, drafts, and listing workflows.",
   "author": {
-    "name": "QiuAi Team"
+    "name": "QiuAi-ECMS Team"
   },
   "main": "main/main.js",
   "type": "commonjs",
@@ -17,9 +17,9 @@
     "lint": "eslint main renderer/src shared tests vitest.config.mjs --ext .js,.vue,.mjs"
   },
   "build": {
-    "appId": "com.qiuai.desktop",
+    "appId": "com.qiuai.ecms.desktop",
     "directories": {
-      "output": "../package/QiuAi1.2.5-win"
+      "output": "../package/QiuAi-ECMS-2.0.0-win"
     },
     "files": [
       "main/**/*",
