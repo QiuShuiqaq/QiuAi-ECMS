@@ -23,3 +23,9 @@ docs/superpowers/
 *.log
 *.tmp
 *.temp
+
+.playwright-cli/
+output/
+*.png
+_anyaigc_*.html
+tmp_balance_query_main*.js

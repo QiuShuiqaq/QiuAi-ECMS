@@ -1,7 +1,10 @@
 module.exports = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  SETTINGS_GET_ADMIN_STATUS: 'settings:get-admin-status',
+  SETTINGS_VERIFY_ADMIN_PASSWORD: 'settings:verify-admin-password',
   SETTINGS_SAVE_ADMIN_API_KEY: 'settings:save-admin-api-key',
+  SETTINGS_SAVE_GLM_API_KEY: 'settings:save-glm-api-key',
   DRAW_CREATE_TASK: 'draw:create-task',
   DRAW_GET_RESULT: 'draw:get-result',
   DRAW_DOWNLOAD_IMAGE: 'draw:download-image',
@@ -29,8 +32,13 @@ module.exports = {
   STUDIO_STOP_TASK: 'studio:stop-task',
   STUDIO_PICK_INPUT_ASSETS: 'studio:pick-input-assets',
   STUDIO_OPEN_OUTPUT_DIRECTORY: 'studio:open-output-directory',
+  STUDIO_OPEN_SAFE_EXTERNAL_URL: 'studio:open-safe-external-url',
+  STUDIO_GET_SOURCING_PRODUCTS: 'studio:get-sourcing-products',
+  STUDIO_CREATE_WORKFLOW_ASSET: 'studio:create-workflow-asset',
   STUDIO_EXPORT_RESULTS: 'studio:export-results',
   STUDIO_DELETE_EXPORT_ITEM: 'studio:delete-export-item',
   STUDIO_CLEAR_RUNTIME_STATE: 'studio:clear-runtime-state',
-  ECMS_TEXT_GENERATE: 'ecms:text-generate'
+  ECMS_TEXT_GENERATE: 'ecms:text-generate',
+  ECMS_VIDEO_GENERATE: 'ecms:video-generate',
+  ECMS_VIDEO_GET_BILLING_SUMMARY: 'ecms:video-get-billing-summary'
 }

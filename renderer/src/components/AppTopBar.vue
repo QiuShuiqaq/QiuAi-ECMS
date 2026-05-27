@@ -28,7 +28,7 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['brand-click', 'theme-change', 'cleanup-click', 'nav-select'])
+const emit = defineEmits(['brand-click', 'theme-change', 'cleanup-click', 'nav-select', 'activation-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -38,7 +38,7 @@ const contactGroups = [
     key: 'wechat',
     label: '微信',
     iconUrl: wechatIconUrl,
-    description: '点击图片可查看你的微信联系入口',
+    description: '点击图片可查看微信联系入口。',
     images: [
       {
         name: 'Dockerfans',
@@ -50,7 +50,7 @@ const contactGroups = [
     key: 'enterprise-wechat',
     label: '企业微信',
     iconUrl: enterpriseWechatIconUrl,
-    description: '点击图片可查看你的企业微信联系入口',
+    description: '点击图片可查看企业微信联系入口。',
     images: [
       {
         name: 'Qiyeweixin',
@@ -67,22 +67,18 @@ const activeContactGroup = computed(() => {
 })
 
 function onBrandClick() {
-  // Logo 点击事件预留：顶部品牌位后续可接入返回或首页导航。
   emit('brand-click')
 }
 
 function onThemeChange(event) {
-  // 主题切换事件预留：后续可接入三主题全局持久化。
   emit('theme-change', event.target.value)
 }
 
 function onCleanupClick() {
-  // 一键清理按钮点击事件预留：后续可接入本地缓存/草稿/日志清理逻辑。
   emit('cleanup-click')
 }
 
 function openContactPreview(contactKey) {
-  // 微信 / 企业微信图片预览切换：点击按钮后展示对应联系图片。
   activeContactKey.value = contactKey
 }
 
@@ -94,21 +90,23 @@ function closeContactPreview() {
 <template>
   <header class="topbar-shell">
     <button class="brand-button" type="button" @click="onBrandClick">
-      <span class="brand-mark">秋</span>
+      <span class="brand-mark">Q</span>
       <span class="brand-copy">{{ brandLabel }}</span>
     </button>
 
     <nav v-if="navItems.length" class="topbar-nav" aria-label="页面切换">
-      <button
-        v-for="item in navItems"
-        :key="item.key"
-        :class="['topbar-nav-button', { 'topbar-nav-button--active': item.key === activeNav }]"
-        type="button"
-        @click="emit('nav-select', item.key)"
-      >
-        <span>{{ item.label }}</span>
-        <small v-if="item.badge">{{ item.badge }}</small>
-      </button>
+      <template v-for="(item, index) in navItems" :key="item.key">
+        <span v-if="index > 0" class="topbar-nav-divider" aria-hidden="true">|</span>
+        <button
+          :class="['topbar-nav-button', { 'topbar-nav-button--active': item.key === activeNav }]"
+          type="button"
+          :disabled="Boolean(item.disabled)"
+          @click="emit('nav-select', item.key)"
+        >
+          <span>{{ item.label }}</span>
+          <small v-if="item.badge">{{ item.badge }}</small>
+        </button>
+      </template>
     </nav>
 
     <label v-else-if="themeOptions.length > 1" class="topbar-theme">
@@ -125,10 +123,13 @@ function closeContactPreview() {
         一键清理
       </button>
 
-      <div v-if="activationSummary" class="topbar-activation-pill">
+      <button v-if="activationSummary" class="topbar-activation-pill" type="button" @click="emit('activation-click')">
         <span>激活状态</span>
-        <strong>{{ activationSummary.customerName || '已授权设备' }}</strong>
-      </div>
+        <strong>
+          {{ activationSummary.customerName || '已授权设备' }}
+          <small v-if="activationSummary.edition"> / {{ activationSummary.edition }}</small>
+        </strong>
+      </button>
 
       <div class="topbar-contact-actions">
         <button

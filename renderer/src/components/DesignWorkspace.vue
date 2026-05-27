@@ -94,6 +94,10 @@ defineProps({
     type: Boolean,
     required: true
   },
+  serviceConfig: {
+    type: Object,
+    default: () => ({})
+  },
   runtimeResetSequence: {
     type: Number,
     default: 0
@@ -125,6 +129,14 @@ defineProps({
   isClearingRuntimeState: {
     type: Boolean,
     default: false
+  },
+  moduleLocked: {
+    type: Boolean,
+    default: false
+  },
+  moduleLockMessage: {
+    type: String,
+    default: ''
   }
 })
 
@@ -142,6 +154,8 @@ const emit = defineEmits([
   'open-output-directory',
   'refresh-total-credits',
   'refresh-remaining-credits',
+  'service-config-update',
+  'save-service-config',
   'save-prompt-template',
   'remove-prompt-template',
   'save-negative-prompt-template',
@@ -162,6 +176,13 @@ const emit = defineEmits([
       }
     ]"
   >
+    <div v-if="moduleLocked" class="workspace-lock-mask">
+      <div class="workspace-lock-mask__card">
+        <strong>当前授权未开通生图模块</strong>
+        <p>{{ moduleLockMessage || '请在独立授权工具中补充 image 模块授权。' }}</p>
+      </div>
+    </div>
+
     <ClearRuntimeConfirmDialog
       :visible="isClearRuntimeConfirmVisible"
       :is-processing="isClearingRuntimeState"
@@ -174,10 +195,13 @@ const emit = defineEmits([
         <WorkspaceDashboard
           :workspace-dashboard="workspaceDashboard"
           :host-info="hostInfo"
+          :service-config="serviceConfig"
           :is-refreshing-total-credits="isRefreshingTotalCredits"
           :is-refreshing-remaining-credits="isRefreshingRemainingCredits"
           @refresh-total-credits="emit('refresh-total-credits')"
           @refresh-remaining-credits="emit('refresh-remaining-credits')"
+          @service-config-update="emit('service-config-update', $event)"
+          @save-service-config="emit('save-service-config')"
         />
       </section>
     </template>
@@ -187,6 +211,7 @@ const emit = defineEmits([
         <ResultDisplayPanel
           :active-menu="activeMenu"
           :menu-label="menuLabel"
+          :draft-form="draftForm"
           :result-payload="resultPayload"
           :model-pricing-catalog="modelPricingCatalog"
           :recharge-pricing-catalog="rechargePricingCatalog"
@@ -243,10 +268,12 @@ const emit = defineEmits([
         <ResultDisplayPanel
           :active-menu="activeMenu"
           :menu-label="menuLabel"
+          :draft-form="draftForm"
           :result-payload="resultPayload"
           :model-pricing-catalog="modelPricingCatalog"
           :recharge-pricing-catalog="rechargePricingCatalog"
           :latest-task="latestTask"
+          @send-to-draft="emit('send-to-draft', $event)"
         />
       </section>
     </template>

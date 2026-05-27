@@ -24,21 +24,58 @@ function getLicenseStoragePaths(userDataPath = getDefaultUserDataPath()) {
 }
 
 function getLicensePayload(record = {}) {
+  const version = Number(record.version) || 1
+
+  if (version <= 1) {
+    return {
+      version,
+      customerName: record.customerName,
+      deviceCode: record.deviceCode,
+      activatedAt: record.activatedAt
+    }
+  }
+
   return {
-    version: record.version,
+    version,
+    product: record.product,
+    licenseId: record.licenseId,
+    customerId: record.customerId,
     customerName: record.customerName,
+    edition: record.edition,
     deviceCode: record.deviceCode,
-    activatedAt: record.activatedAt
+    activatedAt: record.activatedAt,
+    expireAt: record.expireAt,
+    maxVersion: record.maxVersion,
+    modules: Array.isArray(record.modules) ? record.modules : [],
+    features: Array.isArray(record.features) ? record.features : [],
+    remark: record.remark
   }
 }
 
 function createSignedLicenseRecord(payload, privateKey) {
-  const normalizedPayload = {
-    version: Number(payload.version) || 1,
-    customerName: String(payload.customerName || '').trim(),
-    deviceCode: String(payload.deviceCode || '').trim(),
-    activatedAt: String(payload.activatedAt || new Date().toISOString())
-  }
+  const version = Number(payload.version) || 1
+  const normalizedPayload = version <= 1
+    ? {
+        version,
+        customerName: String(payload.customerName || '').trim(),
+        deviceCode: String(payload.deviceCode || '').trim(),
+        activatedAt: String(payload.activatedAt || new Date().toISOString())
+      }
+    : {
+        version,
+        product: String(payload.product || 'QiuAi-ECMS').trim(),
+        licenseId: String(payload.licenseId || '').trim(),
+        customerId: String(payload.customerId || '').trim(),
+        customerName: String(payload.customerName || '').trim(),
+        edition: String(payload.edition || 'standard').trim(),
+        deviceCode: String(payload.deviceCode || '').trim(),
+        activatedAt: String(payload.activatedAt || new Date().toISOString()),
+        expireAt: String(payload.expireAt || '').trim(),
+        maxVersion: String(payload.maxVersion || '').trim(),
+        modules: Array.isArray(payload.modules) ? payload.modules.map((item) => String(item || '').trim()).filter(Boolean) : [],
+        features: Array.isArray(payload.features) ? payload.features.map((item) => String(item || '').trim()).filter(Boolean) : [],
+        remark: String(payload.remark || '').trim()
+      }
   const signature = crypto.sign(
     'sha256',
     Buffer.from(JSON.stringify(normalizedPayload)),
@@ -66,11 +103,22 @@ function verifySignedLicenseRecord(record, publicKey) {
 }
 
 function normalizeLicenseRecord(record = {}) {
+  const version = Number(record.version) || 1
+
   return {
-    version: Number(record.version) || 1,
+    version,
+    product: String(record.product || 'QiuAi-ECMS').trim(),
+    licenseId: String(record.licenseId || '').trim(),
+    customerId: String(record.customerId || '').trim(),
     customerName: String(record.customerName || '').trim(),
+    edition: String(record.edition || '').trim(),
     deviceCode: String(record.deviceCode || '').trim(),
     activatedAt: String(record.activatedAt || '').trim(),
+    expireAt: String(record.expireAt || '').trim(),
+    maxVersion: String(record.maxVersion || '').trim(),
+    modules: Array.isArray(record.modules) ? record.modules.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    features: Array.isArray(record.features) ? record.features.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    remark: String(record.remark || '').trim(),
     signature: String(record.signature || '').trim()
   }
 }
@@ -78,9 +126,19 @@ function normalizeLicenseRecord(record = {}) {
 function createActivationStatus(status, overrides = {}) {
   return {
     status,
+    product: 'QiuAi-ECMS',
+    licenseId: '',
+    customerId: '',
     customerName: '',
+    edition: '',
     deviceCode: '',
     activatedAt: '',
+    expireAt: '',
+    maxVersion: '',
+    modules: [],
+    features: [],
+    remark: '',
+    licenseFilePath: '',
     message: '',
     ...overrides
   }
@@ -101,17 +159,19 @@ function createLicenseService({
 
   async function readStoredLicense(filePath = licenseFilePath) {
     const rawContent = await readFile(filePath, 'utf8')
-    return normalizeLicenseRecord(JSON.parse(rawContent))
+    return JSON.parse(rawContent)
   }
 
   async function validateLicenseRecord(record) {
     const normalizedRecord = normalizeLicenseRecord(record)
     const currentDeviceCode = await getDeviceCode()
+    const nowMs = Date.now()
 
     if (!normalizedRecord.customerName || !normalizedRecord.deviceCode || !normalizedRecord.activatedAt || !normalizedRecord.signature) {
       return createActivationStatus('invalid', {
         message: '授权文件已损坏或格式无效',
-        deviceCode: currentDeviceCode
+        deviceCode: currentDeviceCode,
+        licenseFilePath
       })
     }
 
@@ -120,29 +180,73 @@ function createLicenseService({
       if (!isValid) {
         return createActivationStatus('invalid', {
           message: '授权校验失败，请重新导入授权文件',
-          deviceCode: currentDeviceCode
+          deviceCode: currentDeviceCode,
+          licenseFilePath
         })
       }
     } catch {
       return createActivationStatus('invalid', {
         message: '授权校验失败，请重新导入授权文件',
-        deviceCode: currentDeviceCode
+        deviceCode: currentDeviceCode,
+        licenseFilePath
       })
+    }
+
+    if (normalizedRecord.expireAt) {
+      const expireMs = Date.parse(normalizedRecord.expireAt)
+      if (Number.isFinite(expireMs) && expireMs < nowMs) {
+        return createActivationStatus('expired', {
+          product: normalizedRecord.product,
+          licenseId: normalizedRecord.licenseId,
+          customerId: normalizedRecord.customerId,
+          customerName: normalizedRecord.customerName,
+          edition: normalizedRecord.edition,
+          deviceCode: currentDeviceCode,
+          activatedAt: normalizedRecord.activatedAt,
+          expireAt: normalizedRecord.expireAt,
+          maxVersion: normalizedRecord.maxVersion,
+          modules: normalizedRecord.modules,
+          features: normalizedRecord.features,
+          remark: normalizedRecord.remark,
+          licenseFilePath,
+          message: '当前授权已过期'
+        })
+      }
     }
 
     if (normalizedRecord.deviceCode !== currentDeviceCode) {
       return createActivationStatus('mismatch', {
+        product: normalizedRecord.product,
+        licenseId: normalizedRecord.licenseId,
+        customerId: normalizedRecord.customerId,
         customerName: normalizedRecord.customerName,
+        edition: normalizedRecord.edition,
         deviceCode: currentDeviceCode,
         activatedAt: normalizedRecord.activatedAt,
+        expireAt: normalizedRecord.expireAt,
+        maxVersion: normalizedRecord.maxVersion,
+        modules: normalizedRecord.modules,
+        features: normalizedRecord.features,
+        remark: normalizedRecord.remark,
+        licenseFilePath,
         message: '当前设备与授权不匹配'
       })
     }
 
     return createActivationStatus('activated', {
+      product: normalizedRecord.product,
+      licenseId: normalizedRecord.licenseId,
+      customerId: normalizedRecord.customerId,
       customerName: normalizedRecord.customerName,
+      edition: normalizedRecord.edition,
       deviceCode: currentDeviceCode,
       activatedAt: normalizedRecord.activatedAt,
+      expireAt: normalizedRecord.expireAt,
+      maxVersion: normalizedRecord.maxVersion,
+      modules: normalizedRecord.modules,
+      features: normalizedRecord.features,
+      remark: normalizedRecord.remark,
+      licenseFilePath,
       message: ''
     })
   }
@@ -155,6 +259,7 @@ function createLicenseService({
       if (error && (error.code === 'ENOENT' || /no such file/i.test(String(error.message || '')))) {
         return createActivationStatus('not_found', {
           deviceCode: await getDeviceCode(),
+          licenseFilePath,
           message: '未检测到授权文件'
         })
       }
@@ -162,12 +267,14 @@ function createLicenseService({
       if (error instanceof SyntaxError) {
         return createActivationStatus('invalid', {
           deviceCode: await getDeviceCode(),
+          licenseFilePath,
           message: '授权文件已损坏或格式无效'
         })
       }
 
       return createActivationStatus('invalid', {
         deviceCode: await getDeviceCode(),
+        licenseFilePath,
         message: '授权校验失败，请重新导入授权文件'
       })
     }
@@ -196,7 +303,9 @@ function createLicenseService({
 
   async function getDeviceCodePayload() {
     return {
-      deviceCode: await getDeviceCode()
+      product: 'QiuAi-ECMS',
+      deviceCode: await getDeviceCode(),
+      licenseFilePath
     }
   }
 

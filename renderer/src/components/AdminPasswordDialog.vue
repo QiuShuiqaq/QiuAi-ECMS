@@ -18,6 +18,18 @@ const props = defineProps({
   feedbackMessage: {
     type: String,
     default: ''
+  },
+  title: {
+    type: String,
+    default: '管理员验证'
+  },
+  description: {
+    type: String,
+    default: '请输入管理员口令'
+  },
+  confirmLabel: {
+    type: String,
+    default: '确认'
   }
 })
 
@@ -37,15 +49,15 @@ const passwordModel = computed({
   <div v-if="visible" class="admin-password-modal">
     <div class="admin-password-modal__card">
       <header class="admin-password-modal__header">
-        <strong>管理员验证</strong>
-        <span>请输入管理员密码</span>
+        <strong>{{ title }}</strong>
+        <span>{{ description }}</span>
       </header>
 
       <FormTextControl
         v-model="passwordModel"
         class="admin-password-modal__input"
         type="password"
-        placeholder="请输入管理员密码"
+        placeholder="请输入管理员口令"
       />
 
       <p v-if="feedbackMessage" class="admin-password-modal__feedback">
@@ -57,7 +69,7 @@ const passwordModel = computed({
           取消
         </button>
         <button class="primary-action" type="button" :disabled="isSubmitting" @click="emit('confirm')">
-          确认
+          {{ confirmLabel }}
         </button>
       </footer>
     </div>

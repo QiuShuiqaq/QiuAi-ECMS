@@ -35,7 +35,7 @@ function handleMenuClick(menuKey) {
 </script>
 
 <template>
-  <section class="sidebar-shell module-scroll">
+  <section class="sidebar-shell sidebar-menu module-scroll">
     <button
       v-for="item in menuItems"
       :key="item.key"

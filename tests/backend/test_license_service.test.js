@@ -118,4 +118,70 @@ describe('createLicenseService', () => {
     expect(ensureDirectory).toHaveBeenCalledWith('C:/QiuAi/license')
     expect(writeFile).toHaveBeenCalledWith('C:/QiuAi/license/license.qai', JSON.stringify(payload, null, 2), 'utf8')
   })
+
+  it('accepts a version 2 license with edition and module metadata', async () => {
+    const payload = signPayload(keyPair.privateKey, {
+      version: 2,
+      product: 'QiuAi-ECMS',
+      licenseId: 'LIC-20260527-001',
+      customerId: 'CUS-001',
+      customerName: 'Enterprise Demo',
+      edition: 'professional',
+      deviceCode: 'QAI-TEST-CODE',
+      activatedAt: '2026-05-27T12:00:00.000Z',
+      expireAt: '2027-05-27T12:00:00.000Z',
+      maxVersion: '2.x',
+      modules: ['sourcing', 'text', 'image', 'video', 'draft'],
+      features: ['priority-support'],
+      remark: '测试授权'
+    })
+    const service = createLicenseService({
+      publicKey: keyPair.publicKey.export({ type: 'pkcs1', format: 'pem' }),
+      getDeviceCode: async () => 'QAI-TEST-CODE',
+      readFile: vi.fn().mockResolvedValue(JSON.stringify(payload)),
+      writeFile: vi.fn(),
+      ensureDirectory: vi.fn(),
+      licenseFilePath: 'C:/QiuAi/license.qai'
+    })
+
+    const result = await service.getActivationStatus()
+
+    expect(result.status).toBe('activated')
+    expect(result.licenseId).toBe('LIC-20260527-001')
+    expect(result.edition).toBe('professional')
+    expect(result.modules).toEqual(['sourcing', 'text', 'image', 'video', 'draft'])
+    expect(result.maxVersion).toBe('2.x')
+  })
+
+  it('marks a version 2 license as expired when expireAt is in the past', async () => {
+    const payload = signPayload(keyPair.privateKey, {
+      version: 2,
+      product: 'QiuAi-ECMS',
+      licenseId: 'LIC-EXPIRED-001',
+      customerId: '',
+      customerName: 'Expired Customer',
+      edition: 'standard',
+      deviceCode: 'QAI-TEST-CODE',
+      activatedAt: '2025-01-01T00:00:00.000Z',
+      expireAt: '2025-01-31T00:00:00.000Z',
+      maxVersion: '',
+      modules: ['text'],
+      features: [],
+      remark: ''
+    })
+    const service = createLicenseService({
+      publicKey: keyPair.publicKey.export({ type: 'pkcs1', format: 'pem' }),
+      getDeviceCode: async () => 'QAI-TEST-CODE',
+      readFile: vi.fn().mockResolvedValue(JSON.stringify(payload)),
+      writeFile: vi.fn(),
+      ensureDirectory: vi.fn(),
+      licenseFilePath: 'C:/QiuAi/license.qai'
+    })
+
+    const result = await service.getActivationStatus()
+
+    expect(result.status).toBe('expired')
+    expect(result.message).toBe('当前授权已过期')
+    expect(result.modules).toEqual(['text'])
+  })
 })

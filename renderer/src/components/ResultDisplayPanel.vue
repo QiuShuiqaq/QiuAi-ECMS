@@ -25,6 +25,10 @@ const props = defineProps({
   latestTask: {
     type: Object,
     default: null
+  },
+  draftForm: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -131,6 +135,12 @@ function sendToDraft(item, groupTitle = '') {
   }
 
   const promptFinal = resolvePromptFinal(item.promptFinal)
+  const workflowContext = props.draftForm?.workflowContext && typeof props.draftForm.workflowContext === 'object'
+    ? props.draftForm.workflowContext
+    : null
+  const sourceMetadata = workflowContext?.sourceMetadata && typeof workflowContext.sourceMetadata === 'object'
+    ? workflowContext.sourceMetadata
+    : {}
 
   emit('send-to-draft', {
     source: 'image',
@@ -145,6 +155,30 @@ function sendToDraft(item, groupTitle = '') {
       { label: '来源', value: props.menuLabel },
       { label: '模型', value: item.model || '--' }
     ],
+    draftPayload: {
+      draftType: 'listing_bundle',
+      productName: workflowContext?.sourceItem?.title || '',
+      targetPlatform: workflowContext?.sourcePlatform || sourceMetadata.platform || '',
+      workflowGroupId: workflowContext?.workflowGroupId || sourceMetadata.workflowGroupId || '',
+      sourcePlatform: workflowContext?.sourcePlatform || sourceMetadata.platform || '',
+      sourceProductId: workflowContext?.sourceProductId || sourceMetadata.sourceProductId || '',
+      contentType: '套图',
+      listingTitle: workflowContext?.sourceItem?.title || item.title || item.name || '',
+      listingDescription: promptFinal || '',
+      sellingPoint: workflowContext?.sourceItem?.summary || '',
+      nextAction: '已将套图结果送入草稿，可继续补充文案、视频与上架字段。',
+      sourceMetadata,
+      editor: {
+        coverImage: item.preview || '',
+        mainImagePlan: item.savedPath || item.preview || '',
+        detailImagePlan: item.savedPath || item.preview || '',
+        remarks: promptFinal || ''
+      },
+      checklist: {
+        imageReady: Boolean(item.preview || item.savedPath)
+      }
+    },
+    sourceMetadata,
     raw: item
   })
 }

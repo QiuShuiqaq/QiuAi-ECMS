@@ -1,9 +1,10 @@
 const fs = require('node:fs')
+const crypto = require('node:crypto')
 
 const SETTINGS_KEY = 'userSettings'
 const API_KEY_SLOT_COUNT = 2
 const CREDIT_HISTORY_LIMIT = 20
-const ADMIN_API_KEY_PASSWORD = 'qiuai@123'
+const ADMIN_PASSWORD_SALT = 'qiuai-ecms-admin'
 
 const defaultCreditState = {
   totalPurchasedCredits: 0,
@@ -23,11 +24,36 @@ const defaultDashboardCreditState = {
   remainingCredits: 0
 }
 
+const defaultVideoCreditState = {
+  totalPurchasedCredits: 0,
+  remainingCredits: 0,
+  frozenCredits: 0,
+  usedCredits: 0,
+  lastAdjustmentAt: '',
+  lastAdjustmentOperation: '',
+  lastAdjustmentAmount: 0,
+  adjustmentHistory: [],
+  activityHistory: [],
+  taskLedger: {}
+}
+
+const defaultVideoDashboardCreditState = {
+  totalCredits: 0,
+  remainingCredits: 0
+}
+
+const defaultSourcingCacheState = {
+  entries: {}
+}
+
 const defaultSettings = {
   apiBaseUrl: 'https://grsai.dakka.com.cn',
   apiKeys: ['', ''],
   activeApiKeyIndex: 0,
   apiKey: '',
+  glmApiKey: '',
+  videoApiKey: '',
+  videoApiBaseUrl: 'https://anyaigc.com',
   defaultSize: '1:1',
   downloadDirectory: '',
   globalUploadDirectory: '',
@@ -40,7 +66,18 @@ const defaultSettings = {
   themeMode: 'dark',
   downloadCleanupEnabled: true,
   dashboardCreditState: defaultDashboardCreditState,
-  creditState: defaultCreditState
+  creditState: defaultCreditState,
+  videoDashboardCreditState: defaultVideoDashboardCreditState,
+  videoCreditState: defaultVideoCreditState,
+  sourcingCache: defaultSourcingCacheState,
+  adminPasswordHash: ''
+}
+
+function hashAdminPassword(password = '') {
+  return crypto
+    .createHash('sha256')
+    .update(`${ADMIN_PASSWORD_SALT}:${String(password || '')}`)
+    .digest('hex')
 }
 
 function normalizeThemeMode() {
@@ -48,12 +85,10 @@ function normalizeThemeMode() {
 }
 
 function normalizeApiKeys(apiKeys = []) {
-  const normalizedApiKeys = Array.from({ length: API_KEY_SLOT_COUNT }, (_unused, index) => {
+  return Array.from({ length: API_KEY_SLOT_COUNT }, (_unused, index) => {
     const value = Array.isArray(apiKeys) ? apiKeys[index] : ''
     return typeof value === 'string' ? value : ''
   })
-
-  return normalizedApiKeys
 }
 
 function normalizeActiveApiKeyIndex(activeApiKeyIndex = 0) {
@@ -77,12 +112,46 @@ function normalizeUploadDirectories(uploadDirectories = {}) {
   }
 }
 
+function normalizeUploadDirectoryPatch(uploadDirectories = {}) {
+  if (!uploadDirectories || typeof uploadDirectories !== 'object') {
+    return {}
+  }
+
+  const patch = {}
+
+  for (const key of ['single-image', 'single-design', 'series-design', 'series-generate']) {
+    if (Object.prototype.hasOwnProperty.call(uploadDirectories, key)) {
+      patch[key] = typeof uploadDirectories[key] === 'string' ? uploadDirectories[key] : ''
+    }
+  }
+
+  return patch
+}
+
 function normalizeGlobalUploadDirectory(globalUploadDirectory = '') {
   return typeof globalUploadDirectory === 'string' ? globalUploadDirectory : ''
 }
 
+function normalizeGlmApiKey(glmApiKey = '') {
+  return typeof glmApiKey === 'string' ? glmApiKey.trim() : ''
+}
+
+function normalizeVideoApiKey(videoApiKey = '') {
+  return typeof videoApiKey === 'string' ? videoApiKey.trim() : ''
+}
+
+function normalizeVideoApiBaseUrl(videoApiBaseUrl = '') {
+  return typeof videoApiBaseUrl === 'string' && videoApiBaseUrl.trim()
+    ? videoApiBaseUrl.trim()
+    : 'https://anyaigc.com'
+}
+
 function normalizeDownloadCleanupEnabled(downloadCleanupEnabled = true) {
   return downloadCleanupEnabled !== false
+}
+
+function normalizeAdminPasswordHash(adminPasswordHash = '') {
+  return typeof adminPasswordHash === 'string' ? adminPasswordHash.trim() : ''
 }
 
 function normalizeNonNegativeInteger(value = 0) {
@@ -103,22 +172,6 @@ function normalizeCreditHistoryEntry(entry = {}) {
     createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : '',
     note: typeof entry.note === 'string' ? entry.note : ''
   }
-}
-
-function normalizeUploadDirectoryPatch(uploadDirectories = {}) {
-  if (!uploadDirectories || typeof uploadDirectories !== 'object') {
-    return {}
-  }
-
-  const patch = {}
-
-  for (const key of ['single-image', 'single-design', 'series-design', 'series-generate']) {
-    if (Object.prototype.hasOwnProperty.call(uploadDirectories, key)) {
-      patch[key] = typeof uploadDirectories[key] === 'string' ? uploadDirectories[key] : ''
-    }
-  }
-
-  return patch
 }
 
 function normalizeCreditActivityEntry(entry = {}) {
@@ -193,6 +246,33 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
   return {
     totalCredits: normalizeNonNegativeInteger(source.totalCredits),
     remainingCredits: normalizeNonNegativeInteger(source.remainingCredits)
+  }
+}
+
+function normalizeSourcingCacheState(rawSourcingCache = {}) {
+  const source = rawSourcingCache && typeof rawSourcingCache === 'object' && !Array.isArray(rawSourcingCache)
+    ? rawSourcingCache
+    : {}
+  const sourceEntries = source.entries && typeof source.entries === 'object' && !Array.isArray(source.entries)
+    ? source.entries
+    : {}
+
+  return {
+    entries: Object.fromEntries(Object.entries(sourceEntries).map(([cacheKey, entry]) => {
+      const normalizedEntry = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+
+      return [
+        String(cacheKey),
+        {
+          platformKey: typeof normalizedEntry.platformKey === 'string' ? normalizedEntry.platformKey : '',
+          sceneKey: typeof normalizedEntry.sceneKey === 'string' ? normalizedEntry.sceneKey : '',
+          version: typeof normalizedEntry.version === 'string' ? normalizedEntry.version : '',
+          cacheDate: typeof normalizedEntry.cacheDate === 'string' ? normalizedEntry.cacheDate : '',
+          updatedAt: typeof normalizedEntry.updatedAt === 'string' ? normalizedEntry.updatedAt : '',
+          items: Array.isArray(normalizedEntry.items) ? normalizedEntry.items : []
+        }
+      ]
+    }))
   }
 }
 
@@ -293,24 +373,76 @@ function normalizeSettings(rawSettings = {}) {
   return {
     ...mergedSettings,
     themeMode: normalizeThemeMode(mergedSettings.themeMode),
+    glmApiKey: normalizeGlmApiKey(mergedSettings.glmApiKey),
+    videoApiKey: normalizeVideoApiKey(mergedSettings.videoApiKey),
+    videoApiBaseUrl: normalizeVideoApiBaseUrl(mergedSettings.videoApiBaseUrl),
     downloadCleanupEnabled: normalizeDownloadCleanupEnabled(mergedSettings.downloadCleanupEnabled),
     globalUploadDirectory: normalizeGlobalUploadDirectory(mergedSettings.globalUploadDirectory),
     uploadDirectories: normalizeUploadDirectories(mergedSettings.uploadDirectories),
     dashboardCreditState: normalizeDashboardCreditState(mergedSettings.dashboardCreditState),
     creditState: normalizeCreditState(mergedSettings.creditState),
+    videoDashboardCreditState: normalizeDashboardCreditState(mergedSettings.videoDashboardCreditState),
+    videoCreditState: normalizeCreditState(mergedSettings.videoCreditState),
+    sourcingCache: normalizeSourcingCacheState(mergedSettings.sourcingCache),
+    adminPasswordHash: normalizeAdminPasswordHash(mergedSettings.adminPasswordHash),
     apiKeys,
     activeApiKeyIndex,
     apiKey: apiKeys[activeApiKeyIndex] || ''
   }
 }
 
-function createSettingsStoreService ({ store }) {
-  function getSettings () {
+function maskSecret(value = '') {
+  const normalized = typeof value === 'string' ? value.trim() : ''
+  if (!normalized) {
+    return ''
+  }
+
+  if (normalized.length <= 8) {
+    return `${normalized.slice(0, 1)}***${normalized.slice(-1)}`
+  }
+
+  return `${normalized.slice(0, 4)}***${normalized.slice(-4)}`
+}
+
+function createSettingsStoreService({ store }) {
+  function getSettings() {
     return normalizeSettings(store.get(SETTINGS_KEY, {}))
   }
 
-  async function saveSettings (payload = {}, options = {}) {
-    const hasSensitiveApiKeyFields = ['apiKeys', 'apiKey', 'activeApiKeyIndex'].some((field) => {
+  function getAdminStatus() {
+    const settings = getSettings()
+
+    return {
+      passwordConfigured: Boolean(settings.adminPasswordHash),
+      imageApiConfigured: Boolean(settings.apiKey),
+      videoApiConfigured: Boolean(settings.videoApiKey)
+    }
+  }
+
+  function getPublicSettings() {
+    const settings = getSettings()
+
+    return {
+      activeApiKeyIndex: settings.activeApiKeyIndex,
+      defaultSize: settings.defaultSize,
+      downloadDirectory: settings.downloadDirectory,
+      globalUploadDirectory: settings.globalUploadDirectory,
+      uploadDirectories: settings.uploadDirectories,
+      themeMode: settings.themeMode,
+      downloadCleanupEnabled: settings.downloadCleanupEnabled,
+      dashboardCreditState: settings.dashboardCreditState,
+      creditState: settings.creditState,
+      videoDashboardCreditState: settings.videoDashboardCreditState,
+      videoCreditState: settings.videoCreditState,
+      sourcingCache: settings.sourcingCache,
+      glmConfigured: Boolean(settings.glmApiKey),
+      glmApiKeyMasked: maskSecret(settings.glmApiKey),
+      adminStatus: getAdminStatus()
+    }
+  }
+
+  async function saveSettings(payload = {}, options = {}) {
+    const hasSensitiveApiKeyFields = ['apiBaseUrl', 'apiKeys', 'apiKey', 'activeApiKeyIndex', 'glmApiKey', 'copywritingApiBaseUrl', 'copywritingRequestPath', 'videoApiKey', 'videoApiBaseUrl', 'adminPasswordHash'].some((field) => {
       return Object.prototype.hasOwnProperty.call(payload || {}, field)
     })
 
@@ -349,6 +481,13 @@ function createSettingsStoreService ({ store }) {
         })
       : normalizeCreditState(currentSettings.creditState)
 
+    let videoCreditState = Object.prototype.hasOwnProperty.call(restPayload, 'videoCreditState')
+      ? normalizeCreditState({
+          ...currentSettings.videoCreditState,
+          ...restPayload.videoCreditState
+        })
+      : normalizeCreditState(currentSettings.videoCreditState)
+
     if (creditAdjustment && typeof creditAdjustment === 'object') {
       creditState = applyCreditAdjustment(creditState, creditAdjustment, options)
     }
@@ -358,40 +497,111 @@ function createSettingsStoreService ({ store }) {
       ...restPayload,
       globalUploadDirectory,
       uploadDirectories,
-      creditState
+      creditState,
+      videoCreditState
     })
 
     store.set(SETTINGS_KEY, nextSettings)
-    return nextSettings
+    return getPublicSettings()
   }
 
-  async function saveAdminApiKey ({ apiKey = '', password = '' } = {}) {
-    if (password !== ADMIN_API_KEY_PASSWORD) {
+  async function verifyAdminPassword({ password = '' } = {}) {
+    const currentSettings = getSettings()
+    const normalizedPassword = typeof password === 'string' ? password : ''
+
+    if (!currentSettings.adminPasswordHash) {
+      if (!normalizedPassword.trim()) {
+        throw new Error('请先输入管理员口令')
+      }
+
+      return {
+        verified: true,
+        requiresSetup: true,
+        adminStatus: getAdminStatus()
+      }
+    }
+
+    if (hashAdminPassword(normalizedPassword) !== currentSettings.adminPasswordHash) {
+      throw new Error('管理员验证失败：密码错误')
+    }
+
+    return {
+      verified: true,
+      requiresSetup: false,
+      adminStatus: getAdminStatus()
+    }
+  }
+
+  async function saveAdminApiKey({ apiKey = '', videoApiKey = '', password = '' } = {}) {
+    const currentSettings = getSettings()
+    const normalizedPassword = typeof password === 'string' ? password : ''
+
+    if (!currentSettings.adminPasswordHash) {
+      if (!normalizedPassword.trim()) {
+        throw new Error('请先设置管理员口令')
+      }
+    } else if (hashAdminPassword(normalizedPassword) !== currentSettings.adminPasswordHash) {
       throw new Error('管理员验证失败：密码错误')
     }
 
     const normalizedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
-    if (!normalizedApiKey) {
-      throw new Error('API-Key 不能为空')
+    const normalizedVideoApiKey = typeof videoApiKey === 'string' ? videoApiKey.trim() : ''
+    if (!normalizedApiKey && !normalizedVideoApiKey) {
+      throw new Error('至少需要填写一个 API-Key')
     }
 
-    const currentSettings = getSettings()
-    const nextApiKeys = normalizeApiKeys([normalizedApiKey, ''])
+    const nextApiKeys = normalizedApiKey
+      ? normalizeApiKeys([normalizedApiKey, ''])
+      : normalizeApiKeys(currentSettings.apiKeys)
     const nextSettings = normalizeSettings({
       ...currentSettings,
       apiKeys: nextApiKeys,
-      activeApiKeyIndex: 0,
-      apiKey: normalizedApiKey
+      activeApiKeyIndex: normalizedApiKey ? 0 : currentSettings.activeApiKeyIndex,
+      apiKey: normalizedApiKey || currentSettings.apiKey,
+      videoApiKey: normalizedVideoApiKey || currentSettings.videoApiKey,
+      adminPasswordHash: currentSettings.adminPasswordHash || hashAdminPassword(normalizedPassword)
     })
 
     store.set(SETTINGS_KEY, nextSettings)
-    return nextSettings
+    return {
+      saved: true,
+      imageApiConfigured: Boolean(nextSettings.apiKey),
+      videoApiConfigured: Boolean(nextSettings.videoApiKey),
+      adminStatus: {
+        passwordConfigured: Boolean(nextSettings.adminPasswordHash),
+        imageApiConfigured: Boolean(nextSettings.apiKey),
+        videoApiConfigured: Boolean(nextSettings.videoApiKey)
+      }
+    }
+  }
+
+  async function saveGlmApiKey({ apiKey = '' } = {}) {
+    const normalizedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+    if (!normalizedApiKey) {
+      throw new Error('GLM API-Key 不能为空')
+    }
+
+    const currentSettings = getSettings()
+    const nextSettings = normalizeSettings({
+      ...currentSettings,
+      glmApiKey: normalizedApiKey
+    })
+
+    store.set(SETTINGS_KEY, nextSettings)
+    return {
+      glmConfigured: true,
+      glmApiKeyMasked: maskSecret(normalizedApiKey)
+    }
   }
 
   return {
     getSettings,
+    getPublicSettings,
+    getAdminStatus,
     saveSettings,
-    saveAdminApiKey
+    verifyAdminPassword,
+    saveAdminApiKey,
+    saveGlmApiKey
   }
 }
 
@@ -399,5 +609,7 @@ module.exports = {
   createSettingsStoreService,
   defaultSettings,
   defaultCreditState,
-  defaultDashboardCreditState
+  defaultDashboardCreditState,
+  defaultVideoCreditState,
+  defaultVideoDashboardCreditState
 }
