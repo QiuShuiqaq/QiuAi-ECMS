@@ -14,6 +14,7 @@ DATA/output/
 
 renderer/dist/
 runtime-logs/
+logs/
 tmp/
 tmp-electron-stdout.log
 tmp-electron-stderr.log

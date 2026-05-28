@@ -67,6 +67,55 @@ const props = defineProps({
       currentSceneKey: '',
       running: false
     })
+  },
+  localeText: {
+    type: Object,
+    default: () => ({
+      title: '商品趋势列表',
+      platformAria: '选品平台切换',
+      categoryTitle: '选品分类',
+      listTitle: '商品列表',
+      summaryTop10: '总销量前 10',
+      summaryCached: '已命中本地缓存',
+      summaryPending: '等待今日缓存',
+      headerImage: '商品图',
+      headerInfo: '商品信息',
+      headerMetrics: '核心指标',
+      headerActions: '操作',
+      viewProduct: '查看商品',
+      oneClickEdit: '一键编辑',
+      oneClickEditBusy: '处理中...',
+      oneClickEditConfig: '一键编辑配置',
+      oneClickGenerate: '一键生成',
+      oneClickGenerateBusy: '生成中...',
+      oneClickGenerateConfig: '一键生成配置',
+      rankTag: '总销量优先',
+      totalSold: '总销量',
+      conversion: '转化参考',
+      assetDirection: '素材方向',
+      platform: '平台',
+      loadingImage: '正在加载商品图',
+      emptyImage: '暂无商品图',
+      waitTitle: '等待缓存同步',
+      waitDescription: '系统会优先展示本地缓存；如果当天还没有缓存数据，会在安全延迟后自动请求一次，并将结果保存到本地，第二天再自动覆盖。',
+      emptyTitle: '暂无可展示商品',
+      lockedTitle: '当前授权未开通选品模块',
+      lockedFallback: '如需继续使用选品，请在授权工具中开通 sourcing 模块。',
+      currentPlatform: '当前平台',
+      currentCategory: '当前分类',
+      productCountLoading: '正在等待今日缓存数据',
+      productCountRequesting: '正在按安全间隔同步今日数据',
+      productCountError: '当前平台暂未获取到数据',
+      cachePending: '系统会在安全延迟后自动同步一次今日数据',
+      cacheReadyPrefix: '本地缓存已更新：',
+      cacheIdle: '当前展示本地缓存或等待首次安全同步',
+      progressDelay: '安全等待中',
+      progressRequest: '正在请求商品数据',
+      progressReady: '数据已就绪',
+      progressIdle: '等待同步',
+      progressStartIn: '后开始请求',
+      prefetchPrefix: '后台正在补齐其他分类缓存：'
+    })
   }
 })
 
@@ -82,22 +131,24 @@ const emit = defineEmits([
 const productCountText = computed(() => {
   if (!props.hasLoadedProducts) {
     if (props.autoRefreshStatus?.pending) {
-      return '正在按安全间隔同步今日数据'
+      return props.localeText.productCountRequesting
     }
 
     if (props.autoRefreshStatus?.mode === 'error') {
-      return '当前平台暂未获取到数据'
+      return props.localeText.productCountError
     }
 
-    return '正在等待今日缓存数据'
+    return props.localeText.productCountLoading
   }
 
-  return `当前共 ${props.trendProducts.length} 条商品`
+  return props.localeText.title.startsWith('Trending')
+    ? `${props.trendProducts.length} products loaded`
+    : `当前共 ${props.trendProducts.length} 条商品`
 })
 
 const cacheStatusText = computed(() => {
   if (props.autoRefreshStatus?.pending) {
-    return '系统会在安全延迟后自动同步一次今日数据'
+    return props.localeText.cachePending
   }
 
   if (props.autoRefreshStatus?.mode && props.autoRefreshStatus?.message) {
@@ -105,26 +156,26 @@ const cacheStatusText = computed(() => {
   }
 
   if (props.autoRefreshStatus?.updatedAt) {
-    return `本地缓存已更新：${props.autoRefreshStatus.updatedAt}`
+    return `${props.localeText.cacheReadyPrefix}${props.autoRefreshStatus.updatedAt}`
   }
 
-  return '当前展示本地缓存或等待首次安全同步'
+  return props.localeText.cacheIdle
 })
 
 const progressLabelText = computed(() => {
   if (props.autoRefreshStatus?.phase === 'delay') {
-    return '安全等待中'
+    return props.localeText.progressDelay
   }
 
   if (props.autoRefreshStatus?.phase === 'request') {
-    return '正在请求商品数据'
+    return props.localeText.progressRequest
   }
 
   if (props.autoRefreshStatus?.phase === 'ready') {
-    return '数据已就绪'
+    return props.localeText.progressReady
   }
 
-  return '等待同步'
+  return props.localeText.progressIdle
 })
 
 const countdownText = computed(() => {
@@ -133,7 +184,7 @@ const countdownText = computed(() => {
     return ''
   }
 
-  return `${(countdownMs / 1000).toFixed(1)}s 后开始请求`
+  return `${(countdownMs / 1000).toFixed(1)}s ${props.localeText.progressStartIn}`
 })
 
 const prefetchStatusText = computed(() => {
@@ -141,16 +192,18 @@ const prefetchStatusText = computed(() => {
     return ''
   }
 
-  return `后台正在补齐其他分类缓存：${props.prefetchState.completed}/${props.prefetchState.total}`
+  return `${props.localeText.prefetchPrefix}${props.prefetchState.completed}/${props.prefetchState.total}`
 })
 
 const activePlatformLabel = computed(() => {
-  return props.platformOptions.find((platform) => platform.key === props.activePlatformKey)?.label || '当前平台'
+  return props.platformOptions.find((platform) => platform.key === props.activePlatformKey)?.label || props.localeText.currentPlatform
 })
 
 const activeSceneLabel = computed(() => {
-  return props.sceneOptions.find((scene) => scene.key === props.activeSceneKey)?.label || '当前分类'
+  return props.sceneOptions.find((scene) => scene.key === props.activeSceneKey)?.label || props.localeText.currentCategory
 })
+
+const isEnglish = computed(() => props.localeText.title === 'Trending Product List')
 </script>
 
 <template>
@@ -159,8 +212,8 @@ const activeSceneLabel = computed(() => {
       <div class="ecms-page__hero-copy">
         <div class="ecms-page__hero-heading">
           <div class="ecms-page__hero-titleline">
-            <h1>商品趋势列表</h1>
-            <div v-if="platformOptions.length" class="ecms-platform-switcher" role="tablist" aria-label="选品平台切换">
+            <h1>{{ localeText.title }}</h1>
+            <div v-if="platformOptions.length" class="ecms-platform-switcher" role="tablist" :aria-label="localeText.platformAria">
               <template v-for="(platform, index) in platformOptions" :key="platform.key">
                 <span v-if="index > 0" class="ecms-platform-divider" aria-hidden="true">|</span>
                 <button
@@ -177,8 +230,8 @@ const activeSceneLabel = computed(() => {
         <div class="ecms-hot-hero-summary">
           <span>{{ activePlatformLabel }}</span>
           <span>{{ activeSceneLabel }}</span>
-          <span>总销量前 10</span>
-          <span>{{ hasLoadedProducts ? '已命中本地缓存' : '等待今日缓存' }}</span>
+          <span>{{ localeText.summaryTop10 }}</span>
+          <span>{{ hasLoadedProducts ? localeText.summaryCached : localeText.summaryPending }}</span>
         </div>
       </div>
     </header>
@@ -187,7 +240,7 @@ const activeSceneLabel = computed(() => {
       <aside class="ecms-panel ecms-panel--rail">
         <header class="ecms-panel__header">
           <div>
-            <h2>选品分类</h2>
+            <h2>{{ localeText.categoryTitle }}</h2>
           </div>
         </header>
 
@@ -211,7 +264,7 @@ const activeSceneLabel = computed(() => {
       <section class="ecms-panel ecms-panel--main">
         <header class="ecms-panel__header">
           <div>
-            <h2>商品列表</h2>
+            <h2>{{ localeText.listTitle }}</h2>
             <p>{{ productCountText }}</p>
           </div>
           <span class="ecms-inline-status ecms-inline-status--panel">{{ cacheStatusText }}</span>
@@ -229,10 +282,10 @@ const activeSceneLabel = computed(() => {
         </div>
 
         <div class="hot-product-table-head" aria-hidden="true">
-          <span>商品图</span>
-          <span>商品信息</span>
-          <span>核心指标</span>
-          <span>操作</span>
+          <span>{{ localeText.headerImage }}</span>
+          <span>{{ localeText.headerInfo }}</span>
+          <span>{{ localeText.headerMetrics }}</span>
+          <span>{{ localeText.headerActions }}</span>
         </div>
 
         <div class="hot-product-list">
@@ -240,7 +293,7 @@ const activeSceneLabel = computed(() => {
             <div class="hot-product-row__preview">
               <img v-if="item.preview" :src="item.preview" :alt="item.title" />
               <div v-else class="hot-product-row__preview-empty">
-                {{ isLoadingProducts ? '正在加载商品图' : '暂无商品图' }}
+                {{ isLoadingProducts ? localeText.loadingImage : localeText.emptyImage }}
               </div>
             </div>
 
@@ -249,7 +302,7 @@ const activeSceneLabel = computed(() => {
                 <span class="platform-badge">{{ item.platform }}</span>
                 <span class="growth-badge">{{ item.growth }}</span>
               </div>
-              <div class="hot-product-rank-chip">总销量优先</div>
+              <div class="hot-product-rank-chip">{{ localeText.rankTag }}</div>
               <strong class="hot-product-row__title">{{ item.title }}</strong>
               <p class="hot-product-row__summary">{{ item.summary }}</p>
               <div class="hot-product-card__tags">
@@ -259,12 +312,12 @@ const activeSceneLabel = computed(() => {
 
             <div class="hot-product-row__metrics">
               <div class="hot-product-card__meta hot-product-card__meta--stacked">
-                <span>总销量 {{ item.searchHeat }}</span>
-                <span>转化参考 {{ item.conversion }}</span>
+                <span>{{ localeText.totalSold }} {{ item.searchHeat }}</span>
+                <span>{{ localeText.conversion }} {{ item.conversion }}</span>
               </div>
               <div class="hot-product-card__meta hot-product-card__meta--stacked">
-                <span>素材方向 {{ item.assetDirection }}</span>
-                <span>平台 {{ item.platform }}</span>
+                <span>{{ localeText.assetDirection }} {{ item.assetDirection }}</span>
+                <span>{{ localeText.platform }} {{ item.platform }}</span>
               </div>
             </div>
 
@@ -276,7 +329,7 @@ const activeSceneLabel = computed(() => {
                   :disabled="moduleLocked || !item.sourceUrl"
                   @click="emit('open-item-link', item)"
                 >
-                  查看商品
+                  {{ localeText.viewProduct }}
                 </button>
                 <span class="hot-product-action-pair__ghost" aria-hidden="true"></span>
               </div>
@@ -287,17 +340,17 @@ const activeSceneLabel = computed(() => {
                   :disabled="moduleLocked || isWorkflowRunning"
                   @click="emit('one-click-edit', item)"
                 >
-                  {{ isWorkflowRunning && workflowTargetId === item.id ? '处理中...' : '一键编辑' }}
+                  {{ isWorkflowRunning && workflowTargetId === item.id ? localeText.oneClickEditBusy : localeText.oneClickEdit }}
                 </button>
                 <button
                   class="secondary-action secondary-action--compact hot-product-gear-button"
                   type="button"
-                  aria-label="一键编辑配置"
-                  title="一键编辑配置"
+                  :aria-label="localeText.oneClickEditConfig"
+                  :title="localeText.oneClickEditConfig"
                   :disabled="moduleLocked || isWorkflowRunning"
                   @click="emit('open-one-click-config', 'edit')"
                 >
-                  ⚙
+                  ⚿
                 </button>
               </div>
               <div class="hot-product-action-pair">
@@ -307,17 +360,17 @@ const activeSceneLabel = computed(() => {
                   :disabled="moduleLocked || isWorkflowRunning"
                   @click="emit('one-click-generate', item)"
                 >
-                  {{ isWorkflowRunning && workflowTargetId === item.id ? '生成中...' : '一键生成' }}
+                  {{ isWorkflowRunning && workflowTargetId === item.id ? localeText.oneClickGenerateBusy : localeText.oneClickGenerate }}
                 </button>
                 <button
                   class="secondary-action secondary-action--compact hot-product-gear-button"
                   type="button"
-                  aria-label="一键生成配置"
-                  title="一键生成配置"
+                  :aria-label="localeText.oneClickGenerateConfig"
+                  :title="localeText.oneClickGenerateConfig"
                   :disabled="moduleLocked || isWorkflowRunning"
                   @click="emit('open-one-click-config', 'generate')"
                 >
-                  ⚙
+                  ⚿
                 </button>
               </div>
             </div>
@@ -325,18 +378,18 @@ const activeSceneLabel = computed(() => {
         </div>
 
         <div v-if="!hasLoadedProducts && !isLoadingProducts" class="ecms-note-card">
-          <strong>等待缓存同步</strong>
-          <p>系统会优先展示本地缓存；如果当天还没有缓存数据，会在安全延迟后自动请求一次，并将结果保存到本地，第二天再自动覆盖。</p>
+          <strong>{{ localeText.waitTitle }}</strong>
+          <p>{{ localeText.waitDescription }}</p>
         </div>
 
         <div v-else-if="!trendProducts.length && !isLoadingProducts" class="ecms-note-card">
-          <strong>暂无可展示商品</strong>
-          <p>{{ autoRefreshStatus?.message || '当前平台热销商品还没有成功加载，稍后可以再试一次。' }}</p>
+          <strong>{{ localeText.emptyTitle }}</strong>
+          <p>{{ autoRefreshStatus?.message || (isEnglish ? 'Product data is not ready for this platform yet. Please try again later.' : '当前平台热销商品还没有成功加载，稍后可以再试一次。') }}</p>
         </div>
 
         <div v-if="moduleLocked" class="ecms-note-card ecms-note-card--locked">
-          <strong>当前授权未开通选品模块</strong>
-          <p>{{ moduleLockMessage || '如需继续使用选品，请在授权工具中开通 sourcing 模块。' }}</p>
+          <strong>{{ localeText.lockedTitle }}</strong>
+          <p>{{ moduleLockMessage || localeText.lockedFallback }}</p>
         </div>
       </section>
     </div>

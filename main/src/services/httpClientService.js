@@ -91,6 +91,7 @@ function createHttpClientService({
   const client = requestClient({
     baseURL: apiBaseUrl,
     headers: {
+      Accept: 'application/json',
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     },

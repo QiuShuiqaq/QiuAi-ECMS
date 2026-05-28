@@ -102,6 +102,10 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  rememberedMenu: {
+    type: String,
+    default: ''
+  },
   moduleLocked: {
     type: Boolean,
     default: false
@@ -139,10 +143,25 @@ const emit = defineEmits([
   'open-output-directory',
   'delete-export-item',
   'toggle-download-cleanup',
-  'stop-task'
+  'stop-task',
+  'menu-change'
 ])
 
-const activeMenu = ref(props.defaultMenu || props.menuItems[0]?.key || '')
+function resolveValidMenu(menuKey = '') {
+  const normalizedMenuKey = String(menuKey || '').trim()
+  if (props.menuItems.some((item) => item?.key === normalizedMenuKey)) {
+    return normalizedMenuKey
+  }
+
+  const fallbackMenuKey = String(props.rememberedMenu || props.defaultMenu || props.menuItems[0]?.key || '').trim()
+  if (props.menuItems.some((item) => item?.key === fallbackMenuKey)) {
+    return fallbackMenuKey
+  }
+
+  return props.menuItems[0]?.key || ''
+}
+
+const activeMenu = ref(resolveValidMenu(props.rememberedMenu || props.defaultMenu))
 
 function buildInitialFormState() {
   const state = {}
@@ -307,7 +326,7 @@ function applyTemplateToField(fieldKey = '', templateId = '') {
 }
 
 function handleMenuSelect(menuKey) {
-  activeMenu.value = menuKey
+  activeMenu.value = resolveValidMenu(menuKey)
 }
 
 function sendToDraft(group) {
@@ -352,7 +371,7 @@ function applyExternalFormAction(action = {}) {
   }
 
   if (typeof action.menuKey === 'string' && action.menuKey.trim()) {
-    activeMenu.value = action.menuKey.trim()
+    activeMenu.value = resolveValidMenu(action.menuKey)
   }
 
   const values = action.values && typeof action.values === 'object'
@@ -443,6 +462,17 @@ watch(
   },
   { immediate: true }
 )
+
+watch(() => props.rememberedMenu, (nextMenu) => {
+  const resolvedMenu = resolveValidMenu(nextMenu)
+  if (resolvedMenu && resolvedMenu !== activeMenu.value) {
+    activeMenu.value = resolvedMenu
+  }
+})
+
+watch(activeMenu, (nextMenu) => {
+  emit('menu-change', nextMenu)
+}, { immediate: true })
 </script>
 
 <template>
@@ -727,7 +757,7 @@ watch(
                           </span>
                         </div>
 
-                        <label v-if="group.detail" class="form-field comparison-card__prompt">
+                        <label v-if="group.detail && moduleKey !== 'text'" class="form-field comparison-card__prompt">
                           <span>内容详情</span>
                           <textarea :value="group.detail" rows="4" readonly></textarea>
                         </label>

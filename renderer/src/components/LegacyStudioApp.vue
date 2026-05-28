@@ -43,6 +43,10 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  defaultMenu: {
+    type: String,
+    default: ''
+  },
   moduleLocked: {
     type: Boolean,
     default: false
@@ -53,7 +57,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send-to-draft'])
+const emit = defineEmits(['send-to-draft', 'menu-change'])
 
 const themeOptions = [
   { label: '暗黑', value: 'dark' }
@@ -128,7 +132,16 @@ const ratioOptions = [
 ]
 
 const activeTheme = ref('dark')
-const activeMenu = ref('workspace')
+function resolveValidLegacyMenu(menuKey = '') {
+  const normalizedMenuKey = String(menuKey || '').trim()
+  if (menuItems.some((item) => item?.key === normalizedMenuKey)) {
+    return normalizedMenuKey
+  }
+
+  return 'workspace'
+}
+
+const activeMenu = ref(resolveValidLegacyMenu(props.defaultMenu))
 const downloadCleanupEnabled = ref(true)
 const selectedExportIds = ref([])
 const selectedExportIdsByMenu = ref(createEmptyExportSelectionsByMenu())
@@ -1128,9 +1141,10 @@ function handleMenuSelect(menuKey) {
   }
 
   // 菜单点击事件预留：后续可在这里接入真实业务工作区切换。
-  activeMenu.value = menuKey
-  ensureDraftForMenu(menuKey)
-  selectedExportIds.value = [...(selectedExportIdsByMenu.value[menuKey] || [])]
+  const resolvedMenuKey = resolveValidLegacyMenu(menuKey)
+  activeMenu.value = resolvedMenuKey
+  ensureDraftForMenu(resolvedMenuKey)
+  selectedExportIds.value = [...(selectedExportIdsByMenu.value[resolvedMenuKey] || [])]
 }
 
 function applyExternalWorkflowPayload(payload = {}) {
@@ -1179,6 +1193,17 @@ function applyExternalWorkflowPayload(payload = {}) {
   selectedExportIds.value = [...(selectedExportIdsByMenu.value['series-generate'] || [])]
   scheduleDraftPersist('series-generate', nextDraft)
 }
+
+watch(() => props.defaultMenu, (nextMenu) => {
+  const resolvedMenu = resolveValidLegacyMenu(nextMenu)
+  if (resolvedMenu && resolvedMenu !== activeMenu.value) {
+    activeMenu.value = resolvedMenu
+  }
+})
+
+watch(activeMenu, (nextMenu) => {
+  emit('menu-change', nextMenu)
+}, { immediate: true })
 
 async function persistDraftPatch(menuKey, patch) {
   try {

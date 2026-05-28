@@ -41,7 +41,11 @@ import {
 
 const themeOptions = [{ label: 'Dark', value: 'dark' }]
 const activeTheme = ref('dark')
+const activeLanguage = ref('zh')
 const activePage = ref('hot')
+const rememberedTextMenu = ref('workspace')
+const rememberedImageMenu = ref('workspace')
+const rememberedVideoMenu = ref('workspace')
 const legacyStudioKey = ref(0)
 const imageWorkflowPayload = ref(null)
 const textExternalFormAction = ref(null)
@@ -68,6 +72,9 @@ const sourcingPrefetchState = reactive({
   running: false
 })
 const draftItems = ref([])
+const isDraftTargetDialogVisible = ref(false)
+const pendingDraftPayload = ref(null)
+const selectedDraftTargetId = ref('__new__')
 const activationState = ref(null)
 const isActivationLoading = ref(false)
 const isActivationCenterOpen = ref(false)
@@ -160,6 +167,220 @@ let hasScheduledSourcingPrefetch = false
 let dailyTaskNameDate = ''
 let dailyTaskNameCounter = 0
 
+const APP_LANGUAGE_SETTINGS_KEY = 'appLanguage'
+const APP_TRANSLATIONS = {
+  zh: {
+    'nav.hot': '选品',
+    'nav.text': '文本',
+    'nav.image': '生图',
+    'nav.video': '视频',
+    'nav.draft': '草稿',
+    'nav.publish': '上架',
+    'module.sourcing': '选品',
+    'module.text': '文本',
+    'module.image': '生图',
+    'module.video': '视频',
+    'module.draft': '草稿',
+    'module.listing': '上架',
+    'topbar.nav': '页面切换',
+    'topbar.theme': '主题',
+    'topbar.language': '语言切换',
+    'topbar.cleanup': '一键清理',
+    'topbar.activation': '激活状态',
+    'topbar.authorizedDevice': '已授权设备',
+    'topbar.close': '关闭',
+    'topbar.github': 'GitHub',
+    'topbar.githubDescription': '展示 GitHub 主页信息，可直接复制。',
+    'topbar.githubHome': '主页地址',
+    'topbar.email': '邮箱',
+    'topbar.emailDescription': '点击邮箱地址可调用本地邮件客户端，也可以直接复制。',
+    'topbar.qqMail': 'QQ 邮箱',
+    'topbar.gmail': 'Gmail',
+    'topbar.copy': '复制',
+    'topbar.wechat': '微信',
+    'topbar.wechatDescription': '点击图片可查看微信联系入口。',
+    'topbar.previewSuffix': '预览',
+    'studio.text.title': '文本工坊',
+    'studio.text.description': '严格参照生图页的布局和切换逻辑，当前聚焦文本生成。',
+    'studio.text.menu': '文本工作台',
+    'studio.video.title': '视频工坊',
+    'studio.video.description': '严格参照生图页的布局和切换逻辑，当前聚焦视频生成。',
+    'studio.video.menu': '视频工作台',
+    'listing.eyebrow': '上架中心',
+    'listing.title': '待开发',
+    'listing.description': '“上架”板块暂不开发，后续再按你的业务流程、平台接入方式和字段规则继续设计。',
+    'listing.statusTitle': '模块状态',
+    'listing.statusDescription': '当前页面仅保留占位，不展示半成品的上架编排逻辑。',
+    'listing.lockedTitle': '当前授权未开通上架模块',
+    'listing.pendingTitle': '上架功能待开发',
+    'listing.lockedFallback': '请在独立授权工具中补充 listing 模块授权。',
+    'listing.pendingFallback': '你后续补充平台、字段、发布流程和接口要求后，我再继续往下做。',
+    'hot.title': '商品趋势列表',
+    'hot.platformAria': '选品平台切换',
+    'hot.categoryTitle': '选品分类',
+    'hot.listTitle': '商品列表',
+    'hot.summaryTop10': '总销量前 10',
+    'hot.summaryCached': '已命中本地缓存',
+    'hot.summaryPending': '等待今日缓存',
+    'hot.headerImage': '商品图',
+    'hot.headerInfo': '商品信息',
+    'hot.headerMetrics': '核心指标',
+    'hot.headerActions': '操作',
+    'hot.viewProduct': '查看商品',
+    'hot.oneClickEdit': '一键编辑',
+    'hot.oneClickEditBusy': '处理中...',
+    'hot.oneClickEditConfig': '一键编辑配置',
+    'hot.oneClickGenerate': '一键生成',
+    'hot.oneClickGenerateBusy': '生成中...',
+    'hot.oneClickGenerateConfig': '一键生成配置',
+    'hot.rankTag': '总销量优先',
+    'hot.totalSold': '总销量',
+    'hot.conversion': '转化参考',
+    'hot.assetDirection': '素材方向',
+    'hot.platform': '平台',
+    'hot.loadingImage': '正在加载商品图',
+    'hot.emptyImage': '暂无商品图',
+    'hot.waitTitle': '等待缓存同步',
+    'hot.waitDescription': '系统会优先展示本地缓存；如果当天还没有缓存数据，会在安全延迟后自动请求一次，并将结果保存到本地，第二天再自动覆盖。',
+    'hot.emptyTitle': '暂无可展示商品',
+    'hot.lockedTitle': '当前授权未开通选品模块',
+    'hot.lockedFallback': '如需继续使用选品，请在授权工具中开通 sourcing 模块。',
+    'hot.productCount.loading': '正在等待今日缓存数据',
+    'hot.productCount.requesting': '正在按安全间隔同步今日数据',
+    'hot.productCount.error': '当前平台暂未获取到数据',
+    'hot.productCount.ready': '当前共 {count} 条商品',
+    'hot.cache.pending': '系统会在安全延迟后自动同步一次今日数据',
+    'hot.cache.readyPrefix': '本地缓存已更新：',
+    'hot.cache.idle': '当前展示本地缓存或等待首次安全同步',
+    'hot.progress.delay': '安全等待中',
+    'hot.progress.request': '正在请求商品数据',
+    'hot.progress.ready': '数据已就绪',
+    'hot.progress.idle': '等待同步',
+    'hot.progress.startIn': '后开始请求',
+    'hot.prefetchPrefix': '后台正在补齐其他分类缓存：',
+    'hot.currentPlatform': '当前平台',
+    'hot.currentCategory': '当前分类',
+    'admin.passwordTitleVerify': '管理员验证',
+    'admin.passwordTitleInit': '初始化管理员口令',
+    'admin.passwordDescriptionVerify': '请输入管理员口令',
+    'admin.passwordDescriptionInit': '首次使用请设置管理员口令',
+    'admin.passwordConfirmVerify': '验证并继续',
+    'admin.passwordConfirmInit': '设置并继续'
+  },
+  en: {
+    'nav.hot': 'Sourcing',
+    'nav.text': 'Text',
+    'nav.image': 'Image',
+    'nav.video': 'Video',
+    'nav.draft': 'Drafts',
+    'nav.publish': 'Listing',
+    'module.sourcing': 'Sourcing',
+    'module.text': 'Text',
+    'module.image': 'Image',
+    'module.video': 'Video',
+    'module.draft': 'Drafts',
+    'module.listing': 'Listing',
+    'topbar.nav': 'Page navigation',
+    'topbar.theme': 'Theme',
+    'topbar.language': 'Language switch',
+    'topbar.cleanup': 'Quick Clean',
+    'topbar.activation': 'Activation',
+    'topbar.authorizedDevice': 'Authorized Device',
+    'topbar.close': 'Close',
+    'topbar.github': 'GitHub',
+    'topbar.githubDescription': 'Displays the GitHub home page info and supports copy only.',
+    'topbar.githubHome': 'Home Page',
+    'topbar.email': 'Email',
+    'topbar.emailDescription': 'Click an address to open your local mail client, or copy it directly.',
+    'topbar.qqMail': 'QQ Mail',
+    'topbar.gmail': 'Gmail',
+    'topbar.copy': 'Copy',
+    'topbar.wechat': 'WeChat',
+    'topbar.wechatDescription': 'Click the image to view the WeChat contact entry.',
+    'topbar.previewSuffix': ' Preview',
+    'studio.text.title': 'Text Studio',
+    'studio.text.description': 'Aligned with the image studio layout and switching logic, focused on text generation.',
+    'studio.text.menu': 'Text Workspace',
+    'studio.video.title': 'Video Studio',
+    'studio.video.description': 'Aligned with the image studio layout and switching logic, focused on video generation.',
+    'studio.video.menu': 'Video Workspace',
+    'listing.eyebrow': 'Listing Center',
+    'listing.title': 'Coming Soon',
+    'listing.description': 'The listing module is intentionally deferred and will be designed later around your workflow, platform integrations, and field rules.',
+    'listing.statusTitle': 'Module Status',
+    'listing.statusDescription': 'This page is only a placeholder for now and does not expose unfinished listing logic.',
+    'listing.lockedTitle': 'Listing module is not included in the current license',
+    'listing.pendingTitle': 'Listing features are under development',
+    'listing.lockedFallback': 'Please enable the listing module in the standalone authorization tool.',
+    'listing.pendingFallback': 'Once you define the platform fields, publishing flow, and API requirements, I can continue building this section.',
+    'hot.title': 'Trending Product List',
+    'hot.platformAria': 'Sourcing platform switch',
+    'hot.categoryTitle': 'Categories',
+    'hot.listTitle': 'Products',
+    'hot.summaryTop10': 'Top 10 by total sales',
+    'hot.summaryCached': 'Using local cache',
+    'hot.summaryPending': 'Waiting for today cache',
+    'hot.headerImage': 'Image',
+    'hot.headerInfo': 'Product Info',
+    'hot.headerMetrics': 'Metrics',
+    'hot.headerActions': 'Actions',
+    'hot.viewProduct': 'Open Product',
+    'hot.oneClickEdit': 'Quick Edit',
+    'hot.oneClickEditBusy': 'Processing...',
+    'hot.oneClickEditConfig': 'Quick Edit Settings',
+    'hot.oneClickGenerate': 'Quick Generate',
+    'hot.oneClickGenerateBusy': 'Generating...',
+    'hot.oneClickGenerateConfig': 'Quick Generate Settings',
+    'hot.rankTag': 'Sorted by total sales',
+    'hot.totalSold': 'Total sales',
+    'hot.conversion': 'Conversion',
+    'hot.assetDirection': 'Asset direction',
+    'hot.platform': 'Platform',
+    'hot.loadingImage': 'Loading image',
+    'hot.emptyImage': 'No image',
+    'hot.waitTitle': 'Waiting for cache sync',
+    'hot.waitDescription': 'The system prefers local cache. If no cache exists for the day, it waits for a safe interval, fetches once, stores locally, and refreshes again the next day.',
+    'hot.emptyTitle': 'No products available',
+    'hot.lockedTitle': 'Sourcing module is not included in the current license',
+    'hot.lockedFallback': 'Enable the sourcing module in the authorization tool to continue.',
+    'hot.productCount.loading': 'Waiting for today cache',
+    'hot.productCount.requesting': 'Syncing today data with a safe interval',
+    'hot.productCount.error': 'No data is currently available for this platform',
+    'hot.productCount.ready': '{count} products loaded',
+    'hot.cache.pending': 'The system will sync today data automatically after a safe delay',
+    'hot.cache.readyPrefix': 'Local cache updated: ',
+    'hot.cache.idle': 'Showing local cache or waiting for the first safe sync',
+    'hot.progress.delay': 'Safe delay in progress',
+    'hot.progress.request': 'Requesting product data',
+    'hot.progress.ready': 'Data ready',
+    'hot.progress.idle': 'Waiting to sync',
+    'hot.progress.startIn': ' until request starts',
+    'hot.prefetchPrefix': 'Background cache fill for other categories: ',
+    'hot.currentPlatform': 'Platform',
+    'hot.currentCategory': 'Category',
+    'admin.passwordTitleVerify': 'Admin Verification',
+    'admin.passwordTitleInit': 'Initialize Admin Password',
+    'admin.passwordDescriptionVerify': 'Enter the admin password',
+    'admin.passwordDescriptionInit': 'Set the admin password for first use',
+    'admin.passwordConfirmVerify': 'Verify and Continue',
+    'admin.passwordConfirmInit': 'Save and Continue'
+  }
+}
+
+function t(key, variables = null) {
+  const currentTable = APP_TRANSLATIONS[activeLanguage.value] || APP_TRANSLATIONS.zh
+  const fallbackValue = APP_TRANSLATIONS.zh[key] ?? key
+  let text = currentTable[key] ?? fallbackValue
+
+  if (variables && typeof text === 'string') {
+    Object.entries(variables).forEach(([name, value]) => {
+      text = text.replaceAll(`{${name}}`, String(value))
+    })
+  }
+
+  return text
+}
+
 const SOURCING_SAFE_DELAY_MS = 6500
 const SOURCING_CACHE_SETTINGS_KEY = 'sourcingCache'
 const SOURCING_CACHE_VERSION = '2026-05-27-total-sold-top10-v3-smt-preview'
@@ -198,7 +419,7 @@ function createDefaultSourcingWorkflowConfig() {
       video: {
         enabled: true,
         operation: 'auto',
-        duration: '10 秒',
+        duration: '8 秒',
         aspectRatio: '9:16',
         size: 'large',
         promptInput: ''
@@ -221,7 +442,7 @@ function createDefaultSourcingWorkflowConfig() {
       video: {
         enabled: true,
         operation: 'auto',
-        duration: '10 秒',
+        duration: '8 秒',
         aspectRatio: '9:16',
         size: 'large',
         promptInput: '围绕商品核心卖点生成适合电商转化的视频提示词。'
@@ -757,6 +978,131 @@ const sourcingSceneOptions = [
   { key: 'big_sale_new', label: '大卖新品' }
 ]
 
+const topBarLocaleText = computed(() => ({
+  navAriaLabel: t('topbar.nav'),
+  themeLabel: t('topbar.theme'),
+  languageLabel: t('topbar.language'),
+  cleanupLabel: t('topbar.cleanup'),
+  activationLabel: t('topbar.activation'),
+  authorizedDeviceLabel: t('topbar.authorizedDevice'),
+  closeLabel: t('topbar.close'),
+  copyLabel: t('topbar.copy'),
+  githubLabel: t('topbar.github'),
+  githubDescription: t('topbar.githubDescription'),
+  githubHomeLabel: t('topbar.githubHome'),
+  emailLabel: t('topbar.email'),
+  emailDescription: t('topbar.emailDescription'),
+  qqMailLabel: t('topbar.qqMail'),
+  gmailLabel: t('topbar.gmail'),
+  wechatLabel: t('topbar.wechat'),
+  wechatDescription: t('topbar.wechatDescription'),
+  previewSuffix: t('topbar.previewSuffix')
+}))
+
+const localizedNavItems = computed(() => {
+  return navItems.value.map((item) => ({
+    ...item,
+    label: t(`nav.${item.key}`)
+  }))
+})
+
+const localizedActivationSummary = computed(() => {
+  const summary = activationSummary.value
+  if (!summary) {
+    return null
+  }
+
+  return {
+    ...summary,
+    customerName: activationState.value.customerName || t('topbar.authorizedDevice'),
+    edition: summary.edition || '',
+    licenseId: summary.licenseId || ''
+  }
+})
+
+const localizedSourcingPlatformOptions = computed(() => {
+  return sourcingPlatformOptions.map((item) => {
+    if (item.key === 'shopee') {
+      return { ...item, label: 'Shopee', siteLabel: 'Shopee Hot Sale' }
+    }
+    if (item.key === 'amazon') {
+      return { ...item, label: 'Amazon', siteLabel: 'Amazon Hot Sale' }
+    }
+    if (item.key === 'smt') {
+      return { ...item, label: 'AliExpress', siteLabel: 'AliExpress Hot Sale' }
+    }
+    return { ...item }
+  })
+})
+
+const localizedSourcingSceneOptions = computed(() => {
+  return [
+    { key: 'hot', label: activeLanguage.value === 'zh' ? '热销商品' : 'Hot Sale' },
+    { key: 'hot_new', label: activeLanguage.value === 'zh' ? '热销新品' : 'Hot New' },
+    { key: 'new_shop_hot', label: activeLanguage.value === 'zh' ? '新店热销' : 'New Store Hot' },
+    { key: 'big_sale_new', label: activeLanguage.value === 'zh' ? '大卖新品' : 'Best Seller New' }
+  ]
+})
+
+const hotProductsLocaleText = computed(() => ({
+  title: t('hot.title'),
+  platformAria: t('hot.platformAria'),
+  categoryTitle: t('hot.categoryTitle'),
+  listTitle: t('hot.listTitle'),
+  summaryTop10: t('hot.summaryTop10'),
+  summaryCached: t('hot.summaryCached'),
+  summaryPending: t('hot.summaryPending'),
+  headerImage: t('hot.headerImage'),
+  headerInfo: t('hot.headerInfo'),
+  headerMetrics: t('hot.headerMetrics'),
+  headerActions: t('hot.headerActions'),
+  viewProduct: t('hot.viewProduct'),
+  oneClickEdit: t('hot.oneClickEdit'),
+  oneClickEditBusy: t('hot.oneClickEditBusy'),
+  oneClickEditConfig: t('hot.oneClickEditConfig'),
+  oneClickGenerate: t('hot.oneClickGenerate'),
+  oneClickGenerateBusy: t('hot.oneClickGenerateBusy'),
+  oneClickGenerateConfig: t('hot.oneClickGenerateConfig'),
+  rankTag: t('hot.rankTag'),
+  totalSold: t('hot.totalSold'),
+  conversion: t('hot.conversion'),
+  assetDirection: t('hot.assetDirection'),
+  platform: t('hot.platform'),
+  loadingImage: t('hot.loadingImage'),
+  emptyImage: t('hot.emptyImage'),
+  waitTitle: t('hot.waitTitle'),
+  waitDescription: t('hot.waitDescription'),
+  emptyTitle: t('hot.emptyTitle'),
+  lockedTitle: t('hot.lockedTitle'),
+  lockedFallback: t('hot.lockedFallback'),
+  currentPlatform: t('hot.currentPlatform'),
+  currentCategory: t('hot.currentCategory'),
+  productCountLoading: t('hot.productCount.loading'),
+  productCountRequesting: t('hot.productCount.requesting'),
+  productCountError: t('hot.productCount.error'),
+  cachePending: t('hot.cache.pending'),
+  cacheReadyPrefix: t('hot.cache.readyPrefix'),
+  cacheIdle: t('hot.cache.idle'),
+  progressDelay: t('hot.progress.delay'),
+  progressRequest: t('hot.progress.request'),
+  progressReady: t('hot.progress.ready'),
+  progressIdle: t('hot.progress.idle'),
+  progressStartIn: t('hot.progress.startIn'),
+  prefetchPrefix: t('hot.prefetchPrefix')
+}))
+
+const listingLocaleText = computed(() => ({
+  eyebrow: t('listing.eyebrow'),
+  title: t('listing.title'),
+  description: t('listing.description'),
+  statusTitle: t('listing.statusTitle'),
+  statusDescription: t('listing.statusDescription'),
+  lockedTitle: t('listing.lockedTitle'),
+  pendingTitle: t('listing.pendingTitle'),
+  lockedFallback: t('listing.lockedFallback'),
+  pendingFallback: t('listing.pendingFallback')
+}))
+
 const sourcingPlatformContentMap = {
   temu: {
     platformCards: [
@@ -859,6 +1205,7 @@ const textParameterSections = {
           { key: 'text_task_name', label: '任务名称', placeholder: '例如：2026-05-28-01', value: '', layout: 'half' },
           { key: 'text_model', label: '文本模型', type: 'select', options: textModelOptions, value: 'GLM-4.7-Flash', layout: 'half' },
           { key: 'text_platform_format', label: '选择平台格式', type: 'select', options: ['TEMU', 'SHEIN', '虾皮', '亚马逊', '速卖通', 'TikTok', '淘宝', '抖音', '小红书', '拼多多'], value: 'TEMU', layout: 'half' },
+          { key: 'text_language', label: '语言', type: 'select', options: ['中文', '英文', '西班牙语', '葡萄牙语', '法语', '德语', '意大利语', '日语', '韩语', '泰语', '越南语', '印尼语', '马来语', '阿拉伯语', '俄语', '土耳其语', '荷兰语', '波兰语', '捷克语', '罗马尼亚语', '匈牙利语', '希腊语', '希伯来语', '印地语', '孟加拉语', '乌尔都语', '泰米尔语', '菲律宾语', '乌克兰语'], value: '中文', layout: 'half' },
           { key: 'text_batch_count', label: '批次', type: 'number', placeholder: '例如 3', value: 3, hint: '每一组会同时产出 1 条标题和 1 条详情。', layout: 'half' },
           { key: 'text_length_limit', label: '字数', placeholder: '例如：标题 24-30 字；详情 80-140 字', value: '标题 24-30 字；详情 80-140 字', layout: 'half' },
           { key: 'text_product_name', label: '商品名称', placeholder: '输入商品名称', value: '', layout: 'half' },
@@ -892,7 +1239,7 @@ const videoParameterSections = {
           { key: 'video_operation', label: '生成方式', type: 'select', options: ['文生视频', '图生视频'], value: '文生视频', layout: 'half' },
           { key: 'video_platform', label: '选择平台格式', type: 'select', options: ['TEMU', 'SHEIN', '虾皮', '亚马逊', '速卖通', 'TikTok', '抖音', '小红书'], value: 'TikTok', layout: 'half' },
           { key: 'video_batch_count', label: '批次', type: 'number', placeholder: '例如 2', value: 1, hint: '每个批次会生成一条视频结果。', layout: 'half' },
-          { key: 'video_duration', label: '视频时长', type: 'select', options: ['10 秒', '15 秒'], value: '10 秒', layout: 'half' },
+          { key: 'video_duration', label: '视频时长', type: 'select', options: ['4 秒', '8 秒', '12 秒'], value: '8 秒', layout: 'half' },
           { key: 'video_aspect_ratio', label: '视频比例', type: 'select', options: ['9:16', '16:9'], value: '9:16', layout: 'half' },
           { key: 'video_size', label: '清晰规格', type: 'select', options: ['small', 'large'], value: 'large', layout: 'half' },
           { key: 'video_output_goal', label: '本轮目标', type: 'select', options: ['商品转化', '详情视频位', '种草引流', '起量测试'], value: '商品转化', layout: 'half' },
@@ -1285,6 +1632,21 @@ function classifyVideoStatusState(error) {
     })
   }
 
+  if (
+    normalizedMessage.includes('distributor') ||
+    normalizedMessage.includes('无可用渠道') ||
+    normalizedMessage.includes('不可用渠道') ||
+    normalizedMessage.includes('no available channel')
+  ) {
+    return createVideoStatusState({
+      tone: 'warning',
+      title: '视频通道暂不可用',
+      badge: '渠道受限',
+      message: '当前上游分组没有为这个模型分发可用视频通道。系统已自动尝试稳定候选模型，若仍失败，需要等待上游恢复或更换可用分组。',
+      detail: errorMessage
+    })
+  }
+
   if (normalizedMessage.includes('图片') || normalizedMessage.includes('image')) {
     return createVideoStatusState({
       tone: 'warning',
@@ -1300,7 +1662,7 @@ function classifyVideoStatusState(error) {
       tone: 'warning',
       title: '视频时长不支持',
       badge: '参数限制',
-      message: '当前通道仅支持 4 秒、8 秒、12 秒三个时长，请调整后重试。',
+      message: '当前 Sora 通道请使用 4 秒、8 秒或 12 秒；系统也会在旧配置残留 10 秒时自动纠偏。',
       detail: errorMessage
     })
   }
@@ -1351,6 +1713,7 @@ function buildTextPrompt(formState = {}) {
     `任务名称：${formState.text_task_name || ''}`,
     `文本模型：${formState.text_model || TEXT_MODEL_NAME}`,
     `平台格式：${formState.text_platform_format || ''}`,
+    `输出语言：${formState.text_language || '中文'}`,
     `商品名称：${formState.text_product_name || ''}`,
     `批次：${normalizeTextCount(formState.text_batch_count, 3)}`,
     `字数要求：${formState.text_length_limit || ''}`,
@@ -1358,6 +1721,7 @@ function buildTextPrompt(formState = {}) {
     `核心提示词：${formState.text_prompt_input || ''}`,
     '请按批次输出多组电商文本结果。',
     '每一组都必须同时包含：1. 商品标题；2. 商品详情。',
+    `所有输出内容必须使用${formState.text_language || '中文'}。`,
     '标题要更适合搜索与点击，详情要更适合详情页与草稿承接。',
     '不要输出解释，不要编号，不要输出多余前缀。',
     '每组结果请先写标题，再换行写详情。'
@@ -1397,6 +1761,7 @@ function buildSourcingTextFormState(sourceItem = {}, mode = 'edit') {
     text_task_name: createDailyTaskName(),
     text_model: TEXT_MODEL_NAME,
     text_platform_format: sourceItem.platform || 'TEMU',
+    text_language: '中文',
     text_batch_count: normalizeTextCount(textConfig.batchCount, 3),
     text_length_limit: textConfig.lengthLimit || '标题 24-30 字；详情 80-140 字',
     text_product_name: sourceItem.title || '',
@@ -1544,7 +1909,7 @@ function buildSourcingVideoFormStateV2(sourceItem = {}, mode = 'edit') {
         ? '文生视频'
         : (sourceItem.preview ? '图生视频' : '文生视频'),
     video_platform: sourceItem.platform || 'TikTok',
-    video_duration: videoConfig.duration || '10 秒',
+    video_duration: videoConfig.duration || '8 秒',
     video_aspect_ratio: videoConfig.aspectRatio || '9:16',
     video_size: videoConfig.size || 'large',
     video_product_name: '',
@@ -1744,6 +2109,10 @@ function getNormalizedDraftTimestamp() {
     second: '2-digit',
     hour12: false
   }).format(new Date())
+}
+
+function resolveDraftDisplayTitle(item = {}) {
+  return item?.draftPayload?.productName || item?.draftPayload?.listingTitle || item?.title || '未命名草稿'
 }
 
 function resolveDraftWorkflowKey(payload = {}) {
@@ -2092,8 +2461,34 @@ function createStandaloneDraftFromPayload(payload = {}, createdAt = '') {
   }
 }
 
-function upsertDraftItemByWorkflow(payload = {}) {
+function upsertDraftItemByWorkflow(payload = {}, {
+  targetDraftId = '',
+  forceNew = false
+} = {}) {
   const createdAt = getNormalizedDraftTimestamp()
+  const normalizedTargetDraftId = String(targetDraftId || '').trim()
+  if (normalizedTargetDraftId) {
+    const targetIndex = draftItems.value.findIndex((item) => item.id === normalizedTargetDraftId)
+    if (targetIndex >= 0) {
+      const targetDraft = draftItems.value[targetIndex]
+      const mergedDraft = mergeDraftIntoExistingGroup(targetDraft, payload, createdAt)
+      draftItems.value = [
+        mergedDraft,
+        ...draftItems.value.filter((_item, index) => index !== targetIndex)
+      ]
+      return { merged: true, draft: mergedDraft, targetMode: 'selected' }
+    }
+  }
+
+  if (forceNew) {
+    const nextDraft = createStandaloneDraftFromPayload(payload, createdAt)
+    draftItems.value = [
+      nextDraft,
+      ...draftItems.value
+    ]
+    return { merged: false, draft: nextDraft, targetMode: 'new' }
+  }
+
   const workflowKey = resolveDraftWorkflowKey(payload)
   const existingIndex = workflowKey
     ? draftItems.value.findIndex((item) => resolveDraftWorkflowKey(item) === workflowKey)
@@ -2106,7 +2501,7 @@ function upsertDraftItemByWorkflow(payload = {}) {
       mergedDraft,
       ...draftItems.value.filter((_item, index) => index !== existingIndex)
     ]
-    return { merged: true, draft: mergedDraft }
+    return { merged: true, draft: mergedDraft, targetMode: 'workflow' }
   }
 
   const nextDraft = createStandaloneDraftFromPayload(payload, createdAt)
@@ -2114,7 +2509,43 @@ function upsertDraftItemByWorkflow(payload = {}) {
     nextDraft,
     ...draftItems.value
   ]
-  return { merged: false, draft: nextDraft }
+  return { merged: false, draft: nextDraft, targetMode: 'new' }
+}
+
+function openDraftTargetDialog(payload = {}) {
+  pendingDraftPayload.value = payload
+  const workflowKey = resolveDraftWorkflowKey(payload)
+  const matchedDraft = workflowKey
+    ? draftItems.value.find((item) => resolveDraftWorkflowKey(item) === workflowKey)
+    : null
+  selectedDraftTargetId.value = matchedDraft?.id || '__new__'
+  isDraftTargetDialogVisible.value = true
+}
+
+function closeDraftTargetDialog() {
+  isDraftTargetDialogVisible.value = false
+  pendingDraftPayload.value = null
+  selectedDraftTargetId.value = '__new__'
+}
+
+function confirmDraftTargetSelection() {
+  const payload = pendingDraftPayload.value
+  if (!payload) {
+    closeDraftTargetDialog()
+    return
+  }
+
+  const useNewDraft = selectedDraftTargetId.value === '__new__'
+  const result = upsertDraftItemByWorkflow(payload, useNewDraft
+    ? { forceNew: true }
+    : { targetDraftId: selectedDraftTargetId.value })
+
+  closeDraftTargetDialog()
+  showNotice(
+    'success',
+    result.merged ? '已更新草稿' : '已加入草稿',
+    `${payload.title || '当前结果'} ${result.merged ? '已并入所选草稿。' : '已新建草稿。'}`
+  )
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -2392,7 +2823,7 @@ function buildVideoPromptForProvider(formState = {}) {
     `发布平台：${formState.video_platform || ''}`,
     `生成方式：${formState.video_operation || ''}`,
     `视频模型：${formState.video_model || VIDEO_MODEL_NAME}`,
-    `视频时长：${formState.video_duration || '10 秒'}`,
+    `视频时长：${formState.video_duration || '8 秒'}`,
     `画面比例：${formState.video_aspect_ratio || '9:16'}`,
     `清晰规格：${formState.video_size || 'large'}`,
     `视频提示词：${formState.video_prompt_input || ''}`,
@@ -2422,7 +2853,7 @@ function buildVideoGenerationDraftForProvider(formState = {}) {
     }),
     quantity: normalizeVideoCount(formState.video_batch_count, 1),
     operation: isImageToVideo ? 'image-to-video' : 'text-to-video',
-    duration: formState.video_duration || '10 秒',
+    duration: formState.video_duration || '8 秒',
     aspectRatio: formState.video_aspect_ratio || '9:16',
     size: formState.video_size || 'large',
     imageUrl: isImageToVideo ? assetPath : '',
@@ -2550,10 +2981,10 @@ function createTextResultGroup(item, index, formState = {}) {
     subtitle: '标题 + 详情',
     outputTitle: resolvedBundle.title,
     summary: resolvedBundle.description || resolvedBundle.title || '',
-    detail: `适用方向：${formState.text_platform_format || '默认平台'} / ${formState.text_length_limit || '默认字数'} / 标题 + 详情`,
     metadata: [
       { label: '平台', value: formState.text_platform_format || '未设置' },
       { label: '模型', value: formState.text_model || TEXT_MODEL_NAME },
+      { label: '语言', value: formState.text_language || '中文' },
       { label: '批次', value: `${order} / ${normalizeTextCount(formState.text_batch_count, 3)}` },
       { label: '字数', value: formState.text_length_limit || '未设置' }
     ],
@@ -3549,12 +3980,17 @@ function handleSendToDraft(payload) {
     return
   }
 
-  const result = upsertDraftItemByWorkflow(payload)
-  showNotice(
-    'success',
-    result.merged ? '已更新草稿' : '已加入草稿',
-    `${payload.title || '当前结果'} ${result.merged ? '已合并到对应商品草稿。' : '已发送到草稿。'}`
-  )
+  if (!draftItems.value.length) {
+    const result = upsertDraftItemByWorkflow(payload, { forceNew: true })
+    showNotice(
+      'success',
+      result.merged ? '已更新草稿' : '已加入草稿',
+      `${payload.title || '当前结果'} 已新建草稿。`
+    )
+    return
+  }
+
+  openDraftTargetDialog(payload)
 }
 
 function handleDraftFieldUpdate({ draftId, path, value }) {
@@ -3569,6 +4005,7 @@ function handleDraftFieldUpdate({ draftId, path, value }) {
 
     return {
       ...item,
+      createdAt: getNormalizedDraftTimestamp(),
       draftPayload: updateNestedValue(item.draftPayload || {}, path, value)
     }
   })
@@ -3605,6 +4042,18 @@ async function handleOpenExternalResultLink({ targetUrl = '', label = '链接' }
   } catch (error) {
     showNotice('error', `打开${label}失败`, error?.message || '当前链接未能成功打开')
   }
+}
+
+async function handleTopbarCopyEmail(entry = {}) {
+  const address = String(entry?.address || '').trim()
+  const label = String(entry?.label || topBarLocaleText.value.emailLabel || '邮箱').trim()
+  await handleCopyDraftAsset(address, label)
+}
+
+async function handleTopbarCopyGithub(entry = {}) {
+  const value = String(entry?.value || '').trim()
+  const label = String(entry?.label || topBarLocaleText.value.githubLabel || 'GitHub').trim()
+  await handleCopyDraftAsset(value, label)
 }
 
 function handleOpenDraftAssetPreview(previewUrl = '') {
@@ -3952,12 +4401,43 @@ function handleActivationEntry() {
   isActivationCenterOpen.value = true
 }
 
+async function loadAppLanguagePreference() {
+  const settings = await getSettings().catch(() => ({}))
+  const savedLanguage = String(settings?.[APP_LANGUAGE_SETTINGS_KEY] || '').trim().toLowerCase()
+
+  if (savedLanguage === 'zh' || savedLanguage === 'en') {
+    activeLanguage.value = savedLanguage
+  }
+}
+
+async function handleLanguageChange(nextLanguage = 'zh') {
+  const normalizedLanguage = String(nextLanguage || '').trim().toLowerCase() === 'en' ? 'en' : 'zh'
+
+  if (activeLanguage.value === normalizedLanguage) {
+    return
+  }
+
+  activeLanguage.value = normalizedLanguage
+  await saveSettings({
+    [APP_LANGUAGE_SETTINGS_KEY]: normalizedLanguage
+  }).catch(() => {})
+}
+
 function getModuleLockMessage(moduleKey = '', moduleLabel = '') {
   if (!moduleKey || hasModuleAccess(moduleKey)) {
     return ''
   }
 
   return `当前授权未开通“${moduleLabel || moduleKey}”模块，请在独立授权工具中补充该模块授权。`
+}
+
+function getLocalizedModuleLockMessage(moduleKey = '', moduleLabel = '') {
+  if (activeLanguage.value === 'en') {
+    const label = moduleLabel || t(`module.${moduleKey}`) || moduleKey
+    return `The current license does not include the ${label} module. Please enable it in the standalone authorization tool.`
+  }
+
+  return getModuleLockMessage(moduleKey, moduleLabel)
 }
 
 function getSourcingWorkflowCapability(mode = 'edit') {
@@ -4001,7 +4481,12 @@ function handleNavSelect(nextPage = '') {
 
   const requiredModule = moduleKeyByPage[pageKey]
   if (requiredModule && !hasModuleAccess(requiredModule)) {
-    showNotice('error', '当前授权未开通', `当前授权未开通“${navItems.value.find((item) => item.key === pageKey)?.label || pageKey}”模块。`)
+    const pageLabel = localizedNavItems.value.find((item) => item.key === pageKey)?.label || pageKey
+    if (activeLanguage.value === 'en') {
+      showNotice('error', 'Module unavailable', `The current license does not include the ${pageLabel} module.`)
+    } else {
+      showNotice('error', '当前授权未开通', `当前授权未开通“${pageLabel}”模块。`)
+    }
     return
   }
 
@@ -4009,6 +4494,7 @@ function handleNavSelect(nextPage = '') {
 }
 
 onMounted(async () => {
+  await loadAppLanguagePreference()
   await loadActivationState()
 
   if (isActivationReady.value) {
@@ -4039,10 +4525,15 @@ onBeforeUnmount(() => {
       brand-label="QiuAi-ECMS"
       :theme-options="themeOptions"
       :active-theme="activeTheme"
-      :activation-summary="activationSummary"
-      :nav-items="navItems"
+      :active-language="activeLanguage"
+      :locale-text="topBarLocaleText"
+      :activation-summary="localizedActivationSummary"
+      :nav-items="localizedNavItems"
       :active-nav="activePage"
       @nav-select="handleNavSelect"
+      @language-change="handleLanguageChange"
+      @copy-github="handleTopbarCopyGithub"
+      @copy-email="handleTopbarCopyEmail"
       @cleanup-click="handleCleanupClick"
       @activation-click="handleActivationEntry"
     />
@@ -4067,19 +4558,20 @@ onBeforeUnmount(() => {
     <section v-else class="ecms-shell">
       <HotProductsPage
         v-if="activePage === 'hot'"
-        :platform-options="sourcingPlatformOptions"
+        :platform-options="localizedSourcingPlatformOptions"
         :active-platform-key="activeSourcingPlatform"
-        :scene-options="sourcingSceneOptions"
+        :scene-options="localizedSourcingSceneOptions"
         :active-scene-key="activeSourcingScene"
         :trend-products="activeSourcingContent.trendProducts"
         :workflow-target-id="sourcingWorkflowState.targetId"
         :is-workflow-running="sourcingWorkflowState.running"
         :is-loading-products="sourcingProductsLoading"
         :module-locked="!hasModuleAccess('sourcing')"
-        :module-lock-message="getModuleLockMessage('sourcing', '选品')"
+        :module-lock-message="getLocalizedModuleLockMessage('sourcing', t('module.sourcing'))"
         :has-loaded-products="sourcingProductsLoaded"
         :auto-refresh-status="sourcingAutoRefreshStatus"
         :prefetch-state="sourcingPrefetchState"
+        :locale-text="hotProductsLocaleText"
         @one-click-edit="handleSourcingOneClickEdit"
         @one-click-generate="handleSourcingOneClickGenerate"
         @open-one-click-config="openSourcingWorkflowConfig"
@@ -4090,15 +4582,15 @@ onBeforeUnmount(() => {
 
       <EcmsStudioPage
         v-else-if="activePage === 'text'"
-        title="文本工坊"
-        description="严格参照生图页的布局和切换逻辑，当前聚焦标题生成与描述生成。"
+        :title="t('studio.text.title')"
+        :description="t('studio.text.description')"
         :menu-items="textMenuItems"
         :overview-cards="textOverviewCards"
         :parameter-sections="textParameterSections"
         :result-sections="textResultSections"
         :queue-cards="textQueueCards"
         :tasks="textSidebarTasks"
-        menu-label="文本工作台"
+        :menu-label="t('studio.text.menu')"
         :export-items="textExportItems"
         :selected-export-ids="ecmsSelectedExportIds.text"
         :download-cleanup-enabled="ecmsDownloadCleanupEnabled.text"
@@ -4113,11 +4605,13 @@ onBeforeUnmount(() => {
         :negative-prompt-templates="negativePromptTemplates"
         module-key="text"
         :module-locked="!hasModuleAccess('text')"
-        :module-lock-message="getModuleLockMessage('text', '文本')"
+        :module-lock-message="getLocalizedModuleLockMessage('text', t('module.text'))"
         :external-form-action="textExternalFormAction"
         default-menu="workspace"
+        :remembered-menu="rememberedTextMenu"
         :is-refreshing-total-credits="false"
         :is-refreshing-remaining-credits="false"
+        @menu-change="rememberedTextMenu = $event"
         @send-to-draft="handleSendToDraft"
         @copy-result="handleCopyDraftAsset"
         @open-result-link="handleOpenExternalResultLink"
@@ -4142,24 +4636,26 @@ onBeforeUnmount(() => {
         <LegacyStudioApp
           :key="legacyStudioKey"
           embedded
+          :default-menu="rememberedImageMenu"
           :module-locked="!hasModuleAccess('image')"
-          :module-lock-message="getModuleLockMessage('image', '生图')"
+          :module-lock-message="getLocalizedModuleLockMessage('image', t('module.image'))"
           :external-workflow-payload="imageWorkflowPayload"
+          @menu-change="rememberedImageMenu = $event"
           @send-to-draft="handleSendToDraft"
         />
       </section>
 
       <EcmsStudioPage
         v-else-if="activePage === 'video'"
-        title="视频工坊"
-        description="严格参照生图页的布局和切换逻辑，当前聚焦视频生成。"
+        :title="t('studio.video.title')"
+        :description="t('studio.video.description')"
         :menu-items="videoMenuItems"
         :overview-cards="videoOverviewCards"
         :parameter-sections="videoParameterSections"
         :result-sections="videoResultSections"
         :queue-cards="videoQueueCards"
         :tasks="videoSidebarTasks"
-        menu-label="视频工作台"
+        :menu-label="t('studio.video.menu')"
         :export-items="videoExportItems"
         :selected-export-ids="ecmsSelectedExportIds.video"
         :download-cleanup-enabled="ecmsDownloadCleanupEnabled.video"
@@ -4174,11 +4670,13 @@ onBeforeUnmount(() => {
         :negative-prompt-templates="negativePromptTemplates"
         module-key="video"
         :module-locked="!hasModuleAccess('video')"
-        :module-lock-message="getModuleLockMessage('video', '视频')"
+        :module-lock-message="getLocalizedModuleLockMessage('video', t('module.video'))"
         :external-form-action="videoExternalFormAction"
         default-menu="workspace"
+        :remembered-menu="rememberedVideoMenu"
         :is-refreshing-total-credits="isRefreshingVideoBilling"
         :is-refreshing-remaining-credits="isRefreshingVideoBilling"
+        @menu-change="rememberedVideoMenu = $event"
         @send-to-draft="handleSendToDraft"
         @copy-result="handleCopyDraftAsset"
         @open-result-link="handleOpenExternalResultLink"
@@ -4202,7 +4700,7 @@ onBeforeUnmount(() => {
         v-else-if="activePage === 'draft'"
         :draft-items="draftItems"
         :module-locked="!hasModuleAccess('draft')"
-        :module-lock-message="getModuleLockMessage('draft', '草稿')"
+        :module-lock-message="getLocalizedModuleLockMessage('draft', t('module.draft'))"
         @update-draft-field="handleDraftFieldUpdate"
         @copy-asset="handleCopyDraftAsset"
         @preview-asset="handleOpenDraftAssetPreview"
@@ -4213,10 +4711,65 @@ onBeforeUnmount(() => {
         v-else
         :draft-items="draftItems"
         :module-locked="!hasModuleAccess('listing')"
-        :module-lock-message="getModuleLockMessage('listing', '上架')"
+        :module-lock-message="getLocalizedModuleLockMessage('listing', t('module.listing'))"
+        :locale-text="listingLocaleText"
         @update-draft-field="handleDraftFieldUpdate"
       />
     </section>
+
+    <div
+      v-if="isDraftTargetDialogVisible"
+      class="draft-target-dialog"
+      @click.self="closeDraftTargetDialog"
+    >
+      <div class="draft-target-dialog__card">
+        <div class="draft-target-dialog__header">
+          <strong>发送到草稿</strong>
+          <button type="button" class="secondary-action secondary-action--compact" @click="closeDraftTargetDialog">
+            关闭
+          </button>
+        </div>
+
+        <div class="draft-target-dialog__body">
+          <label class="draft-target-option" :class="{ 'draft-target-option--active': selectedDraftTargetId === '__new__' }">
+            <input v-model="selectedDraftTargetId" type="radio" value="__new__" />
+            <div>
+              <strong>新建草稿</strong>
+              <span>把当前结果单独建成一个新草稿</span>
+            </div>
+          </label>
+
+          <div class="draft-target-dialog__list module-scroll scrollbar-hidden">
+            <label
+              v-for="item in draftItems"
+              :key="item.id"
+              class="draft-target-option"
+              :class="{ 'draft-target-option--active': selectedDraftTargetId === item.id }"
+            >
+              <input v-model="selectedDraftTargetId" type="radio" :value="item.id" />
+              <div class="draft-target-option__content">
+                <div v-if="item.preview" class="draft-target-option__preview">
+                  <img :src="item.preview" :alt="resolveDraftDisplayTitle(item)" />
+                </div>
+                <div class="draft-target-option__copy">
+                  <strong>{{ resolveDraftDisplayTitle(item) }}</strong>
+                  <span>{{ item.draftPayload?.targetPlatform || item.source || '未分平台' }}</span>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="draft-target-dialog__footer">
+          <button type="button" class="secondary-action" @click="closeDraftTargetDialog">
+            取消
+          </button>
+          <button type="button" class="primary-action" @click="confirmDraftTargetSelection">
+            确认发送
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div
       v-if="isActivationReady && isActivationCenterOpen"
@@ -4242,9 +4795,9 @@ onBeforeUnmount(() => {
       :password="adminPasswordDraft"
       :is-submitting="isAdminPasswordSubmitting"
       :feedback-message="adminPasswordFeedback"
-      :title="adminStatusState.passwordConfigured ? '管理员验证' : '初始化管理员口令'"
-      :description="adminStatusState.passwordConfigured ? '请输入管理员口令' : '首次使用请设置管理员口令'"
-      :confirm-label="adminStatusState.passwordConfigured ? '验证并继续' : '设置并继续'"
+      :title="adminStatusState.passwordConfigured ? t('admin.passwordTitleVerify') : t('admin.passwordTitleInit')"
+      :description="adminStatusState.passwordConfigured ? t('admin.passwordDescriptionVerify') : t('admin.passwordDescriptionInit')"
+      :confirm-label="adminStatusState.passwordConfigured ? t('admin.passwordConfirmVerify') : t('admin.passwordConfirmInit')"
       @update-password="adminPasswordDraft = $event"
       @confirm="handleConfirmAdminPassword"
       @close="handleCloseAdminPasswordDialog"
