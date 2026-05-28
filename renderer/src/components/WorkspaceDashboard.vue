@@ -17,21 +17,30 @@ const props = defineProps({
   isRefreshingRemainingCredits: {
     type: Boolean,
     required: true
+  },
+  serviceConfig: {
+    type: Object,
+    default: () => ({
+      title: '服务配置状态',
+      mode: 'readonly',
+      headline: 'API 已由服务端预配置',
+      description: '如需更换配置，请联系服务方。',
+      helperText: '',
+      fields: [],
+      actionLabel: '',
+      actionBusyLabel: '',
+      actionDisabled: false,
+      actionBusy: false
+    })
   }
 })
 
 const emit = defineEmits([
   'refresh-total-credits',
-  'refresh-remaining-credits'
+  'refresh-remaining-credits',
+  'service-config-update',
+  'save-service-config'
 ])
-
-// 固定工作台卡片标题：
-// 单图测试统计
-// 单图设计统计
-// 套图设计统计
-// 套图生成统计
-// 固定统计项示例：
-// 模型调用次数
 
 function createFallbackStatsCard(title) {
   return {
@@ -39,6 +48,31 @@ function createFallbackStatsCard(title) {
     items: []
   }
 }
+
+const resolvedServiceConfig = computed(() => {
+  return {
+    title: '服务配置状态',
+    mode: 'readonly',
+    headline: 'API 已由服务端预配置',
+    description: '如需更换配置，请联系服务方。',
+    helperText: '',
+    defaultFields: [],
+    actionLabel: '',
+    actionBusyLabel: '',
+    actionDisabled: false,
+    actionBusy: false,
+    ...(props.serviceConfig || {}),
+    fields: Array.isArray(props.serviceConfig?.fields) ? props.serviceConfig.fields : []
+  }
+})
+
+const showStatusOverview = computed(() => {
+  return Boolean(props.workspaceDashboard?.statusOverview)
+})
+
+const statusOverviewCard = computed(() => {
+  return props.workspaceDashboard.statusOverview || createFallbackStatsCard('信息状态栏')
+})
 
 const topStatisticsCards = computed(() => {
   return [
@@ -125,6 +159,14 @@ const creditOverviewCard = computed(() => {
   }
 })
 
+const gaugePrimaryLabel = computed(() => {
+  const labels = (creditOverviewCard.value.items || []).map((item) => item.label)
+  if (labels.includes('当前余额')) {
+    return '当前余额'
+  }
+  return '剩余积分'
+})
+
 function resolveCreditOverviewValue(labels) {
   const normalizedLabels = Array.isArray(labels) ? labels : [labels]
   return computed(() => {
@@ -133,8 +175,14 @@ function resolveCreditOverviewValue(labels) {
   })
 }
 
-const remainingCredits = resolveCreditOverviewValue('剩余积分')
-const totalCredits = resolveCreditOverviewValue(['总积分', '累计充值积分'])
+const remainingCredits = computed(() => {
+  const value = resolveCreditOverviewValue(['当前余额', '剩余积分']).value
+  return value
+})
+const totalCredits = computed(() => {
+  const value = resolveCreditOverviewValue(['总额度', '总积分', '累计充值积分']).value
+  return value
+})
 
 const creditGaugeProgress = computed(() => {
   const currentValue = Number.parseInt(String(remainingCredits.value).replace(/[^\d]/g, ''), 10) || 0
@@ -150,8 +198,23 @@ const creditGaugeGlow = computed(() => {
 const creditMessagesCard = computed(() => {
   return props.workspaceDashboard.creditMessages || {
     title: '本地任务积分记录',
-    helperText: '（本栏为本地模拟记账，真实数据以仪表盘为准）',
     items: []
+  }
+})
+
+const creditActionConfig = computed(() => {
+  const source = props.workspaceDashboard?.creditActions
+  if (!source || typeof source !== 'object') {
+    return {
+      mode: 'dual'
+    }
+  }
+
+  return {
+    mode: source.mode === 'single' ? 'single' : 'dual',
+    primaryLabel: source.primaryLabel || '',
+    primaryBusyLabel: source.primaryBusyLabel || '更新中...',
+    primaryAction: source.primaryAction === 'refresh-remaining' ? 'refresh-remaining' : 'refresh-total'
   }
 })
 
@@ -173,57 +236,110 @@ function refreshTotalCredits() {
 function refreshRemainingCredits() {
   emit('refresh-remaining-credits')
 }
+
+const totalRefreshLabel = computed(() => {
+  return gaugePrimaryLabel.value === '当前余额' ? '更新总额度' : '更新总积分'
+})
+
+const remainingRefreshLabel = computed(() => {
+  return gaugePrimaryLabel.value === '当前余额' ? '更新当前余额' : '更新剩余积分'
+})
+
+function updateServiceConfigField(key, value) {
+  emit('service-config-update', {
+    key,
+    value
+  })
+}
+
+function saveServiceConfig() {
+  emit('save-service-config')
+}
+
+function handlePrimaryCreditAction() {
+  if (creditActionConfig.value.primaryAction === 'refresh-remaining') {
+    refreshRemainingCredits()
+    return
+  }
+
+  refreshTotalCredits()
+}
 </script>
 
 <template>
   <section class="workspace-dashboard">
     <div class="workspace-dashboard__inner">
-      <div class="dashboard-column dashboard-column--stats-stack">
-        <div class="dashboard-column__stack">
-          <article
-            v-for="card in topStatisticsCards"
-            :key="card.title"
-            class="dashboard-stat-card"
-          >
+      <div :class="['dashboard-column', showStatusOverview ? 'dashboard-column--stats-compact' : 'dashboard-column--stats-stack']">
+        <template v-if="showStatusOverview">
+          <article class="dashboard-stat-card dashboard-stat-card--status-overview">
             <header class="dashboard-card__header">
               <div>
-                <h2>{{ card.title }}</h2>
+                <h2>{{ statusOverviewCard.title }}</h2>
               </div>
             </header>
 
-            <div class="dashboard-card__content dashboard-card__content--stats">
-              <div class="dashboard-stat-list">
-                <div v-for="item in card.items" :key="`${card.title}-${item.label}`" class="dashboard-stat-row">
+            <div class="dashboard-card__content dashboard-card__content--status-overview">
+              <div class="dashboard-status-list">
+                <div
+                  v-for="item in statusOverviewCard.items"
+                  :key="`${statusOverviewCard.title}-${item.label}`"
+                  class="dashboard-status-row"
+                >
                   <span>{{ item.label }}</span>
                   <strong>{{ item.value }}</strong>
                 </div>
               </div>
             </div>
           </article>
-        </div>
+        </template>
 
-        <div class="dashboard-column__stack">
-          <article
-            v-for="card in middleStatisticsCards"
-            :key="card.title"
-            class="dashboard-stat-card"
-          >
-            <header class="dashboard-card__header">
-              <div>
-                <h2>{{ card.title }}</h2>
-              </div>
-            </header>
+        <template v-else>
+          <div class="dashboard-column__stack">
+            <article
+              v-for="card in topStatisticsCards"
+              :key="card.title"
+              class="dashboard-stat-card"
+            >
+              <header class="dashboard-card__header">
+                <div>
+                  <h2>{{ card.title }}</h2>
+                </div>
+              </header>
 
-            <div class="dashboard-card__content dashboard-card__content--stats">
-              <div class="dashboard-stat-list">
-                <div v-for="item in card.items" :key="`${card.title}-${item.label}`" class="dashboard-stat-row">
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
+              <div class="dashboard-card__content dashboard-card__content--stats">
+                <div class="dashboard-stat-list">
+                  <div v-for="item in card.items" :key="`${card.title}-${item.label}`" class="dashboard-stat-row">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
-          </article>
-        </div>
+            </article>
+          </div>
+
+          <div class="dashboard-column__stack">
+            <article
+              v-for="card in middleStatisticsCards"
+              :key="card.title"
+              class="dashboard-stat-card"
+            >
+              <header class="dashboard-card__header">
+                <div>
+                  <h2>{{ card.title }}</h2>
+                </div>
+              </header>
+
+              <div class="dashboard-card__content dashboard-card__content--stats">
+                <div class="dashboard-stat-list">
+                  <div v-for="item in card.items" :key="`${card.title}-${item.label}`" class="dashboard-stat-row">
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </template>
 
         <article class="dashboard-stat-card dashboard-network-monitor">
           <header class="dashboard-card__header">
@@ -340,7 +456,7 @@ function refreshRemainingCredits() {
                 </svg>
 
                 <div class="dashboard-credit-gauge__center">
-                  <span class="dashboard-credit-gauge__caption">剩余积分</span>
+                  <span class="dashboard-credit-gauge__caption">{{ gaugePrimaryLabel }}</span>
                   <strong class="dashboard-credit-gauge__value">{{ remainingCredits }} / {{ totalCredits }}</strong>
                 </div>
               </div>
@@ -350,27 +466,42 @@ function refreshRemainingCredits() {
           <footer class="dashboard-card__footer dashboard-card__footer--compact">
             <div class="dashboard-credit-adjust">
               <div class="dashboard-credit-adjust__grid">
-                <div class="dashboard-credit-adjust__action-group">
-                  <button
-                    class="secondary-action secondary-action--compact refresh-total-credits"
-                    type="button"
-                    :disabled="isRefreshingTotalCredits"
-                    @click="refreshTotalCredits"
-                  >
-                    {{ isRefreshingTotalCredits ? '更新中...' : '更新总积分' }}
-                  </button>
-                </div>
+                <template v-if="creditActionConfig.mode === 'single'">
+                  <div class="dashboard-credit-adjust__action-group">
+                    <button
+                      class="secondary-action secondary-action--compact refresh-remaining-credits"
+                      type="button"
+                      :disabled="isRefreshingRemainingCredits || isRefreshingTotalCredits"
+                      @click="handlePrimaryCreditAction"
+                    >
+                      {{ (isRefreshingRemainingCredits || isRefreshingTotalCredits) ? creditActionConfig.primaryBusyLabel : creditActionConfig.primaryLabel }}
+                    </button>
+                  </div>
+                </template>
 
-                <div class="dashboard-credit-adjust__action-group">
-                  <button
-                    class="secondary-action secondary-action--compact refresh-remaining-credits"
-                    type="button"
-                    :disabled="isRefreshingRemainingCredits"
-                    @click="refreshRemainingCredits"
-                  >
-                    {{ isRefreshingRemainingCredits ? '更新中...' : '更新剩余积分' }}
-                  </button>
-                </div>
+                <template v-else>
+                  <div class="dashboard-credit-adjust__action-group">
+                    <button
+                      class="secondary-action secondary-action--compact refresh-total-credits"
+                      type="button"
+                      :disabled="isRefreshingTotalCredits"
+                      @click="refreshTotalCredits"
+                    >
+                      {{ isRefreshingTotalCredits ? '更新中...' : totalRefreshLabel }}
+                    </button>
+                  </div>
+
+                  <div class="dashboard-credit-adjust__action-group">
+                    <button
+                      class="secondary-action secondary-action--compact refresh-remaining-credits"
+                      type="button"
+                      :disabled="isRefreshingRemainingCredits"
+                      @click="refreshRemainingCredits"
+                    >
+                      {{ isRefreshingRemainingCredits ? '更新中...' : remainingRefreshLabel }}
+                    </button>
+                  </div>
+                </template>
               </div>
 
               <div class="dashboard-credit-adjust__actions" />
@@ -382,7 +513,6 @@ function refreshRemainingCredits() {
           <header class="dashboard-card__header">
             <div>
               <h2>{{ creditMessagesCard.title }}</h2>
-              <p class="section-copy">{{ creditMessagesCard.helperText }}</p>
             </div>
           </header>
 
@@ -416,14 +546,53 @@ function refreshRemainingCredits() {
         <article class="dashboard-config-card">
           <header class="dashboard-card__header">
             <div>
-              <h2>服务配置状态</h2>
+              <h2>{{ resolvedServiceConfig.title }}</h2>
             </div>
           </header>
 
           <div class="dashboard-card__content">
-            <div class="dashboard-service-config">
-              <strong>API 已由服务方预配置</strong>
-              <p>如需更换配置，请联系服务方。</p>
+            <div v-if="resolvedServiceConfig.mode === 'editable'" class="dashboard-api-config">
+              <div class="dashboard-service-config dashboard-service-config--start">
+                <strong>{{ resolvedServiceConfig.headline }}</strong>
+                <p>{{ resolvedServiceConfig.description }}</p>
+              </div>
+
+              <label
+                v-for="field in resolvedServiceConfig.fields"
+                :key="field.key"
+                class="form-field"
+              >
+                <span>{{ field.label }}</span>
+                <input
+                  :type="field.type || 'text'"
+                  :placeholder="field.placeholder || ''"
+                  :value="field.value || ''"
+                  @input="updateServiceConfigField(field.key, $event.target.value)"
+                />
+              </label>
+
+              <button
+                class="primary-action"
+                type="button"
+                :disabled="resolvedServiceConfig.actionDisabled || resolvedServiceConfig.actionBusy"
+                @click="saveServiceConfig"
+              >
+                {{ resolvedServiceConfig.actionBusy ? resolvedServiceConfig.actionBusyLabel : resolvedServiceConfig.actionLabel }}
+              </button>
+            </div>
+
+            <div v-else class="dashboard-service-config">
+              <strong>{{ resolvedServiceConfig.headline }}</strong>
+              <p>{{ resolvedServiceConfig.description }}</p>
+              <button
+                v-if="resolvedServiceConfig.actionLabel"
+                class="primary-action"
+                type="button"
+                :disabled="resolvedServiceConfig.actionDisabled || resolvedServiceConfig.actionBusy"
+                @click="saveServiceConfig"
+              >
+                {{ resolvedServiceConfig.actionBusy ? resolvedServiceConfig.actionBusyLabel : resolvedServiceConfig.actionLabel }}
+              </button>
             </div>
           </div>
         </article>
@@ -432,7 +601,6 @@ function refreshRemainingCredits() {
           <header class="dashboard-card__header">
             <div>
               <h2>用户主机信息</h2>
-              <p class="section-copy">展示当前桌面端实际运行环境。</p>
             </div>
           </header>
 

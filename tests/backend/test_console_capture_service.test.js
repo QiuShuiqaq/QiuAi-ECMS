@@ -30,4 +30,32 @@ describe('consoleCaptureService', () => {
     }))
     expect(originalError).toHaveBeenCalledWith('studio task failed', { reason: '429' })
   })
+
+  it('swallows broken pipe writes from the original console method', async () => {
+    delete globalThis[Symbol.for('qiuai.console.capture')]
+
+    const runtimeLogger = {
+      log: vi.fn().mockResolvedValue(undefined)
+    }
+    const consoleObject = {
+      log: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(() => {
+        const error = new Error('EPIPE: broken pipe, write')
+        error.code = 'EPIPE'
+        throw error
+      })
+    }
+
+    const { attachConsoleCapture } = await import('../../main/src/services/consoleCaptureService.js')
+    attachConsoleCapture({
+      runtimeLogger,
+      consoleObject
+    })
+
+    expect(() => {
+      consoleObject.error('renderer disconnected')
+    }).not.toThrow()
+  })
 })

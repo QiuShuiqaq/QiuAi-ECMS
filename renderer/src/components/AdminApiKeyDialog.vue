@@ -11,6 +11,10 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  videoApiKey: {
+    type: String,
+    default: ''
+  },
   isSaving: {
     type: Boolean,
     default: false
@@ -21,7 +25,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update-api-key', 'save', 'close'])
+const emit = defineEmits(['update-api-key', 'update-video-api-key', 'save', 'close'])
 
 const apiKeyModel = computed({
   get() {
@@ -29,6 +33,15 @@ const apiKeyModel = computed({
   },
   set(value) {
     emit('update-api-key', value)
+  }
+})
+
+const videoApiKeyModel = computed({
+  get() {
+    return props.videoApiKey || ''
+  },
+  set(value) {
+    emit('update-video-api-key', value)
   }
 })
 </script>
@@ -41,12 +54,22 @@ const apiKeyModel = computed({
       </header>
 
       <label class="form-field">
-        <span>API-Key</span>
+        <span>生图 API-Key</span>
         <FormTextControl
           v-model="apiKeyModel"
           class="admin-api-key-modal__input"
           type="text"
-          placeholder="请输入 API-Key"
+          placeholder="请输入生图 API-Key"
+        />
+      </label>
+
+      <label class="form-field">
+        <span>视频 API-Key</span>
+        <FormTextControl
+          v-model="videoApiKeyModel"
+          class="admin-api-key-modal__input"
+          type="text"
+          placeholder="请输入视频 API-Key"
         />
       </label>
 

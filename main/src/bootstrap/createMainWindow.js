@@ -3,6 +3,7 @@ const { BrowserWindow } = require('electron')
 
 function createMainWindow () {
   const mainWindow = new BrowserWindow({
+    title: 'QiuAi-ECMS',
     width: 1320,
     height: 880,
     minWidth: 1100,

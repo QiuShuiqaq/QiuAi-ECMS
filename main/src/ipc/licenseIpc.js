@@ -19,7 +19,7 @@ function registerLicenseIpc({ licenseService }) {
         properties: ['openFile'],
         filters: [
           {
-            name: 'QiuAi License',
+            name: 'QiuAi-ECMS License',
             extensions: ['qai']
           }
         ]

@@ -14,6 +14,34 @@ function safeSerializeConsoleArgs(args = []) {
   }).join(' ')
 }
 
+function isBrokenPipeError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return Boolean(
+    error &&
+    (
+      error.code === 'EPIPE' ||
+      error.code === 'ERR_STREAM_DESTROYED' ||
+      error.code === 'ERR_SOCKET_CLOSED' ||
+      error.errno === -4047 ||
+      message.includes('broken pipe') ||
+      message.includes('stream destroyed') ||
+      message.includes('socket closed')
+    )
+  )
+}
+
+function invokeOriginalConsoleMethod(originalMethod, consoleObject, args) {
+  try {
+    originalMethod.apply(consoleObject, args)
+  } catch (error) {
+    if (isBrokenPipeError(error)) {
+      return
+    }
+
+    throw error
+  }
+}
+
 function attachConsoleCapture({
   runtimeLogger,
   consoleObject = console
@@ -34,12 +62,21 @@ function attachConsoleCapture({
     }
 
     consoleObject[methodName] = (...args) => {
-      originalMethod.apply(consoleObject, args)
+      try {
+        invokeOriginalConsoleMethod(originalMethod, consoleObject, args)
+      } catch (error) {
+        if (isBrokenPipeError(error)) {
+          return
+        }
+
+        return
+      }
+
       void runtimeLogger.log({
         level: methodName === 'log' ? 'info' : methodName,
         event: 'console-output',
         message: safeSerializeConsoleArgs(args)
-      })
+      }).catch(() => {})
     }
   })
 

@@ -26,6 +26,10 @@ const props = defineProps({
   downloadCleanupEnabled: {
     type: Boolean,
     default: true
+  },
+  exportMenuKeys: {
+    type: Array,
+    default: () => ['single-image', 'single-design', 'series-design', 'series-generate']
   }
 })
 
@@ -68,10 +72,7 @@ const showWorkspaceTasks = computed(() => {
 })
 
 const showExportPanel = computed(() => {
-  return props.activeMenu === 'single-image' ||
-    props.activeMenu === 'single-design' ||
-    props.activeMenu === 'series-design' ||
-    props.activeMenu === 'series-generate'
+  return props.exportMenuKeys.includes(props.activeMenu)
 })
 
 function getStatusClass(status) {
@@ -145,7 +146,7 @@ function goToNextPage() {
           >
             <span class="pagination-arrow-button__triangle pagination-arrow-button__triangle--left"></span>
           </button>
-          <span>第 {{ currentPage }} / {{ totalPages }} 页 · 10 个任务</span>
+          <span>{{ currentPage }} / {{ totalPages }}</span>
           <button
             class="secondary-action pagination-arrow-button"
             type="button"

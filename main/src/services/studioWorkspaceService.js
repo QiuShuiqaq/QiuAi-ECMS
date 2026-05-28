@@ -59,6 +59,7 @@ const imageModelOptions = [
 const modelPricingCatalog = [
   { name: 'nano-banana-fast', credits: '440 / 次' },
   { name: 'gpt-image-2', credits: '600 / 次' },
+  { name: 'gpt-image-2-vip', credits: '1300 / 次' },
   { name: 'nano-banana-2', credits: '1200 / 次' },
   { name: 'nano-banana', credits: '1400 / 次' },
   { name: 'nano-banana-2-cl', credits: '1600 / 次' },
@@ -854,6 +855,49 @@ function buildCreditMessages(settings = {}) {
   }
 }
 
+function buildCreditPanelsFromStates({
+  dashboardCreditState = {},
+  creditState = {},
+  baseModelName = 'gpt-image-2',
+  title = '积分仪表盘',
+  messageTitle = '本地任务积分记录'
+} = {}) {
+  const normalizedCreditState = normalizeCreditStateForDisplay(creditState)
+  const normalizedDashboardCreditState = dashboardCreditState && typeof dashboardCreditState === 'object'
+    ? dashboardCreditState
+    : {}
+  const remainingCredits = Math.max(0, Number(normalizedDashboardCreditState.remainingCredits) || 0)
+  const totalCredits = Math.max(0, Number(normalizedDashboardCreditState.totalCredits) || 0)
+  const baseModelCreditCost = resolveModelCreditCost(baseModelName) || 1
+  const latestAdjustmentLabel = normalizedCreditState.lastAdjustmentAt
+    ? `${normalizedCreditState.lastAdjustmentOperation === 'decrease' ? '扣减' : '增加'} ${normalizedCreditState.lastAdjustmentAmount}`
+    : '--'
+
+  return {
+    creditOverview: {
+      title,
+      items: [
+        { label: '剩余积分', value: String(remainingCredits) },
+        { label: '总积分', value: String(totalCredits) },
+        { label: '冻结积分', value: String(normalizedCreditState.frozenCredits) },
+        { label: '已用积分', value: String(normalizedCreditState.usedCredits) },
+        { label: '最近调整', value: latestAdjustmentLabel },
+        { label: `按 ${baseModelName} 约可生成`, value: String(Math.floor(remainingCredits / Math.max(1, baseModelCreditCost))) }
+      ]
+    },
+    creditMessages: {
+      title: messageTitle,
+      helperText: '（本栏为本地模拟记账，真实数据以仪表盘为准）',
+      items: normalizedCreditState.activityHistory.map((item) => ({
+        ...item,
+        label: resolveCreditActivityLabel(item),
+        description: resolveCreditActivityDescription(item),
+        amountDisplay: `${item.operation === 'decrease' ? '-' : '+'}${item.amount}`
+      }))
+    }
+  }
+}
+
 function formatMonitorTimeLabel(dateValue = '') {
   const date = new Date(dateValue)
   if (Number.isNaN(date.getTime())) {
@@ -911,6 +955,22 @@ function buildWorkspaceDashboard(state, tasks = [], settings = {}) {
     ])),
     creditOverview: buildCreditOverview(settings),
     creditMessages: buildCreditMessages(settings),
+    networkMonitor: buildNetworkMonitor(state)
+  }
+}
+
+function buildVideoWorkspaceDashboard(state, settings = {}) {
+  const panels = buildCreditPanelsFromStates({
+    dashboardCreditState: settings.videoDashboardCreditState,
+    creditState: settings.videoCreditState,
+    baseModelName: 'gpt-image-2',
+    title: '视频积分仪表盘',
+    messageTitle: '视频积分记录'
+  })
+
+  return {
+    creditOverview: panels.creditOverview,
+    creditMessages: panels.creditMessages,
     networkMonitor: buildNetworkMonitor(state)
   }
 }
@@ -1595,6 +1655,7 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     status: '已完成',
     progress: 100,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
+    resultPayload: hydrateResultPayloadForDisplay(resultPayload),
     ...groupedProgress
   })
 }
@@ -2568,7 +2629,8 @@ function createStudioWorkspaceService({
       tasks,
       workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
       settingsSummary: buildSettingsSummary(settings),
-      hostInfo: buildHostInfo()
+      hostInfo: buildHostInfo(),
+      videoWorkspaceDashboard: buildVideoWorkspaceDashboard(derivedState, settings)
     }
   }
 

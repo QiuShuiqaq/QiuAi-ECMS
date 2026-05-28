@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './AppTopBar.vue'
 import AdminPasswordDialog from './AdminPasswordDialog.vue'
 import AdminApiKeyDialog from './AdminApiKeyDialog.vue'
@@ -12,6 +12,7 @@ import {
   createStudioTask,
   deleteStudioExportItem,
   exportStudioResults,
+  getAdminStatus,
   getActivationStatus,
   getSettings,
   refreshDashboardCredits,
@@ -29,13 +30,26 @@ import {
   saveSettings,
   savePromptTemplate,
   saveStudioDraft,
-  stopStudioTask
+  stopStudioTask,
+  verifyAdminPassword
 } from '../services/desktopBridge'
 
 const props = defineProps({
   embedded: {
     type: Boolean,
     default: false
+  },
+  externalWorkflowPayload: {
+    type: Object,
+    default: null
+  },
+  moduleLocked: {
+    type: Boolean,
+    default: false
+  },
+  moduleLockMessage: {
+    type: String,
+    default: ''
   }
 })
 
@@ -72,6 +86,7 @@ const imageModelOptions = [
 const modelPricingCatalog = [
   { name: 'nano-banana-fast', credits: '440 / 次' },
   { name: 'gpt-image-2', credits: '600 / 次' },
+  { name: 'gpt-image-2-vip', credits: '1300 / 次' },
   { name: 'nano-banana-2', credits: '1200 / 次' },
   { name: 'nano-banana', credits: '1400 / 次' },
   { name: 'nano-banana-2-cl', credits: '1600 / 次' },
@@ -145,9 +160,15 @@ const adminPasswordDraft = ref('')
 const isAdminApiConfigUnlocked = ref(false)
 const isAdminApiKeyDialogVisible = ref(false)
 const adminApiKeyDraft = ref('')
+const adminVideoApiKeyDraft = ref('')
 const isAdminApiKeySaving = ref(false)
 const adminPasswordFeedback = ref('')
 const adminApiKeyFeedback = ref('')
+const adminStatusState = reactive({
+  passwordConfigured: false,
+  imageApiConfigured: false,
+  videoApiConfigured: false
+})
 const isClearRuntimeConfirmVisible = ref(false)
 const isClearingRuntimeState = ref(false)
 const runtimeResetSequence = ref(0)
@@ -295,6 +316,7 @@ function createDraftForm(menuKey) {
       model: resolveDefaultModelForMenu(menuKey),
       taskName: '',
       sourceImage: null,
+      workflowContext: null,
       generateCount: 1,
       promptAssignments: createSeriesGeneratePromptAssignments(1),
       batchCount: 1,
@@ -858,6 +880,7 @@ function applySnapshot(snapshot = {}, settings = {}, options = {}) {
 
   if (!preserveApiConfig) {
     adminApiKeyDraft.value = settings.apiKey || ''
+    adminVideoApiKeyDraft.value = settings.videoApiKey || ''
   }
 
   if (!preserveUploadDirectoryDrafts) {
@@ -869,10 +892,12 @@ function applySnapshot(snapshot = {}, settings = {}, options = {}) {
 
 async function loadStudioSnapshot(options = {}) {
   try {
-    const [snapshot, settings] = await Promise.all([
+    const [snapshot, settings, adminStatus] = await Promise.all([
       getStudioSnapshot(),
-      getSettings()
+      getSettings(),
+      getAdminStatus().catch(() => ({}))
     ])
+    syncAdminStatusState(adminStatus)
     applySnapshot(snapshot, settings, options)
   } catch (error) {
     console.error('Failed to load studio snapshot', error)
@@ -941,13 +966,18 @@ async function refreshStudioRuntimeState() {
 function handleBrandClick() {
   // Logo 点击事件预留：后续可在这里接入返回首页或重置工作区逻辑。
   activeMenu.value = 'workspace'
-  adminLogoClickCount.value += 1
+}
 
-  if (adminLogoClickCount.value >= 5) {
-    adminLogoClickCount.value = 0
-    adminPasswordDraft.value = ''
-    isAdminPasswordDialogVisible.value = true
-  }
+function openImageAdminConfig() {
+  adminLogoClickCount.value = 0
+  adminPasswordDraft.value = ''
+  adminPasswordFeedback.value = ''
+  adminApiKeyFeedback.value = ''
+  isAdminPasswordSubmitting.value = false
+  isAdminApiKeySaving.value = false
+  isAdminApiConfigUnlocked.value = false
+  isAdminApiKeyDialogVisible.value = false
+  isAdminPasswordDialogVisible.value = true
 }
 
 async function handleCopyDeviceCode() {
@@ -1088,10 +1118,66 @@ function ensureDraftForMenu(menuKey) {
 }
 
 function handleMenuSelect(menuKey) {
+  if (props.moduleLocked && menuKey !== 'workspace' && menuKey !== 'model-pricing' && menuKey !== 'prompt-library') {
+    showActionFeedback({
+      type: 'error',
+      title: '失败',
+      message: props.moduleLockMessage || '当前授权未开通生图模块'
+    })
+    return
+  }
+
   // 菜单点击事件预留：后续可在这里接入真实业务工作区切换。
   activeMenu.value = menuKey
   ensureDraftForMenu(menuKey)
   selectedExportIds.value = [...(selectedExportIdsByMenu.value[menuKey] || [])]
+}
+
+function applyExternalWorkflowPayload(payload = {}) {
+  if (!payload || payload.targetMenu !== 'series-generate') {
+    return
+  }
+
+  const sourceItem = payload.sourceItem || {}
+  const promptTitles = Array.isArray(payload.promptTitles) ? payload.promptTitles : []
+  const batchCount = Math.max(1, Number(payload.batchCount) || Math.max(1, promptTitles.length || 4))
+  const nextPromptAssignments = Array.from({ length: batchCount }, (_unused, index) => {
+    const promptTitle = String(promptTitles[index] || '').trim()
+
+    return {
+      id: `external-series-generate-${index + 1}`,
+      index: index + 1,
+      prompt: [
+        sourceItem.title ? `商品：${sourceItem.title}` : '',
+        promptTitle ? `标题方向：${promptTitle}` : '',
+        payload.description ? `详情描述：${payload.description}` : '',
+        payload.assetDirection ? `素材方向：${payload.assetDirection}` : '',
+        '请生成一张适合电商套图使用的商品展示图。'
+      ].filter(Boolean).join('\n'),
+      templateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+      imageType: `套图 ${index + 1}`,
+      differentialEnabled: false,
+      batchPrompts: ['']
+    }
+  })
+
+  const nextDraft = {
+    ...createDraftForm('series-generate'),
+    taskName: payload.taskName || `${sourceItem.title || '选品商品'}套图生成`,
+    globalPrompt: payload.globalPrompt || `围绕商品“${sourceItem.title || '未命名商品'}”生成一套电商图片，风格统一、适合上架展示。`,
+    model: payload.model || resolveDefaultModelForMenu('series-generate'),
+    sourceImage: payload.sourceImage || null,
+    workflowContext: payload.workflowContext || null,
+    generateCount: nextPromptAssignments.length,
+    batchCount: 1,
+    size: payload.size || '1:1',
+    promptAssignments: nextPromptAssignments
+  }
+
+  replaceDraft('series-generate', nextDraft)
+  activeMenu.value = 'series-generate'
+  selectedExportIds.value = [...(selectedExportIdsByMenu.value['series-generate'] || [])]
+  scheduleDraftPersist('series-generate', nextDraft)
 }
 
 async function persistDraftPatch(menuKey, patch) {
@@ -1520,6 +1606,15 @@ function buildDraftForSubmit(menuKey) {
 }
 
 async function handleSubmitTask() {
+  if (props.moduleLocked) {
+    showActionFeedback({
+      type: 'error',
+      title: '失败',
+      message: props.moduleLockMessage || '当前授权未开通生图模块'
+    })
+    return
+  }
+
   if (submitButtonState.value !== 'idle') {
     return
   }
@@ -1800,31 +1895,43 @@ function handleCloseAdminPasswordDialog() {
   adminApiKeyFeedback.value = ''
 }
 
-function handleConfirmAdminPassword() {
+function syncAdminStatusState(status = {}) {
+  adminStatusState.passwordConfigured = Boolean(status?.passwordConfigured)
+  adminStatusState.imageApiConfigured = Boolean(status?.imageApiConfigured)
+  adminStatusState.videoApiConfigured = Boolean(status?.videoApiConfigured)
+}
+
+async function handleConfirmAdminPassword() {
   isAdminPasswordSubmitting.value = true
   adminPasswordFeedback.value = ''
 
-  if (adminPasswordDraft.value !== 'qiuai@123') {
-    isAdminPasswordSubmitting.value = false
-    adminPasswordFeedback.value = '密码错误，请重新输入'
+  try {
+    const result = await verifyAdminPassword({
+      password: adminPasswordDraft.value
+    })
+
+    syncAdminStatusState(result?.adminStatus || {})
+    isAdminPasswordDialogVisible.value = false
+    isAdminApiConfigUnlocked.value = true
+    isAdminApiKeyDialogVisible.value = true
+    adminApiKeyFeedback.value = result?.requiresSetup
+      ? '首次配置，请先设置管理员口令并保存 API-Key'
+      : '管理员验证通过，请继续保存 API-Key'
+    showActionFeedback({
+      type: 'success',
+      title: '成功',
+      message: adminApiKeyFeedback.value
+    })
+  } catch (error) {
+    adminPasswordFeedback.value = error?.message || '管理员验证失败'
     showActionFeedback({
       type: 'error',
       title: '失败',
-      message: '管理员验证失败：密码错误'
+      message: adminPasswordFeedback.value
     })
-    return
+  } finally {
+    isAdminPasswordSubmitting.value = false
   }
-
-  isAdminPasswordSubmitting.value = false
-  isAdminPasswordDialogVisible.value = false
-  isAdminApiConfigUnlocked.value = true
-  isAdminApiKeyDialogVisible.value = true
-  adminApiKeyFeedback.value = '管理员验证通过，请继续保存 API-Key'
-  showActionFeedback({
-    type: 'success',
-    title: '成功',
-    message: '管理员验证通过，请继续保存 API-Key'
-  })
 }
 
 function handleCloseAdminApiKeyDialog() {
@@ -1842,10 +1949,13 @@ async function handleSaveAdminApiKey() {
   try {
     const savedSettings = await saveAdminApiKey({
       apiKey: adminApiKeyDraft.value,
+      videoApiKey: adminVideoApiKeyDraft.value,
       password: adminPasswordDraft.value
     })
 
-    adminApiKeyDraft.value = savedSettings.apiKey || ''
+    syncAdminStatusState(savedSettings?.adminStatus || {})
+    adminApiKeyDraft.value = ''
+    adminVideoApiKeyDraft.value = ''
     isAdminApiConfigUnlocked.value = true
     adminApiKeyFeedback.value = 'API-Key 已保存成功'
     showActionFeedback({
@@ -2085,6 +2195,18 @@ onMounted(() => {
     }
     void refreshStudioRuntimeState()
   }, 3000)
+
+  if (props.externalWorkflowPayload) {
+    applyExternalWorkflowPayload(props.externalWorkflowPayload)
+  }
+})
+
+watch(() => props.externalWorkflowPayload?.token, (nextToken, previousToken) => {
+  if (!nextToken || nextToken === previousToken) {
+    return
+  }
+
+  applyExternalWorkflowPayload(props.externalWorkflowPayload)
 })
 
 onBeforeUnmount(() => {
@@ -2103,7 +2225,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="app-shell" :class="{ 'app-shell--embedded': props.embedded }" :data-theme="activeTheme">
-    <AppTopBar v-if="!props.embedded"
+    <AppTopBar
+      v-if="!props.embedded"
       brand-label="秋 Ai"
       :theme-options="themeOptions"
       :active-theme="activeTheme"
@@ -2175,11 +2298,26 @@ onBeforeUnmount(() => {
           :latest-task="latestTaskForActiveMenu"
           :workspace-dashboard="workspaceDashboard"
           :host-info="hostInfo"
+          :service-config="{
+            title: '生图服务状态',
+            mode: 'readonly',
+            headline: adminStatusState.imageApiConfigured ? '生图主通道已配置' : '生图主通道待配置',
+            description: adminStatusState.imageApiConfigured
+              ? '当前可直接使用生图工作台，并保持原有工作流。'
+              : '请先完成管理员验证并配置生图主通道。',
+            helperText: '',
+            actionLabel: '管理员配置生图通道',
+            actionBusyLabel: '处理中..',
+            actionBusy: false,
+            actionDisabled: false
+          }"
           :is-refreshing-total-credits="isRefreshingTotalCredits"
           :is-refreshing-remaining-credits="isRefreshingRemainingCredits"
           :runtime-reset-sequence="runtimeResetSequence"
           :is-clear-runtime-confirm-visible="isClearRuntimeConfirmVisible"
           :is-clearing-runtime-state="isClearingRuntimeState"
+          :module-locked="props.moduleLocked"
+          :module-lock-message="props.moduleLockMessage"
           :fixed-prompt-templates="fixedPromptTemplates"
           :custom-prompt-templates="customPromptTemplates"
           :fixed-negative-prompt-templates="fixedNegativePromptTemplates"
@@ -2196,6 +2334,7 @@ onBeforeUnmount(() => {
           @open-output-directory="handleOpenOutputDirectory"
           @refresh-total-credits="handleRefreshDashboardTotalCredits"
           @refresh-remaining-credits="handleRefreshDashboardRemainingCredits"
+          @save-service-config="openImageAdminConfig"
           @save-prompt-template="handleSavePromptTemplate"
           @remove-prompt-template="handleRemovePromptTemplate"
           @save-negative-prompt-template="handleSaveNegativePromptTemplate"
@@ -2204,7 +2343,7 @@ onBeforeUnmount(() => {
           @close-clear-runtime-confirm="closeClearRuntimeConfirm"
           @update-upload-directory-draft="handleUploadDirectoryDraftUpdate"
           @save-upload-directory="handleSaveUploadDirectory"
-          @send-to-draft="emit('send-to-draft', $event)"
+          @send-to-draft="props.moduleLocked ? showActionFeedback({ type: 'error', title: '失败', message: props.moduleLockMessage || '当前授权未开通生图模块' }) : emit('send-to-draft', $event)"
         />
       </section>
 
@@ -2213,6 +2352,9 @@ onBeforeUnmount(() => {
         :password="adminPasswordDraft"
         :is-submitting="isAdminPasswordSubmitting"
         :feedback-message="adminPasswordFeedback"
+        :title="adminStatusState.passwordConfigured ? '管理员验证' : '初始化管理员口令'"
+        :description="adminStatusState.passwordConfigured ? '请输入管理员口令' : '首次使用请设置管理员口令'"
+        :confirm-label="adminStatusState.passwordConfigured ? '验证并继续' : '设置并继续'"
         @update-password="adminPasswordDraft = $event"
         @confirm="handleConfirmAdminPassword"
         @close="handleCloseAdminPasswordDialog"
@@ -2221,9 +2363,11 @@ onBeforeUnmount(() => {
       <AdminApiKeyDialog
         :visible="isAdminApiConfigUnlocked && isAdminApiKeyDialogVisible"
         :api-key="adminApiKeyDraft"
+        :video-api-key="adminVideoApiKeyDraft"
         :is-saving="isAdminApiKeySaving"
         :feedback-message="adminApiKeyFeedback"
         @update-api-key="adminApiKeyDraft = $event"
+        @update-video-api-key="adminVideoApiKeyDraft = $event"
         @save="handleSaveAdminApiKey"
         @close="handleCloseAdminApiKeyDialog"
       />

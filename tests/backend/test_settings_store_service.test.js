@@ -101,6 +101,44 @@ describe('settingsStoreService', () => {
     })).rejects.toThrow('当前版本不允许用户修改 API-Key')
   })
 
+  it('returns public settings without exposing model service hosts or secrets', async () => {
+    const memory = new Map()
+    const store = {
+      get (key, fallbackValue) {
+        return memory.has(key) ? memory.get(key) : fallbackValue
+      },
+      set (key, value) {
+        memory.set(key, value)
+      }
+    }
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const service = createSettingsStoreService({ store })
+
+    await expect(service.saveSettings({
+      apiBaseUrl: 'https://example.com'
+    })).rejects.toThrow('当前版本不允许用户修改 API-Key')
+
+    await service.saveAdminApiKey({
+      apiKey: 'sk-admin-real',
+      videoApiKey: 'sk-video-real',
+      password: 'init-pass'
+    })
+
+    await service.saveGlmApiKey({
+      apiKey: 'glm-user-real-key'
+    })
+
+    const publicSettings = service.getPublicSettings()
+
+    expect(publicSettings).not.toHaveProperty('apiBaseUrl')
+    expect(publicSettings).not.toHaveProperty('apiKey')
+    expect(publicSettings).not.toHaveProperty('apiKeys')
+    expect(publicSettings).not.toHaveProperty('videoApiKey')
+    expect(publicSettings.glmConfigured).toBe(true)
+    expect(publicSettings.glmApiKeyMasked).toBeTruthy()
+  })
+
   it('rejects admin api key save when password is incorrect', async () => {
     const memory = new Map()
     const store = {
@@ -114,6 +152,11 @@ describe('settingsStoreService', () => {
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
+
+    await service.saveAdminApiKey({
+      apiKey: 'sk-admin-initial',
+      password: 'init-pass'
+    })
 
     await expect(service.saveAdminApiKey({
       apiKey: 'sk-admin',
@@ -137,8 +180,8 @@ describe('settingsStoreService', () => {
 
     await expect(service.saveAdminApiKey({
       apiKey: '   ',
-      password: 'qiuai@123'
-    })).rejects.toThrow('API-Key 不能为空')
+      password: 'init-pass'
+    })).rejects.toThrow('至少需要填写一个 API-Key')
   })
 
   it('saves a single admin api key into slot 0 and fixes the active index', async () => {
@@ -157,13 +200,13 @@ describe('settingsStoreService', () => {
 
     const saved = await service.saveAdminApiKey({
       apiKey: 'sk-admin-real',
-      password: 'qiuai@123'
+      password: 'init-pass'
     })
 
-    expect(saved.apiKeys[0]).toBe('sk-admin-real')
-    expect(saved.apiKeys[1]).toBe('')
-    expect(saved.activeApiKeyIndex).toBe(0)
-    expect(saved.apiKey).toBe('sk-admin-real')
+    expect(saved.saved).toBe(true)
+    expect(saved.imageApiConfigured).toBe(true)
+    expect(saved.videoApiConfigured).toBe(false)
+    expect(saved.adminStatus.passwordConfigured).toBe(true)
     expect(service.getSettings().apiKey).toBe('sk-admin-real')
   })
 

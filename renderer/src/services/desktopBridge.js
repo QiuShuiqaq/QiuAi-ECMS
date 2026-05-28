@@ -22,11 +22,29 @@ const defaultBrowserDashboardCreditState = {
   remainingCredits: 0
 }
 
+const defaultBrowserVideoCreditState = {
+  totalPurchasedCredits: 0,
+  remainingCredits: 0,
+  frozenCredits: 0,
+  usedCredits: 0,
+  lastAdjustmentAt: '',
+  lastAdjustmentOperation: '',
+  lastAdjustmentAmount: 0,
+  adjustmentHistory: [],
+  taskLedger: {}
+}
+
+const defaultBrowserVideoDashboardCreditState = {
+  totalCredits: 0,
+  remainingCredits: 0
+}
+
 const defaultBrowserSettings = {
   apiBaseUrl: 'https://grsai.dakka.com.cn',
   apiKeys: ['', ''],
   activeApiKeyIndex: 0,
   apiKey: '',
+  glmApiKey: '',
   defaultSize: '1:1',
   downloadDirectory: '',
   globalUploadDirectory: '',
@@ -39,7 +57,9 @@ const defaultBrowserSettings = {
   themeMode: 'dark',
   downloadCleanupEnabled: true,
   dashboardCreditState: defaultBrowserDashboardCreditState,
-  creditState: defaultBrowserCreditState
+  creditState: defaultBrowserCreditState,
+  videoDashboardCreditState: defaultBrowserVideoDashboardCreditState,
+  videoCreditState: defaultBrowserVideoCreditState
 }
 
 const defaultBrowserStudioSnapshot = {
@@ -59,9 +79,19 @@ const defaultBrowserStudioSnapshot = {
 
 const defaultBrowserActivationState = {
   status: 'activated',
+  product: 'QiuAi-ECMS',
+  licenseId: 'BROWSER-DEMO-LICENSE',
+  customerId: 'browser-demo',
   customerName: '浏览器模式',
+  edition: 'professional',
   deviceCode: 'QAI-BROWSER-MODE',
   activatedAt: '',
+  expireAt: '',
+  maxVersion: '2.x',
+  modules: ['sourcing', 'text', 'image', 'video', 'draft'],
+  features: ['browser-demo'],
+  remark: '',
+  licenseFilePath: '',
   message: ''
 }
 
@@ -221,6 +251,10 @@ function normalizeDownloadCleanupEnabled (downloadCleanupEnabled = true) {
   return downloadCleanupEnabled !== false
 }
 
+function normalizeGlmApiKey (glmApiKey = '') {
+  return typeof glmApiKey === 'string' ? glmApiKey.trim() : ''
+}
+
 function normalizeUploadDirectories (uploadDirectories = {}) {
   const source = uploadDirectories && typeof uploadDirectories === 'object' ? uploadDirectories : {}
 
@@ -325,12 +359,15 @@ function normalizeBrowserSettings (rawSettings = {}) {
 
   return {
     ...mergedSettings,
+    glmApiKey: normalizeGlmApiKey(mergedSettings.glmApiKey),
     themeMode: normalizeThemeMode(mergedSettings.themeMode),
     downloadCleanupEnabled: normalizeDownloadCleanupEnabled(mergedSettings.downloadCleanupEnabled),
     globalUploadDirectory: normalizeGlobalUploadDirectory(mergedSettings.globalUploadDirectory),
     uploadDirectories: normalizeUploadDirectories(mergedSettings.uploadDirectories),
     dashboardCreditState: normalizeBrowserDashboardCreditState(mergedSettings.dashboardCreditState),
     creditState: normalizeBrowserCreditState(mergedSettings.creditState),
+    videoDashboardCreditState: normalizeBrowserDashboardCreditState(mergedSettings.videoDashboardCreditState),
+    videoCreditState: normalizeBrowserCreditState(mergedSettings.videoCreditState),
     apiKeys,
     activeApiKeyIndex,
     apiKey: apiKeys[activeApiKeyIndex] || ''
@@ -365,6 +402,13 @@ function saveBrowserSettings (payload = {}) {
       })
     : normalizeBrowserCreditState(currentSettings.creditState)
 
+  const videoCreditState = Object.prototype.hasOwnProperty.call(restPayload, 'videoCreditState')
+    ? normalizeBrowserCreditState({
+        ...currentSettings.videoCreditState,
+        ...restPayload.videoCreditState
+      })
+    : normalizeBrowserCreditState(currentSettings.videoCreditState)
+
   if (creditAdjustment && typeof creditAdjustment === 'object') {
     creditState = applyBrowserCreditAdjustment(creditState, creditAdjustment)
   }
@@ -379,9 +423,13 @@ function saveBrowserSettings (payload = {}) {
       ...normalizeUploadDirectories(currentSettings.uploadDirectories),
       ...normalizeUploadDirectories(payload.uploadDirectories)
     },
+    glmApiKey: Object.prototype.hasOwnProperty.call(payload, 'glmApiKey')
+      ? normalizeGlmApiKey(payload.glmApiKey)
+      : normalizeGlmApiKey(currentSettings.glmApiKey),
     activeApiKeyIndex,
     apiKeys,
-    creditState
+    creditState,
+    videoCreditState
   })
 
   return writeBrowserState(BROWSER_SETTINGS_KEY, nextSettings)
@@ -398,7 +446,8 @@ function getBrowserStudioSnapshot () {
     settingsSummary: {
       apiKeys: settings.apiKeys,
       activeApiKeyIndex: settings.activeApiKeyIndex,
-      creditState: settings.creditState
+      creditState: settings.creditState,
+      videoCreditState: settings.videoCreditState
     }
   }
 }
@@ -610,6 +659,34 @@ export function getSettings () {
   return invoke(getChannel('SETTINGS_GET'))
 }
 
+export function getAdminStatus () {
+  if (!hasBridge()) {
+    return Promise.resolve({
+      passwordConfigured: false,
+      imageApiConfigured: false,
+      videoApiConfigured: false
+    })
+  }
+
+  return invoke(getChannel('SETTINGS_GET_ADMIN_STATUS'))
+}
+
+export function verifyAdminPassword (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve({
+      verified: true,
+      requiresSetup: true,
+      adminStatus: {
+        passwordConfigured: false,
+        imageApiConfigured: false,
+        videoApiConfigured: false
+      }
+    })
+  }
+
+  return invoke(getChannel('SETTINGS_VERIFY_ADMIN_PASSWORD'), payload)
+}
+
 export function saveSettings (payload) {
   if (!hasBridge()) {
     return Promise.resolve(saveBrowserSettings(payload))
@@ -620,6 +697,25 @@ export function saveSettings (payload) {
 
 export function saveAdminApiKey (payload) {
   return invoke(getChannel('SETTINGS_SAVE_ADMIN_API_KEY'), payload)
+}
+
+export function saveGlmApiKey (payload) {
+  if (!hasBridge()) {
+    const normalizedApiKey = typeof payload?.apiKey === 'string' ? payload.apiKey.trim() : ''
+    if (!normalizedApiKey) {
+      return Promise.reject(new Error('GLM API-Key 不能为空'))
+    }
+
+    const nextSettings = saveBrowserSettings({
+      glmApiKey: normalizedApiKey
+    })
+
+    return Promise.resolve({
+      glmConfigured: Boolean(nextSettings.glmApiKey)
+    })
+  }
+
+  return invoke(getChannel('SETTINGS_SAVE_GLM_API_KEY'), payload)
 }
 
 export function createTask (payload) {
@@ -794,6 +890,41 @@ export function openOutputDirectory (payload) {
   return invoke(getChannel('STUDIO_OPEN_OUTPUT_DIRECTORY'), payload)
 }
 
+export function openSafeExternalUrl (payload) {
+  if (!hasBridge()) {
+    const targetUrl = typeof payload?.targetUrl === 'string' ? payload.targetUrl.trim() : ''
+    if (!targetUrl) {
+      return Promise.reject(new Error('无效的商品链接'))
+    }
+
+    if (typeof window !== 'undefined') {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    }
+
+    return Promise.resolve({
+      targetUrl
+    })
+  }
+
+  return invoke(getChannel('STUDIO_OPEN_SAFE_EXTERNAL_URL'), payload)
+}
+
+export function getSourcingProducts (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(new Error('选品实时列表仅支持桌面应用环境'))
+  }
+
+  return invoke(getChannel('STUDIO_GET_SOURCING_PRODUCTS'), payload)
+}
+
+export function createWorkflowAsset (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(new Error('工作流参考图创建仅支持桌面应用环境'))
+  }
+
+  return invoke(getChannel('STUDIO_CREATE_WORKFLOW_ASSET'), payload)
+}
+
 export function exportStudioResults (payload) {
   return invoke(getChannel('STUDIO_EXPORT_RESULTS'), payload)
 }
@@ -816,4 +947,20 @@ export function generateEcmsText (payload) {
   }
 
   return invoke(getChannel('ECMS_TEXT_GENERATE'), payload)
+}
+
+export function generateEcmsVideo (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(new Error('视频生成功能仅支持桌面应用环境'))
+  }
+
+  return invoke(getChannel('ECMS_VIDEO_GENERATE'), payload)
+}
+
+export function getEcmsVideoBillingSummary (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(new Error('视频余额查询仅支持桌面应用环境'))
+  }
+
+  return invoke(getChannel('ECMS_VIDEO_GET_BILLING_SUMMARY'), payload)
 }

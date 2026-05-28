@@ -24,6 +24,8 @@ const { createDataTraceService } = require('../services/dataTraceService')
 const { attachConsoleCapture } = require('../services/consoleCaptureService')
 const { ensureDataLayout } = require('../services/dataPathsService')
 const { createCopywritingGenerationService } = require('../services/copywritingGenerationService')
+const { createVideoGenerationService } = require('../services/videoGenerationService')
+const { createSourcingProductService } = require('../services/sourcingProductService')
 
 function registerIpc () {
   ensureDataLayout().catch(() => {})
@@ -72,6 +74,11 @@ function registerIpc () {
     settingsService,
     messageRecorder: dataTraceService
   })
+  const videoGenerationService = createVideoGenerationService({
+    settingsService,
+    messageRecorder: dataTraceService
+  })
+  const sourcingProductService = createSourcingProductService()
 
   registerSettingsIpc({ settingsService })
   registerLicenseIpc({ licenseService })
@@ -99,7 +106,9 @@ function registerIpc () {
     settingsService,
     dataTraceService,
     activationGuard,
-    copywritingGenerationService
+    copywritingGenerationService,
+    videoGenerationService,
+    sourcingProductService
   })
 
   return {

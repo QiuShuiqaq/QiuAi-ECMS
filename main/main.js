@@ -1,5 +1,10 @@
 const path = require('node:path')
-const { app } = require('electron')
+const electron = require('electron')
+const app = electron?.app
+
+if (!app || typeof app.whenReady !== 'function') {
+  throw new Error('QiuAi-ECMS main process must be started by Electron.')
+}
 
 if (app.isPackaged && !process.env.QIUAI_DATA_ROOT) {
   process.env.QIUAI_DATA_ROOT = path.join(app.getPath('userData'), 'DATA')
