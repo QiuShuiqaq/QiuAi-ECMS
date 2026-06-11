@@ -101,6 +101,7 @@ describe('desktopBridge', () => {
     expect(defaults.some((item) => item.name === '电商通用')).toBe(true)
     expect(defaults.some((item) => item.name === '电商模特')).toBe(true)
     expect(defaults.some((item) => item.name === '电商静物')).toBe(true)
+    expect(defaults.find((item) => item.id === 'negative-common')?.prompt).toBe('水印，logo，文字，广告标，多余贴纸，杂乱背景，多余人物，画面变形，产品扭曲，边缘模糊，低清晰度，噪点，拼接痕迹，阴影错乱，明显反光，裁切不全')
 
     const saved = await saveNegativePromptTemplate({
       name: '服饰限制',
@@ -144,6 +145,7 @@ describe('desktopBridge', () => {
     expect(defaults[0]?.name).toBe('无类型图片')
     expect(defaults[0]?.prompt).toBe('')
     expect(defaults.some((item) => item.id === 'product-main')).toBe(true)
+    expect(defaults.find((item) => item.id === 'product-main')?.prompt).toBe('电商商品主图，主体为XXX，主体完整清晰，突出XXX本身与核心卖点，构图简洁，光线干净，质感自然，适合首页展示')
 
     const saved = await savePromptTemplate({
       name: '暖光补充',

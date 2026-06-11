@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import AdminPasswordDialog from './components/AdminPasswordDialog.vue'
@@ -76,10 +76,10 @@ const modelPricingCatalog = [
 
 const rechargePricingCatalog = [
   { price: '30¥', credits: '100000积分', validity: '一周', bonus: '' },
-  { price: '60¥', credits: '250000积分', validity: '一月', bonus: '送25%' },
-  { price: '150¥', credits: '750000积分', validity: '一季', bonus: '送50%' },
-  { price: '300¥', credits: '1600000积分', validity: '半年', bonus: '送60%' },
-  { price: '1500¥', credits: '9000000积分', validity: '一年', bonus: '送80%' },
+  { price: '60¥', credits: '250000积分', validity: '一月', bonus: '送5%' },
+  { price: '150¥', credits: '750000积分', validity: '一季', bonus: '送10%' },
+  { price: '300¥', credits: '1600000积分', validity: '半年', bonus: '送10%' },
+  { price: '1500¥', credits: '9000000积分', validity: '一年', bonus: '送10%' },
   { price: '3000¥', credits: '20000000积分', validity: '三年', bonus: '送100%' }
 ]
 
@@ -263,9 +263,7 @@ function createDraftForm(menuKey) {
 
   if (menuKey === 'series-design') {
     return {
-      globalPrompt: '统一商品图整体风格',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
+      globalPrompt: '围绕XXX统一商品视觉风格，保持XXX主体一致，画面干净专业',
       legacyGlobalPrompt: '',
       defaultAssignmentRatio: '1:1',
       defaultAssignmentModel: resolveDefaultModelForMenu(menuKey),
@@ -279,9 +277,7 @@ function createDraftForm(menuKey) {
 
   if (menuKey === 'series-generate') {
     return {
-      globalPrompt: '统一商品详情图整体风格',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
+      globalPrompt: '围绕XXX统一商品详情图风格，突出XXX主体与卖点，适合电商展示',
       legacyGlobalPrompt: '',
       model: resolveDefaultModelForMenu(menuKey),
       taskName: '',
@@ -576,19 +572,19 @@ function buildTaskFailureFeedbackMessage(task = {}) {
     return '生图失败，请稍后重试或检查当前任务参数'
   }
 
-  if (rawError.includes('输出内容触发审核限制')) {
+  if (rawError.includes('杈撳嚭鍐呭瑙﹀彂瀹℃牳闄愬埗')) {
     return '生图失败：图片内容触发平台审核限制，请调整提示词、图片内容或生成方向后重试'
   }
 
-  if (rawError.includes('输入内容触发审核限制')) {
+  if (rawError.includes('杈撳叆鍐呭瑙﹀彂瀹℃牳闄愬埗')) {
     return '生图失败：提示词或输入内容触发平台审核限制，请修改提示词后重试'
   }
 
-  if (rawError.includes('图片任务执行超时')) {
+  if (rawError.includes('鍥剧墖浠诲姟鎵ц瓒呮椂')) {
     return '生图失败：本次生成超时，建议减少数量或拆分任务后重试'
   }
 
-  if (rawError.includes('图片任务长时间无进展')) {
+  if (rawError.includes('鍥剧墖浠诲姟闀挎椂闂存棤杩涘睍')) {
     return '生图失败：图片生成长时间没有进展，建议稍后重试'
   }
 
@@ -1015,7 +1011,7 @@ async function handleImportLicense() {
 }
 
 async function handleThemeChange() {
-  // 主题切换事件预留：后续可在这里接入本地存储或桌面端配置同步。
+  // 涓婚鍒囨崲浜嬩欢棰勭暀锛氬悗缁彲鍦ㄨ繖閲屾帴鍏ユ湰鍦板瓨鍌ㄦ垨妗岄潰绔厤缃悓姝ャ€?
   activeTheme.value = 'dark'
 
   try {
@@ -1079,7 +1075,7 @@ function ensureDraftForMenu(menuKey) {
 }
 
 function handleMenuSelect(menuKey) {
-  // 菜单点击事件预留：后续可在这里接入真实业务工作区切换。
+  // 鑿滃崟鐐瑰嚮浜嬩欢棰勭暀锛氬悗缁彲鍦ㄨ繖閲屾帴鍏ョ湡瀹炰笟鍔″伐浣滃尯鍒囨崲銆?
   activeMenu.value = menuKey
   ensureDraftForMenu(menuKey)
   selectedExportIds.value = [...(selectedExportIdsByMenu.value[menuKey] || [])]
@@ -2095,7 +2091,7 @@ onBeforeUnmount(() => {
 <template>
   <main class="app-shell" :data-theme="activeTheme">
     <AppTopBar
-      brand-label="秋 Ai"
+      brand-label="QiuAi"
       :theme-options="themeOptions"
       :active-theme="activeTheme"
       :activation-summary="activationSummary"
@@ -2237,3 +2233,4 @@ onBeforeUnmount(() => {
     </section>
   </main>
 </template>
+

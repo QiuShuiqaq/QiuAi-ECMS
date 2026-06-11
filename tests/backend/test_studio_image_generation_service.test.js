@@ -227,7 +227,7 @@ describe('studioImageGenerationService', () => {
     })
 
     expect(createDrawTaskDependency).toHaveBeenCalledTimes(1)
-    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe('统一高级电商视觉风格\n保留空模板，不追加专属提示词')
+    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe('保留空模板，不追加专属提示词\n统一高级电商视觉风格')
     expect(result.groupedResults).toHaveLength(1)
   })
 
@@ -291,16 +291,16 @@ describe('studioImageGenerationService', () => {
     expect(createDrawTaskDependency.mock.calls[1][0].model).toBe('gpt-image-2')
     expect(createDrawTaskDependency.mock.calls[1][0].aspectRatio).toBe('3:4')
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '统一高级电商视觉风格\n高清\n白底\n突出产品主视觉效果\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商视觉风格\n细节特写\n重点展示局部材质与纹理\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商视觉风格\n高清\n白底\n突出产品主视觉效果\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商视觉风格\n细节特写\n重点展示局部材质与纹理\n\n严格避免以下问题：水印，logo，文字，低清像素'
+      '高清\n白底\n突出产品主视觉效果\n统一高级电商视觉风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '细节特写\n重点展示局部材质与纹理\n统一高级电商视觉风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '高清\n白底\n突出产品主视觉效果\n统一高级电商视觉风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '细节特写\n重点展示局部材质与纹理\n统一高级电商视觉风格\n严格避免以下问题：水印，logo，文字，低清像素'
     ])
     expect(result.groupedResults).toHaveLength(2)
     expect(result.groupedResults[0].outputs).toHaveLength(3)
     expect(result.groupedResults[0].outputs[0].title).toBe('主图0')
     expect(result.groupedResults[0].outputs[0].promptFinal).toBe(
-      '统一高级电商视觉风格\n高清\n白底\n突出产品主视觉效果\n\n严格避免以下问题：水印，logo，文字，低清像素'
+      '高清\n白底\n突出产品主视觉效果\n统一高级电商视觉风格\n严格避免以下问题：水印，logo，文字，低清像素'
     )
     expect(result.groupedResults[0].outputs[1].title).toBe('look-2.png')
     expect(result.groupedResults[0].outputs[2].title).toBe('细节图0')
@@ -341,8 +341,8 @@ describe('studioImageGenerationService', () => {
     })
 
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '统一高级电商视觉风格\n第一组专属提示词',
-      '统一高级电商视觉风格\n第二组专属提示词'
+      '第一组专属提示词\n统一高级电商视觉风格',
+      '第二组专属提示词\n统一高级电商视觉风格'
     ])
   })
 
@@ -379,7 +379,7 @@ describe('studioImageGenerationService', () => {
 
     expect(createDrawTaskDependency).toHaveBeenCalledTimes(1)
     expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
-      '统一高级电商视觉风格\n按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n高清\n白底\n突出产品主视觉效果'
+      '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n高清\n白底\n突出产品主视觉效果\n统一高级电商视觉风格'
     )
   })
 
@@ -611,22 +611,102 @@ describe('studioImageGenerationService', () => {
 
     expect(createDrawTaskDependency).toHaveBeenCalledTimes(6)
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '统一高级电商详情页风格\n突出产品整体外观和电商氛围\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商详情页风格\n重点展示材质和纹理\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商详情页风格\n提供另一个主视觉构图\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商详情页风格\n突出产品整体外观和电商氛围\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商详情页风格\n重点展示材质和纹理\n\n严格避免以下问题：水印，logo，文字，低清像素',
-      '统一高级电商详情页风格\n提供另一个主视觉构图\n\n严格避免以下问题：水印，logo，文字，低清像素'
+      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '重点展示材质和纹理\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '提供另一个主视觉构图\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '重点展示材质和纹理\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
+      '提供另一个主视觉构图\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素'
     ])
     expect(result.groupedResults).toHaveLength(2)
     expect(result.groupedResults[0].outputs).toHaveLength(3)
     expect(result.groupedResults[0].outputs[0].title).toBe('主图0')
     expect(result.groupedResults[0].outputs[0].promptFinal).toBe(
-      '统一高级电商详情页风格\n突出产品整体外观和电商氛围\n\n严格避免以下问题：水印，logo，文字，低清像素'
+      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素'
     )
     expect(result.groupedResults[0].outputs[1].title).toBe('细节图0')
     expect(result.groupedResults[0].outputs[2].title).toBe('主图1')
     expect(result.summary.title).toBe('套图生成 2 组 x 3 张')
+  })
+
+  it('keeps series-generate batches running when one generated image hits output moderation and falls back to the source image', async () => {
+    const createDrawTaskDependency = vi.fn(async () => ({
+      id: `remote-${createDrawTaskDependency.mock.calls.length}`
+    }))
+    const getCompletedDrawResultDependency = vi.fn(async ({ id }) => {
+      if (id === 'remote-2') {
+        return {
+          id,
+          status: 'failed',
+          progress: 100,
+          failure_reason: 'output_moderation',
+          error: '杈撳嚭鍐呭瑙﹀彂瀹℃牳闄愬埗'
+        }
+      }
+
+      return {
+        id,
+        status: 'succeeded',
+        progress: 100,
+        results: [
+          {
+            previewUrl: `data:image/png;base64,${Buffer.from(id, 'utf8').toString('base64')}`,
+            savedPath: `C:/output/${id}.png`
+          }
+        ]
+      }
+    })
+    const service = createService({
+      createDrawTaskDependency,
+      getCompletedDrawResultDependency
+    })
+
+    const result = await service.generateImageResults({
+      menuKey: 'series-generate',
+      taskId: 'task-series-generate-partial',
+      outputDirectory: 'C:/output',
+      draft: {
+        model: 'gpt-image-2',
+        sourceImage: {
+          name: 'main.png',
+          path: 'C:/input/main.png'
+        },
+        globalPrompt: 'series generate global style',
+        generateCount: 3,
+        batchCount: 1,
+        promptAssignments: [
+          { index: 1, prompt: 'primary output', templateId: 'system-empty-image-type', imageType: '' },
+          { index: 2, prompt: 'moderated output', templateId: 'system-empty-image-type', imageType: '' },
+          { index: 3, prompt: 'final output', templateId: 'system-empty-image-type', imageType: '' }
+        ],
+        size: '1:1'
+      }
+    })
+
+    expect(createDrawTaskDependency).toHaveBeenCalledTimes(3)
+    expect(result.groupedResults).toHaveLength(1)
+    expect(result.groupedResults[0]).toMatchObject({
+      status: 'partial',
+      completedCount: 2,
+      failedCount: 1
+    })
+    expect(result.groupedResults[0].outputs[0]).toMatchObject({
+      sourceTag: 'generated',
+      model: 'gpt-image-2',
+      savedPath: 'C:/output/remote-1.png'
+    })
+    expect(result.groupedResults[0].outputs[1]).toMatchObject({
+      sourceTag: 'fallback',
+      model: '原图保留',
+      status: '失败',
+      savedPath: 'C:/input/main.png',
+      error: '图片任务失败：输出内容触发审核限制'
+    })
+    expect(result.groupedResults[0].outputs[2]).toMatchObject({
+      sourceTag: 'generated',
+      model: 'gpt-image-2',
+      savedPath: 'C:/output/remote-3.png'
+    })
   })
 
   it('uses batch-specific prompts for series-generate when differential mode is enabled', async () => {
@@ -665,8 +745,8 @@ describe('studioImageGenerationService', () => {
     })
 
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '统一高级电商详情页风格\n第一组提示词',
-      '统一高级电商详情页风格\n第二组提示词'
+      '第一组提示词\n统一高级电商详情页风格',
+      '第二组提示词\n统一高级电商详情页风格'
     ])
   })
 
@@ -705,7 +785,7 @@ describe('studioImageGenerationService', () => {
 
     expect(createDrawTaskDependency).toHaveBeenCalledTimes(1)
     expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
-      '统一高级电商详情页风格\n按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n突出产品整体外观和电商氛围'
+      '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n突出产品整体外观和电商氛围\n统一高级电商详情页风格'
     )
   })
 
@@ -911,7 +991,7 @@ describe('studioImageGenerationService', () => {
       }
     })
 
-    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe('统一风格\n补充主体卖点')
+    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe('补充主体卖点\n统一风格')
   })
 
   it('does not append negative prompt section when series-generate negativePrompt is empty', async () => {
@@ -945,7 +1025,7 @@ describe('studioImageGenerationService', () => {
     })
 
     expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
-      '统一风格\n突出主体卖点'
+      '突出主体卖点\n统一风格'
     )
   })
 
@@ -985,8 +1065,8 @@ describe('studioImageGenerationService', () => {
     })
 
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '统一风格\n默认提示词',
-      '统一风格\n默认提示词'
+      '默认提示词\n统一风格',
+      '默认提示词\n统一风格'
     ])
   })
 

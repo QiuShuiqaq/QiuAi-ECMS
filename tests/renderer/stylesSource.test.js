@@ -174,7 +174,6 @@ describe('styles source', () => {
     expect(source).toContain('.dashboard-network-monitor__row')
     expect(source).toContain('.dashboard-network-monitor__metric')
     expect(source).toContain('grid-template-rows: minmax(0, 2fr) auto minmax(0, 0.7fr);')
-    expect(source).toContain('min-height: 216px;')
     expect(source).toContain('gap: clamp(10px, 1vw, 14px);')
     expect(source).toContain('.topbar-right-actions')
     expect(source).toContain('justify-self: end;')

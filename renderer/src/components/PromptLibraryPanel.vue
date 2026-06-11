@@ -52,29 +52,29 @@ const warningRiskHints = [
 
 const promptFormatGuide = [
   {
-    scene: '头像、Q 版人物、表情包',
-    length: '60～150',
-    tip: '主体 + 风格 + 简单背景，简洁干净'
+    scene: '商品主图 / 首页首图',
+    length: '20～60',
+    tip: '先把XXX改成商品名，再写主体 + 卖点 + 画面感觉，短句直接，不要堆太多形容词'
   },
   {
-    scene: '单人插画、古风 / 二次元人设',
-    length: '150～300',
-    tip: '外貌 + 服饰 + 姿态 + 氛围 + 画风'
+    scene: '商品详情图 / 卖点说明图',
+    length: '40～90',
+    tip: '先把XXX改成商品名，再写功能卖点 + 使用场景 + 版面感觉，优先写清楚要展示什么'
   },
   {
-    scene: '产品图、静物、美食',
-    length: '150～300',
-    tip: '产品细节 + 材质 + 光线 + 简约场景'
+    scene: '商品细节图 / 材质特写',
+    length: '20～50',
+    tip: '先把XXX改成商品名，再写局部部位 + 材质纹理 + 灯光质感，少写大场景'
   },
   {
-    scene: '风景、氛围感壁纸',
-    length: '200～400',
-    tip: '环境 + 时间天气 + 光影 + 色调风格'
+    scene: '商品尺寸图 / 规格说明图',
+    length: '20～40',
+    tip: '先把XXX改成商品名，再写尺寸结构 + 信息清晰 + 画面整洁，避免加入无关氛围词'
   },
   {
-    scene: '多人剧情、赛博朋克 / 奇幻大场景',
-    length: '400～800',
-    tip: '人物 + 动作 + 环境 + 镜头 + 整体氛围，语句连贯'
+    scene: '商品白底图 / 颜色图',
+    length: '15～40',
+    tip: '先把XXX改成商品名，再写白底或颜色变化 + 主体完整 + 边缘干净，越简单越稳定'
   }
 ]
 
@@ -517,7 +517,7 @@ const renderedNegativeTemplates = computed(() => {
           <div class="prompt-library-column__header prompt-library-column__header--stacked">
             <div>
               <h3>提示词格式</h3>
-              <p class="prompt-library-column__eyebrow">按常见场景快速判断字数与写法重点</p>
+              <p class="prompt-library-column__eyebrow">先把模板里的 XXX 改成商品主体，再按电商场景快速判断字数与写法重点</p>
             </div>
           </div>
 

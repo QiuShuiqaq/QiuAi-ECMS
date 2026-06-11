@@ -1,4 +1,4 @@
-const crypto = require('node:crypto')
+﻿const crypto = require('node:crypto')
 
 const TEMPLATE_KEY = 'promptTemplates'
 
@@ -14,42 +14,42 @@ const defaultTemplates = [
     id: 'product-main',
     name: '商品主图',
     category: '按钮提示词',
-    prompt: '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。',
+    prompt: '电商商品主图，主体为XXX，主体完整清晰，突出XXX本身与核心卖点，构图简洁，光线干净，质感自然，适合首页展示',
     source: 'system-fixed'
   },
   {
     id: 'product-detail',
     name: '详情图',
     category: '按钮提示词',
-    prompt: '按详情图生成：输出产品详细说明图，强调卖点信息、使用说明、功能结构或场景说明；禁止仅做主视觉海报。',
+    prompt: '电商商品详情图，主体为XXX，清晰展示XXX的功能卖点、使用方式或核心信息，画面层次明确，信息表达直观，适合详情页展示',
     source: 'system-fixed'
   },
   {
     id: 'product-closeup',
     name: '细节图',
     category: '按钮提示词',
-    prompt: '按细节图生成：输出产品局部放大图，重点展示材质、做工、纹理或关键细节；禁止生成整套场景主视觉。',
+    prompt: '电商商品细节图，主体为XXX，聚焦XXX的材质、纹理、做工或关键结构，局部清晰放大，质感真实，细节明确',
     source: 'system-fixed'
   },
   {
     id: 'product-size',
     name: '尺寸图',
     category: '按钮提示词',
-    prompt: '按尺寸图生成：输出带尺寸标注的说明图，清晰表达长宽高或关键规格；禁止省略尺寸信息。',
+    prompt: '电商商品尺寸图，主体为XXX，清晰展示XXX的尺寸、规格或结构比例，信息明确易读，画面整洁，适合详情页说明',
     source: 'system-fixed'
   },
   {
     id: 'product-whitebg',
     name: '白底图',
     category: '按钮提示词',
-    prompt: '按白底图生成：输出纯白背景电商图，主体完整清晰、边缘干净；禁止加入场景背景和复杂装饰。',
+    prompt: '电商商品白底图，主体为XXX，纯白背景，主体完整清晰，边缘干净，颜色准确，适合平台主图或抠图展示',
     source: 'system-fixed'
   },
   {
     id: 'product-color',
     name: '颜色图',
     category: '按钮提示词',
-    prompt: '按颜色图生成：输出产品颜色变化效果图，保持产品结构一致，仅突出颜色差异；禁止改变主体款式。',
+    prompt: '电商商品颜色图，主体为XXX，保持XXX的结构与款式一致，只展示颜色或配色变化，画面统一，便于颜色对比',
     source: 'system-fixed'
   }
 ]
@@ -132,3 +132,4 @@ module.exports = {
   createPromptTemplateStoreService,
   defaultTemplates
 }
+

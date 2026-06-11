@@ -1,4 +1,4 @@
-const API_KEY_SLOT_COUNT = 2
+﻿const API_KEY_SLOT_COUNT = 2
 const BROWSER_SETTINGS_KEY = 'qiuai-browser-settings'
 const BROWSER_STUDIO_KEY = 'qiuai-browser-studio'
 const BROWSER_PROMPTS_KEY = 'qiuai-browser-prompts'
@@ -77,42 +77,42 @@ const defaultBrowserPromptTemplates = [
     id: 'product-main',
     name: '商品主图',
     category: '按钮提示词',
-    prompt: '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。',
+    prompt: '电商商品主图，主体为XXX，主体完整清晰，突出XXX本身与核心卖点，构图简洁，光线干净，质感自然，适合首页展示',
     source: 'system-fixed'
   },
   {
     id: 'product-detail',
     name: '详情图',
     category: '按钮提示词',
-    prompt: '按详情图生成：输出产品详细说明图，强调卖点信息、使用说明、功能结构或场景说明；禁止仅做主视觉海报。',
+    prompt: '电商商品详情图，主体为XXX，清晰展示XXX的功能卖点、使用方式或核心信息，画面层次明确，信息表达直观，适合详情页展示',
     source: 'system-fixed'
   },
   {
     id: 'product-closeup',
     name: '细节图',
     category: '按钮提示词',
-    prompt: '按细节图生成：输出产品局部放大图，重点展示材质、做工、纹理或关键细节；禁止生成整套场景主视觉。',
+    prompt: '电商商品细节图，主体为XXX，聚焦XXX的材质、纹理、做工或关键结构，局部清晰放大，质感真实，细节明确',
     source: 'system-fixed'
   },
   {
     id: 'product-size',
     name: '尺寸图',
     category: '按钮提示词',
-    prompt: '按尺寸图生成：输出带尺寸标注的说明图，清晰表达长宽高或关键规格；禁止省略尺寸信息。',
+    prompt: '电商商品尺寸图，主体为XXX，清晰展示XXX的尺寸、规格或结构比例，信息明确易读，画面整洁，适合详情页说明',
     source: 'system-fixed'
   },
   {
     id: 'product-whitebg',
     name: '白底图',
     category: '按钮提示词',
-    prompt: '按白底图生成：输出纯白背景电商图，主体完整清晰、边缘干净；禁止加入场景背景和复杂装饰。',
+    prompt: '电商商品白底图，主体为XXX，纯白背景，主体完整清晰，边缘干净，颜色准确，适合平台主图或抠图展示',
     source: 'system-fixed'
   },
   {
     id: 'product-color',
     name: '颜色图',
     category: '按钮提示词',
-    prompt: '按颜色图生成：输出产品颜色变化效果图，保持产品结构一致，仅突出颜色差异；禁止改变主体款式。',
+    prompt: '电商商品颜色图，主体为XXX，保持XXX的结构与款式一致，只展示颜色或配色变化，画面统一，便于颜色对比',
     source: 'system-fixed'
   }
 ]
@@ -129,21 +129,21 @@ const defaultBrowserNegativePromptTemplates = [
     id: 'negative-common',
     name: '电商通用',
     category: '反向提示词',
-    prompt: '水印，logo，文字，广告标，多余贴纸，杂乱背景，路人乱入，多余人物，画面变形，产品扭曲，边缘模糊，低清像素，反光杂乱，阴影错乱，拼接痕迹，瑕疵破损，掉色色差，多余杂物，构图歪斜，裁剪不全，噪点颗粒',
+    prompt: '水印，logo，文字，广告标，多余贴纸，杂乱背景，多余人物，画面变形，产品扭曲，边缘模糊，低清晰度，噪点，拼接痕迹，阴影错乱，明显反光，裁切不全',
     source: 'system-fixed'
   },
   {
     id: 'negative-model',
     name: '电商模特',
     category: '反向提示词',
-    prompt: '畸形身材，比例失调，歪脸丑脸，五官崩坏，大小眼，高低肩，驼背，假胸，肢体变形，多手指，手部崩坏，妆容怪异，发型杂乱，服装褶皱崩坏，衣服变形，走光，多余配饰，背景路人，水印文字，滤镜过度，假面网红脸，肤色斑驳',
+    prompt: '比例失衡，五官异常，手指错误，肢体变形，姿态僵硬，服装褶皱异常，妆容怪异，背景路人，滤镜过重，肤色异常',
     source: 'system-fixed'
   },
   {
     id: 'negative-still-life',
     name: '电商静物',
     category: '反向提示词',
-    prompt: '产品变形，造型扭曲，破损裂痕，划痕瑕疵，色差严重，反光刺眼，倒影错乱，多余杂物，灰尘污渍，包装残缺，文字乱码，logo 乱印，边缘虚化，对焦不准，重叠产品，多余摆件，背景花哨，阴影脏乱，低质感塑料感',
+    prompt: '产品变形，材质失真，脏污灰尘，划痕破损，颜色偏差，反光刺眼，倒影错乱，摆件杂乱，背景花哨，焦点不准，廉价塑料感',
     source: 'system-fixed'
   }
 ]
@@ -809,3 +809,5 @@ export function clearStudioRuntimeState () {
 
   return invoke(getChannel('STUDIO_CLEAR_RUNTIME_STATE'))
 }
+
+

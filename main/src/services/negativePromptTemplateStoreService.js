@@ -1,4 +1,4 @@
-const crypto = require('node:crypto')
+﻿const crypto = require('node:crypto')
 
 const TEMPLATE_KEY = 'negativePromptTemplates'
 
@@ -14,21 +14,21 @@ const defaultNegativePromptTemplates = [
     id: 'negative-common',
     name: '电商通用',
     category: '反向提示词',
-    prompt: '水印，logo，文字，广告标，多余贴纸，杂乱背景，路人乱入，多余人物，画面变形，产品扭曲，边缘模糊，低清像素，反光杂乱，阴影错乱，拼接痕迹，瑕疵破损，掉色色差，多余杂物，构图歪斜，裁剪不全，噪点颗粒',
+    prompt: '水印，logo，文字，广告标，多余贴纸，杂乱背景，多余人物，画面变形，产品扭曲，边缘模糊，低清晰度，噪点，拼接痕迹，阴影错乱，明显反光，裁切不全',
     source: 'system-fixed'
   },
   {
     id: 'negative-model',
     name: '电商模特',
     category: '反向提示词',
-    prompt: '畸形身材，比例失调，歪脸丑脸，五官崩坏，大小眼，高低肩，驼背，假胸，肢体变形，多手指，手部崩坏，妆容怪异，发型杂乱，服装褶皱崩坏，衣服变形，走光，多余配饰，背景路人，水印文字，滤镜过度，假面网红脸，肤色斑驳',
+    prompt: '比例失衡，五官异常，手指错误，肢体变形，姿态僵硬，服装褶皱异常，妆容怪异，背景路人，滤镜过重，肤色异常',
     source: 'system-fixed'
   },
   {
     id: 'negative-still-life',
     name: '电商静物',
     category: '反向提示词',
-    prompt: '产品变形，造型扭曲，破损裂痕，划痕瑕疵，色差严重，反光刺眼，倒影错乱，多余杂物，灰尘污渍，包装残缺，文字乱码，logo 乱印，边缘虚化，对焦不准，重叠产品，多余摆件，背景花哨，阴影脏乱，低质感塑料感',
+    prompt: '产品变形，材质失真，脏污灰尘，划痕破损，颜色偏差，反光刺眼，倒影错乱，摆件杂乱，背景花哨，焦点不准，廉价塑料感',
     source: 'system-fixed'
   }
 ]
@@ -111,3 +111,4 @@ module.exports = {
   createNegativePromptTemplateStoreService,
   defaultNegativePromptTemplates
 }
+

@@ -132,7 +132,9 @@ const singleImageNotesModel = createFieldBinding('notes')
 const singleDesignPromptModel = createFieldBinding('prompt')
 const singleDesignNotesModel = createFieldBinding('notes')
 const seriesDesignGlobalPromptModel = createFieldBinding('globalPrompt')
+const seriesDesignNegativePromptModel = createFieldBinding('negativePrompt')
 const seriesGenerateGlobalPromptModel = createFieldBinding('globalPrompt')
+const seriesGenerateNegativePromptModel = createFieldBinding('negativePrompt')
 
 function createUploadDirectoryBinding(menuKey) {
   return computed({
@@ -517,6 +519,16 @@ function handleTemplateSelection(targetKind, index, templateId) {
         </label>
 
         <label class="form-field">
+          <span>反向提示词内容</span>
+          <FormTextControl
+            v-model="seriesDesignNegativePromptModel"
+            as="textarea"
+            rows="4"
+            placeholder="选择模板后可直接在这里修改反向提示词"
+          />
+        </label>
+
+        <label class="form-field">
           <span>输出比例</span>
           <select :value="draftForm.size" @change="emitField('size', $event.target.value)">
             <option v-for="option in ratioOptions" :key="option.value" :value="option.value">
@@ -770,6 +782,16 @@ function handleTemplateSelection(targetKind, index, templateId) {
               {{ template.name }}
             </option>
           </select>
+        </label>
+
+        <label class="form-field">
+          <span>反向提示词内容</span>
+          <FormTextControl
+            v-model="seriesGenerateNegativePromptModel"
+            as="textarea"
+            rows="4"
+            placeholder="选择模板后可直接在这里修改反向提示词"
+          />
         </label>
 
         <div class="form-row">

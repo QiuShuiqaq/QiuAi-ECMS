@@ -1,4 +1,4 @@
-const { createHttpClientService } = require('./httpClientService')
+﻿const { createHttpClientService } = require('./httpClientService')
 const { createDrawTask } = require('./drawTaskService')
 const { getCompletedDrawResult } = require('./completedDrawResultService')
 const { toDataUrl, getMimeTypeFromPath } = require('./localInputAssetService')
@@ -72,7 +72,7 @@ async function safeRuntimeLog(runtimeLogger, payload) {
   try {
     await runtimeLogger.log(payload)
   } catch {
-    // 运行日志失败不影响主流程。
+    // 杩愯鏃ュ織澶辫触涓嶅奖鍝嶄富娴佺▼銆?
   }
 }
 
@@ -93,25 +93,48 @@ function composePrompt(parts = []) {
     .join('\n')
 }
 
-function normalizeNegativePromptText(negativePrompt = '') {
-  return String(negativePrompt || '')
+function normalizePromptLinesStable(value = '') {
+  return String(value || '')
     .split(/\r?\n+/)
     .map((item) => item.trim())
     .filter(Boolean)
-    .join('，')
 }
 
-function composePromptWithNegativeConstraints(parts = [], negativePrompt = '') {
-  const prompt = composePrompt(parts)
-  const normalizedNegativePrompt = normalizeNegativePromptText(negativePrompt)
+function composePromptStable(parts = []) {
+  const seen = new Set()
+
+  return (Array.isArray(parts) ? parts : [])
+    .flatMap((item) => normalizePromptLinesStable(item))
+    .filter((line) => {
+      if (seen.has(line)) {
+        return false
+      }
+
+      seen.add(line)
+      return true
+    })
+    .join('\n')
+}
+
+function normalizeNegativePromptTextStable(negativePrompt = '') {
+  return normalizePromptLinesStable(negativePrompt).join('，')
+}
+
+function composeStructuredPrompt({
+  dedicatedPrompt = '',
+  globalPrompt = '',
+  negativePrompt = ''
+} = {}) {
+  const positivePrompt = composePromptStable([dedicatedPrompt, globalPrompt])
+  const normalizedNegativePrompt = normalizeNegativePromptTextStable(negativePrompt)
 
   if (!normalizedNegativePrompt) {
-    return prompt
+    return positivePrompt
   }
 
-  return [prompt, `严格避免以下问题：${normalizedNegativePrompt}`]
+  return [positivePrompt, `严格避免以下问题：${normalizedNegativePrompt}`]
     .filter(Boolean)
-    .join('\n\n')
+    .join('\n')
 }
 
 function normalizeDifferentialBatchPrompts(batchPrompts = [], batchCount = 1) {
@@ -809,10 +832,11 @@ function createStudioImageGenerationService({
                 batchIndex,
                 batchCount
               })
-              const promptFinal = composePromptWithNegativeConstraints(
-                [draft.globalPrompt, batchPrompt],
-                draft.negativePrompt
-              )
+              const promptFinal = composeStructuredPrompt({
+                dedicatedPrompt: batchPrompt,
+                globalPrompt: draft.globalPrompt,
+                negativePrompt: draft.negativePrompt
+              })
               const completedResult = await executeRemoteImageTask({
                 jobLabel: `series-design-${batchIndex + 1}-${selectedIndex + 1}`,
                 model: assignment.model || draft.model,
@@ -917,48 +941,80 @@ function createStudioImageGenerationService({
     }
 
     const sourceFilePath = draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
+    const sourcePreview = sourceFilePath
+      ? await toDataUrlDependency({
+          filePath: sourceFilePath,
+          mimeType: getMimeTypeFromPathDependency(sourceFilePath)
+        })
+      : ''
+    const sourceFallbackOutput = {
+      id: `${taskId}-series-generate-source-original`,
+      title: draft.sourceImage?.name || 'source-image',
+      model: 'original',
+      preview: sourcePreview,
+      savedPath: sourceFilePath,
+      sourceTag: 'original'
+    }
     const groupedResults = []
 
     for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+      let completedCount = 0
+      let failedCount = 0
       const outputs = await runTasksWithConcurrency(
         outputDescriptors.map((promptAssignment, outputIndex) => {
           return async () => {
             const subtaskIndex = (batchIndex * generateCount) + outputIndex
-            const batchPrompt = resolveBatchPromptValue({
-              differentialEnabled: promptAssignment.differentialEnabled,
-              batchPrompts: promptAssignment.batchPrompts,
-              fallbackPrompt: promptAssignment.composedPrompt,
-              batchIndex,
-              batchCount
-            })
-            const promptFinal = composePromptWithNegativeConstraints(
-              [draft.globalPrompt, batchPrompt],
-              draft.negativePrompt
-            )
-            const completedResult = await executeRemoteImageTask({
-              jobLabel: `series-generate-${batchIndex + 1}-${outputIndex + 1}`,
-              model: draft.model,
-              prompt: promptFinal,
-              aspectRatio: resolveAspectRatio(draft.size || '1:1'),
-              imageSize: resolveImageSize(draft.model),
-              filePaths: [sourceFilePath],
-              outputDirectory,
-              onProgress: async ({ progress, status }) => {
-                await progressReporter.reportSubtaskProgress(subtaskIndex, progress, status)
+            try {
+              const batchPrompt = resolveBatchPromptValue({
+                differentialEnabled: promptAssignment.differentialEnabled,
+                batchPrompts: promptAssignment.batchPrompts,
+                fallbackPrompt: promptAssignment.composedPrompt,
+                batchIndex,
+                batchCount
+              })
+              const promptFinal = composeStructuredPrompt({
+                dedicatedPrompt: batchPrompt,
+                globalPrompt: draft.globalPrompt,
+                negativePrompt: draft.negativePrompt
+              })
+              const completedResult = await executeRemoteImageTask({
+                jobLabel: `series-generate-${batchIndex + 1}-${outputIndex + 1}`,
+                model: draft.model,
+                prompt: promptFinal,
+                aspectRatio: resolveAspectRatio(draft.size || '1:1'),
+                imageSize: resolveImageSize(draft.model),
+                filePaths: [sourceFilePath],
+                outputDirectory,
+                onProgress: async ({ progress, status }) => {
+                  await progressReporter.reportSubtaskProgress(subtaskIndex, progress, status)
+                }
+              })
+              const savedImage = completedResult.results?.[0]
+              if (!savedImage) {
+                throw new Error(`第 ${batchIndex + 1} 组结果 ${outputIndex + 1} 未返回可用图片`)
               }
-            })
-            const savedImage = completedResult.results?.[0]
-            if (!savedImage) {
-              throw new Error(`第 ${batchIndex + 1} 组结果 ${outputIndex + 1} 未返回可用图片`)
-            }
 
-            return createSeriesOutputFromSavedImage(savedImage, {
-              id: `${taskId}-series-generate-${batchIndex + 1}-${outputIndex + 1}`,
-              title: promptAssignment.outputTitle,
-              model: draft.model,
-              sourceTag: 'generated',
-              promptFinal
-            })
+              completedCount += 1
+              return createSeriesOutputFromSavedImage(savedImage, {
+                id: `${taskId}-series-generate-${batchIndex + 1}-${outputIndex + 1}`,
+                title: promptAssignment.outputTitle,
+                model: draft.model,
+                sourceTag: 'generated',
+                promptFinal
+              })
+            } catch (error) {
+              if (!isModerationFailureMessage(error?.message)) {
+                throw error
+              }
+
+              failedCount += 1
+              await progressReporter.reportSubtaskProgress(subtaskIndex, 100, 'failed')
+              return createSeriesFallbackOutput(sourceFallbackOutput, {
+                id: `${taskId}-series-generate-${batchIndex + 1}-${outputIndex + 1}-fallback`,
+                title: promptAssignment.outputTitle,
+                error: error.message
+              })
+            }
           }
         }),
         SERIES_GROUP_CONCURRENCY
@@ -970,6 +1026,9 @@ function createStudioImageGenerationService({
         groupTitle: `第 ${batchIndex + 1} 组`,
         promptSummary: draft.globalPrompt || '',
         notes: '',
+        status: failedCount > 0 ? (completedCount > 0 ? 'partial' : 'failed') : 'succeeded',
+        completedCount,
+        failedCount,
         outputs
       })
     }
@@ -1052,3 +1111,4 @@ module.exports = {
   normalizeSingleImageModels,
   createStudioImageGenerationService
 }
+

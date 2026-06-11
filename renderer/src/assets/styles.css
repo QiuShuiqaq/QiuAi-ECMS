@@ -1004,6 +1004,7 @@ textarea {
 .dashboard-card__content--network {
   grid-template-rows: minmax(0, 2fr) auto minmax(0, 0.7fr);
   align-content: stretch;
+  overflow: hidden;
 }
 
 .dashboard-card__footer {
@@ -1299,7 +1300,7 @@ textarea {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  min-height: 216px;
+  min-height: 168px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 16px;
@@ -1361,7 +1362,9 @@ textarea {
   gap: 6px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 .dashboard-network-monitor__row {
@@ -2168,14 +2171,20 @@ textarea {
 
 .prompt-library-column__body--stacked {
   display: grid;
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
   gap: 12px;
+  overflow: hidden;
 }
 
 .prompt-library-list {
   display: grid;
   gap: 12px;
   min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 .prompt-template-row {
@@ -2380,6 +2389,8 @@ textarea {
 
 .prompt-template-add-button {
   width: 100%;
+  align-self: end;
+  margin-top: 2px;
 }
 
 .prompt-format-list {

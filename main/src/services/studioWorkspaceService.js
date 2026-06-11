@@ -1,4 +1,4 @@
-const fs = require('node:fs/promises')
+﻿const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -89,10 +89,10 @@ const taskCategoryMap = {
   'model-pricing': '单图测试'
 }
 const taskMenuMapByCategory = {
-  单图测试: 'single-image',
-  单图设计: 'single-design',
-  套图设计: 'series-design',
-  套图生成: 'series-generate'
+  '单图测试': 'single-image',
+  '单图设计': 'single-design',
+  '套图设计': 'series-design',
+  '套图生成': 'series-generate'
 }
 const CREDIT_ACTIVITY_HISTORY_LIMIT = 20
 const REQUEST_METRIC_HISTORY_LIMIT = 24
@@ -134,7 +134,7 @@ async function safeRuntimeLog (runtimeLogger, payload) {
   try {
     await runtimeLogger.log(payload)
   } catch {
-    // 运行日志失败不影响主流程。
+    // 运行日志失败时不影响主流程。
   }
 }
 
@@ -376,9 +376,7 @@ function createDefaultDrafts() {
       notes: ''
     },
     'series-design': {
-      globalPrompt: '统一套图风格与商品调性',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
+      globalPrompt: '围绕XXX统一商品视觉风格，保持XXX主体一致，画面干净专业',
       legacyGlobalPrompt: '',
       defaultAssignmentRatio: '1:1',
       defaultAssignmentModel: resolveDefaultModelForMenu('series-design'),
@@ -389,9 +387,7 @@ function createDefaultDrafts() {
       size: '1:1'
     },
     'series-generate': {
-      globalPrompt: '统一商品详情图整体风格',
-      negativeTemplateId: DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID,
-      negativePrompt: '',
+      globalPrompt: '围绕XXX统一商品详情图风格，突出XXX主体与卖点，适合电商展示',
       legacyGlobalPrompt: '',
       model: resolveDefaultModelForMenu('series-generate'),
       taskName: '',
@@ -832,7 +828,7 @@ function resolveCreditActivityLabel(item = {}) {
 function resolveCreditActivityDescription(item = {}) {
   if (item.taskNumber || item.taskName) {
     const taskHeader = [item.taskNumber, item.taskName].filter(Boolean).join(' / ')
-    const modelText = item.modelSummary ? ` · ${item.modelSummary}` : ''
+    const modelText = item.modelSummary ? ` / ${item.modelSummary}` : ''
     return `${taskHeader || '任务'}${modelText}`
   }
 
@@ -1285,8 +1281,8 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
     summary: {
       ...summary,
       statusLabel: '已完成',
-      modelLabel: models.length ? `使用模型 ${models.join(' / ')}` : '',
-      resultCountLabel: `结果数量 ${resultCount}`,
+      modelLabel: models.length ? `浣跨敤妯″瀷 ${models.join(' / ')}` : '',
+      resultCountLabel: `缁撴灉鏁伴噺 ${resultCount}`,
       elapsedLabel: formatElapsedLabel(elapsedMilliseconds)
     }
   }
@@ -2868,3 +2864,4 @@ module.exports = {
   modelPricingCatalog,
   createStudioWorkspaceService
 }
+
