@@ -7,9 +7,10 @@ const { pathToFileURL } = require('node:url')
 const { exportTaskDirectory: defaultExportTaskDirectory } = require('./taskExportService')
 const {
   createStudioImageGenerationService,
-  normalizeSingleImageModels,
   MAX_SERIES_GENERATE_GROUP_SIZE
 } = require('./studioImageGenerationService')
+const { createCopywritingGenerationService } = require('./copywritingGenerationService')
+const { createStudioVideoGenerationService } = require('./studioVideoGenerationService')
 const {
   ensureDirectory,
   getTaskDataDirectories,
@@ -35,39 +36,44 @@ const themeOptions = [
 
 const menuItems = [
   { key: 'workspace', label: '工作台' },
-  { key: 'single-image', label: '单图测试' },
-  { key: 'single-design', label: '单图设计' },
-  { key: 'series-design', label: '套图设计' },
+  { key: 'data-center', label: '数据中心' },
+  { key: 'product-template', label: '商品模板' },
+  { key: 'title-generator', label: '标题生成' },
+  { key: 'description-generator', label: '描述生成' },
   { key: 'series-generate', label: '套图生成' },
-  { key: 'model-pricing', label: '模型价格' }
+  { key: 'video-generate', label: '视频生成' },
+  { key: 'model-pricing', label: '模型价格' },
+  { key: 'prompt-library', label: '提示词库' },
+  { key: 'model-config', label: '模型配置' }
 ]
 
 const imageModelOptions = [
   { label: 'gpt-image-2', value: 'gpt-image-2' },
-  { label: 'nano-banana-pro', value: 'nano-banana-pro' },
   { label: 'nano-banana-fast', value: 'nano-banana-fast' },
-  { label: 'nano-banana-2', value: 'nano-banana-2' },
-  { label: 'nano-banana-pro-vt', value: 'nano-banana-pro-vt' },
-  { label: 'nano-banana-pro-cl', value: 'nano-banana-pro-cl' },
-  { label: 'nano-banana-2-cl', value: 'nano-banana-2-cl' },
-  { label: 'nano-banana-pro-vip', value: 'nano-banana-pro-vip' },
-  { label: 'nano-banana-2-4k-cl', value: 'nano-banana-2-4k-cl' },
-  { label: 'nano-banana-pro-4k-vip', value: 'nano-banana-pro-4k-vip' },
-  { label: 'nano-banana', value: 'nano-banana' }
+  { label: 'nano-banana-2', value: 'nano-banana-2' }
+]
+
+const textModelOptions = [
+  { label: 'deepseek-v4-flash', value: 'deepseek-v4-flash' },
+  { label: 'deepseek-v4-pro', value: 'deepseek-v4-pro' }
+]
+
+const videoModelOptions = [
+  { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
+]
+
+const videoAspectRatioOptions = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '1:1', value: '1:1' },
+  { label: '4:5', value: '4:5' },
+  { label: '3:4', value: '3:4' }
 ]
 
 const modelPricingCatalog = [
   { name: 'nano-banana-fast', credits: '440 / 次' },
   { name: 'gpt-image-2', credits: '600 / 次' },
-  { name: 'nano-banana-2', credits: '1200 / 次' },
-  { name: 'nano-banana', credits: '1400 / 次' },
-  { name: 'nano-banana-2-cl', credits: '1600 / 次' },
-  { name: 'nano-banana-pro', credits: '1800 / 次' },
-  { name: 'nano-banana-pro-vt', credits: '1800 / 次' },
-  { name: 'nano-banana-2-4k-cl', credits: '3000 / 次' },
-  { name: 'nano-banana-pro-cl', credits: '6000 / 次' },
-  { name: 'nano-banana-pro-vip', credits: '10000 / 次' },
-  { name: 'nano-banana-pro-4k-vip', credits: '16000 / 次' }
+  { name: 'nano-banana-2', credits: '1200 / 次' }
 ]
 const modelCreditCostMap = Object.fromEntries(modelPricingCatalog.map((item) => {
   return [item.name, Number.parseInt(String(item.credits), 10) || 0]
@@ -81,17 +87,17 @@ const batchOptions = [
 
 const menuLabelMap = Object.fromEntries(menuItems.map((item) => [item.key, item.label]))
 const taskCategoryMap = {
-  workspace: '单图测试',
-  'single-image': '单图测试',
-  'single-design': '单图设计',
-  'series-design': '套图设计',
+  workspace: '工作台',
+  'title-generator': '标题生成',
+  'description-generator': '描述生成',
   'series-generate': '套图生成',
-  'model-pricing': '单图测试'
+  'video-generate': '视频生成',
+  'model-pricing': '模型价格'
 }
 const taskMenuMapByCategory = {
-  '单图测试': 'single-image',
-  '单图设计': 'single-design',
-  '套图设计': 'series-design',
+  工作台: 'workspace',
+  标题生成: 'title-generator',
+  描述生成: 'description-generator',
   '套图生成': 'series-generate'
 }
 const CREDIT_ACTIVITY_HISTORY_LIMIT = 20
@@ -100,20 +106,45 @@ const TASK_SIZE_LIMITS = {
   'series-generate': {
     warn: 40,
     block: 120
-  },
-  'series-design': {
-    warn: 30,
-    block: 80
   }
 }
-const DEFAULT_EMPTY_PROMPT_TEMPLATE_ID = 'system-empty-image-type'
-const DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID = 'system-empty-negative-prompt'
+const DEFAULT_EMPTY_PROMPT_TEMPLATE_ID = 'image-default'
+const SERIES_GENERATE_TEMPLATE_ID_BY_TYPE = {
+  商品主图: 'image-main',
+  白底图: 'image-white-bg',
+  详情图: 'image-detail',
+  细节图: 'image-closeup',
+  尺寸图: 'image-size',
+  颜色图: 'image-color',
+  场景图: 'image-scene',
+  模特图: 'image-model',
+  换角度: 'image-angle',
+  换场景: 'image-change-scene',
+  换模特: 'image-change-model',
+  全替换: 'image-replace-all'
+}
+const SERIES_GENERATE_TYPE_BY_TEMPLATE_ID = Object.fromEntries(
+  Object.entries(SERIES_GENERATE_TEMPLATE_ID_BY_TYPE).map(([imageType, templateId]) => [templateId, imageType])
+)
+const SERIES_GENERATE_DEFAULT_TYPE_ORDER = [
+  '商品主图',
+  '白底图',
+  '详情图',
+  '细节图',
+  '尺寸图',
+  '颜色图',
+  '场景图',
+  '模特图',
+  '换角度',
+  '换场景',
+  '换模特',
+  '全替换'
+]
 const EXPORT_FREE_SPACE_MULTIPLIER = 3
 const EXPORT_MIN_REQUIRED_BYTES = 1024
 const workspaceDashboardSections = [
-  { cardKey: 'singleImageStats', menuKey: 'single-image', title: '单图测试统计' },
-  { cardKey: 'seriesDesignStats', menuKey: 'series-design', title: '套图设计统计' },
-  { cardKey: 'singleDesignStats', menuKey: 'single-design', title: '单图设计统计' },
+  { cardKey: 'titleStats', menuKey: 'title-generator', title: '标题生成统计' },
+  { cardKey: 'descriptionStats', menuKey: 'description-generator', title: '描述生成统计' },
   { cardKey: 'seriesGenerateStats', menuKey: 'series-generate', title: '套图生成统计' }
 ]
 
@@ -121,9 +152,33 @@ function getModelOptionsByMenu() {
   return imageModelOptions
 }
 
+function getTextModelOptionsByMenu(menuKey = '') {
+  if (menuKey === 'description-generator') {
+    return textModelOptions
+  }
+
+  return textModelOptions
+}
+
+function getVideoModelOptionsByMenu() {
+  return videoModelOptions
+}
+
 function resolveDefaultModelForMenu() {
   const modelOptions = getModelOptionsByMenu()
   return modelOptions[0]?.value || 'gpt-image-2'
+}
+
+function resolveTextModelForMenu(menuKey = '') {
+  if (menuKey === 'description-generator') {
+    return 'deepseek-v4-pro'
+  }
+
+  return 'deepseek-v4-flash'
+}
+
+function resolveVideoAspectRatioForMenu() {
+  return '16:9'
 }
 
 async function safeRuntimeLog (runtimeLogger, payload) {
@@ -153,137 +208,140 @@ function normalizeImageAsset(item = {}) {
   }
 }
 
-function normalizeBatchPrompts(batchPrompts = [], batchCount = 1) {
-  const normalizedCount = Math.max(1, Number(batchCount) || 1)
-  const sourcePrompts = Array.isArray(batchPrompts) ? batchPrompts : []
-
-  return Array.from({ length: normalizedCount }, (_unused, index) => {
-    return String(sourcePrompts[index] || '')
-  })
-}
-
-function normalizeImageAssignments(assignments = [], batchCount = 1) {
-  return Array.isArray(assignments)
-    ? assignments
-      .map((item, index) => {
-        const normalizedAsset = normalizeImageAsset(item)
-        if (!normalizedAsset) {
-          return null
-        }
-
-        return {
-          ...normalizedAsset,
-          id: item.id || `series-design-${index + 1}`,
-          selected: item.selected !== false,
-          prompt: item.prompt || '',
-          templateId: item.templateId || '',
-          imageType: item.imageType || '',
-          size: item.size || '1:1',
-          model: item.model || '',
-          differentialEnabled: item.differentialEnabled === true,
-          batchPrompts: normalizeBatchPrompts(item.batchPrompts, batchCount),
-          tagIds: Array.isArray(item.tagIds) ? item.tagIds.filter((tagId) => typeof tagId === 'string' && tagId.trim()) : [],
-          tagNames: Array.isArray(item.tagNames) ? item.tagNames.filter((tagName) => typeof tagName === 'string' && tagName.trim()) : []
-        }
-      })
-      .filter(Boolean)
-    : []
-}
-
-function normalizePromptAssignments(promptAssignments = [], count = 1, batchCount = 1) {
+function normalizePromptAssignments(promptAssignments = [], count = 1) {
   const normalizedCount = Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(count) || 1))
   const sourceAssignments = Array.isArray(promptAssignments) ? promptAssignments : []
 
   return Array.from({ length: normalizedCount }, (_unused, index) => {
     const currentAssignment = sourceAssignments[index] || {}
+    const fallbackImageType = SERIES_GENERATE_DEFAULT_TYPE_ORDER[index] || '详情图'
+    const inferredImageType = SERIES_GENERATE_TYPE_BY_TEMPLATE_ID[String(currentAssignment.templateId || '').trim()] || ''
+    const nextImageType = String(currentAssignment.imageType || inferredImageType || fallbackImageType).trim() || fallbackImageType
+    const nextTemplateId = String(
+      currentAssignment.templateId ||
+      SERIES_GENERATE_TEMPLATE_ID_BY_TYPE[nextImageType] ||
+      DEFAULT_EMPTY_PROMPT_TEMPLATE_ID
+    ).trim() || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID
+    const nextDifferenceLevel = ['off', 'low', 'medium', 'high'].includes(currentAssignment.differenceLevel)
+      ? currentAssignment.differenceLevel
+      : 'off'
 
     return {
       id: currentAssignment.id || `series-generate-${index + 1}`,
       index: index + 1,
       prompt: currentAssignment.prompt || '',
-      templateId: currentAssignment.templateId || '',
-      imageType: currentAssignment.imageType || '',
-      differentialEnabled: currentAssignment.differentialEnabled === true,
-      batchPrompts: normalizeBatchPrompts(currentAssignment.batchPrompts, batchCount)
+      templateId: nextTemplateId,
+      imageType: nextImageType,
+      differenceLevel: nextDifferenceLevel
     }
   })
 }
 
-function normalizeCompareModels(compareModels = []) {
-  return normalizeSingleImageModels(compareModels)
-}
-
 function normalizeDraftForMenu(menuKey, draft = {}) {
   const defaultDraft = createDefaultDrafts()[menuKey] || {}
-  const allowedModels = new Set(getModelOptionsByMenu(menuKey).map((item) => item.value))
+  if (menuKey === 'workspace') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      projectId: String(draft.projectId || defaultDraft.projectId || ''),
+      projectName: String(draft.projectName || defaultDraft.projectName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      brand: String(draft.brand || defaultDraft.brand || ''),
+      category: String(draft.category || defaultDraft.category || ''),
+      highlightsText: String(draft.highlightsText || defaultDraft.highlightsText || ''),
+      keywordsText: String(draft.keywordsText || defaultDraft.keywordsText || ''),
+      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
+      language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      titlePrompt: String(draft.titlePrompt || defaultDraft.titlePrompt || ''),
+      descriptionPrompt: String(draft.descriptionPrompt || defaultDraft.descriptionPrompt || ''),
+      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
+      descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
+      model: String(draft.model || defaultDraft.model || 'gpt-4o-mini')
+    }
+  }
+
+  if (menuKey === 'title-generator') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      projectId: String(draft.projectId || defaultDraft.projectId || ''),
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
+      language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      titlePrompt: String(draft.titlePrompt || defaultDraft.titlePrompt || ''),
+      titleTemplateId: String(draft.titleTemplateId || defaultDraft.titleTemplateId || ''),
+      titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || defaultDraft.titleMaxChars || 60),
+      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
+      model: String(draft.model || defaultDraft.model || 'deepseek-v4-flash')
+    }
+  }
+
+  if (menuKey === 'description-generator') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      projectId: String(draft.projectId || defaultDraft.projectId || ''),
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
+      language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      descriptionPrompt: String(draft.descriptionPrompt || defaultDraft.descriptionPrompt || ''),
+      descriptionTemplateId: String(draft.descriptionTemplateId || defaultDraft.descriptionTemplateId || ''),
+      descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || defaultDraft.descriptionMaxChars || 300),
+      descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
+      model: String(draft.model || defaultDraft.model || 'deepseek-v4-flash')
+    }
+  }
+
+  const allowedModels = menuKey === 'video-generate'
+    ? new Set(getVideoModelOptionsByMenu(menuKey).map((item) => item.value))
+    : new Set(getModelOptionsByMenu(menuKey).map((item) => item.value))
   const preferredDraftModel = draft.model
   const nextModel = allowedModels.has(preferredDraftModel)
     ? preferredDraftModel
     : (defaultDraft.model || resolveDefaultModelForMenu(menuKey))
 
-  if (menuKey === 'single-image') {
-    return {
-      ...defaultDraft,
-      ...draft,
-      model: nextModel,
-      taskName: String(draft.taskName || defaultDraft.taskName || ''),
-      sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
-      compareModels: normalizeCompareModels(draft.compareModels),
-      quantity: 1,
-      notes: draft.notes || '',
-      size: draft.size || defaultDraft.size
-    }
-  }
-
-  if (menuKey === 'single-design') {
-    return {
-      ...defaultDraft,
-      ...draft,
-      model: nextModel,
-      taskName: String(draft.taskName || defaultDraft.taskName || ''),
-      sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
-      quantity: 1,
-      notes: draft.notes || '',
-      size: draft.size || defaultDraft.size
-    }
-  }
-
-  if (menuKey === 'series-design') {
-    const normalizedBatchCount = Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1)
-    return {
-      ...defaultDraft,
-      ...draft,
-      model: nextModel,
-      taskName: String(draft.taskName || defaultDraft.taskName || ''),
-      globalPrompt: draft.globalPrompt || '',
-      negativeTemplateId: String(draft.negativeTemplateId || defaultDraft.negativeTemplateId || DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID),
-      negativePrompt: String(draft.negativePrompt || ''),
-      legacyGlobalPrompt: draft.legacyGlobalPrompt || '',
-      defaultAssignmentRatio: draft.defaultAssignmentRatio || defaultDraft.defaultAssignmentRatio || draft.size || '1:1',
-      defaultAssignmentModel: draft.defaultAssignmentModel || defaultDraft.defaultAssignmentModel || nextModel,
-      imageAssignments: normalizeImageAssignments(draft.imageAssignments, normalizedBatchCount),
-      batchCount: normalizedBatchCount,
-      size: draft.size || defaultDraft.size
-    }
-  }
-
   if (menuKey === 'series-generate') {
     const generateCount = Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(draft.generateCount) || defaultDraft.generateCount || 1))
-    const normalizedBatchCount = Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1)
+    const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, generateCount)
+    const migratedPrompt = String(draft.prompt || defaultDraft.prompt || '')
+    const migratedImageType = String(draft.imageType || normalizedAssignments[0]?.imageType || defaultDraft.imageType || '')
+
     return {
       ...defaultDraft,
       ...draft,
       model: nextModel,
       taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
       sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
-      globalPrompt: draft.globalPrompt || '',
-      negativeTemplateId: String(draft.negativeTemplateId || defaultDraft.negativeTemplateId || DEFAULT_EMPTY_NEGATIVE_TEMPLATE_ID),
-      negativePrompt: String(draft.negativePrompt || ''),
-      legacyGlobalPrompt: draft.legacyGlobalPrompt || '',
+      prompt: migratedPrompt,
+      imageTemplateId: String(draft.imageTemplateId || defaultDraft.imageTemplateId || ''),
+      imageType: migratedImageType,
       generateCount,
-      promptAssignments: normalizePromptAssignments(draft.promptAssignments, generateCount, normalizedBatchCount),
-      batchCount: normalizedBatchCount,
-      size: draft.size || defaultDraft.size
+      batchCount: Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1),
+      size: draft.size || defaultDraft.size,
+      promptAssignments: normalizedAssignments
+    }
+  }
+
+  if (menuKey === 'video-generate') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      projectId: String(draft.projectId || defaultDraft.projectId || ''),
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
+      duration: String(draft.duration || defaultDraft.duration || '6s'),
+      resolution: String(draft.resolution || defaultDraft.resolution || '768P'),
+      aspectRatio: String(draft.aspectRatio || defaultDraft.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
+      motionStrength: String(draft.motionStrength || defaultDraft.motionStrength || 'auto'),
+      videoTemplateId: String(draft.videoTemplateId || defaultDraft.videoTemplateId || ''),
+      prompt: String(draft.prompt || defaultDraft.prompt || ''),
+      model: String(draft.model || defaultDraft.model || 'MiniMax-Hailuo-2.3-Fast'),
+      videoQuantity: Math.max(1, Number(draft.videoQuantity) || defaultDraft.videoQuantity || 1)
     }
   }
 
@@ -350,61 +408,107 @@ function hydrateResultsByMenuForDisplay(resultsByMenu = {}) {
   }))
 }
 
+function hydrateProjectRunForDisplay(projectRun = {}) {
+  const normalizedProjectRun = normalizeProjectRun(projectRun)
+
+  return {
+    ...normalizedProjectRun,
+    outputs: {
+      ...normalizedProjectRun.outputs,
+      images: Array.isArray(normalizedProjectRun.outputs.images)
+        ? normalizedProjectRun.outputs.images.map((item) => hydratePreviewForDisplay(item))
+        : [],
+      video: normalizedProjectRun.outputs.video
+        ? hydratePreviewForDisplay(normalizedProjectRun.outputs.video)
+        : null
+    }
+  }
+}
+
+function hydrateProjectRunsForDisplay(projectRuns = []) {
+  return normalizeProjectRuns(projectRuns).map((projectRun) => hydrateProjectRunForDisplay(projectRun))
+}
+
 function createDefaultDrafts() {
   return {
     workspace: {
-      prompt: '',
-      model: resolveDefaultModelForMenu('single-image')
-    },
-    'single-image': {
-      prompt: '保持产品主体不变，优化光影与质感',
-      model: resolveDefaultModelForMenu('single-image'),
       taskName: '',
-      sourceImage: null,
-      compareModels: ['nano-banana-fast', 'gpt-image-2', 'nano-banana-2', 'nano-banana-2-cl'],
-      quantity: 1,
-      size: '1:1',
-      notes: ''
+      projectId: '',
+      projectName: '',
+      productName: '',
+      brand: '',
+      category: '',
+      highlightsText: '',
+      keywordsText: '',
+      platformTargetsText: 'temu, ozon',
+      language: 'zh-CN',
+      titlePrompt: '生成适合跨境电商平台使用的商品标题，突出核心卖点，避免夸张和违规表达',
+      descriptionPrompt: '生成适合电商详情页或上架页使用的商品描述，语气清晰、利于转化、避免空话',
+      titleQuantity: 3,
+      descriptionQuantity: 2,
+      model: resolveTextModelForMenu('workspace')
     },
-    'single-design': {
-      prompt: '生成一张适合电商展示的高质量商品图',
-      model: resolveDefaultModelForMenu('single-design'),
+    'data-center': {},
+    'product-template': {},
+    'title-generator': {
+      projectId: '',
       taskName: '',
-      sourceImage: null,
-      quantity: 1,
-      size: '1:1',
-      notes: ''
+      productName: '',
+      platformTargetsText: 'temu',
+      language: 'zh-CN',
+      titlePrompt: '生成适合跨境电商平台使用的商品标题，突出核心卖点，避免夸张和违规表达',
+      titleTemplateId: 'title-default',
+      titleMaxChars: 60,
+      titleQuantity: 3,
+      model: resolveTextModelForMenu('title-generator')
     },
-    'series-design': {
-      globalPrompt: '围绕XXX统一商品视觉风格，保持XXX主体一致，画面干净专业',
-      legacyGlobalPrompt: '',
-      defaultAssignmentRatio: '1:1',
-      defaultAssignmentModel: resolveDefaultModelForMenu('series-design'),
-      model: resolveDefaultModelForMenu('series-design'),
+    'description-generator': {
+      projectId: '',
       taskName: '',
-      imageAssignments: [],
-      batchCount: 1,
-      size: '1:1'
+      productName: '',
+      platformTargetsText: 'temu',
+      language: 'zh-CN',
+      descriptionPrompt: '生成适合电商详情页或上架页使用的商品描述，语气清晰、利于转化、避免空话',
+      descriptionTemplateId: 'description-default',
+      descriptionMaxChars: 300,
+      descriptionQuantity: 2,
+      model: resolveTextModelForMenu('description-generator')
     },
     'series-generate': {
-      globalPrompt: '围绕XXX统一商品详情图风格，突出XXX主体与卖点，适合电商展示',
-      legacyGlobalPrompt: '',
+      prompt: '',
+      productName: '',
       model: resolveDefaultModelForMenu('series-generate'),
       taskName: '',
       sourceImage: null,
-      generateCount: 1,
-      promptAssignments: normalizePromptAssignments([
-        {
-          templateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-          imageType: ''
-        }
-      ], 1),
+      generateCount: 4,
+      imageTemplateId: 'image-default',
+      imageType: '商品主图',
       batchCount: 1,
-      size: '1:1'
+      size: '1:1',
+      promptAssignments: normalizePromptAssignments([], 4)
     },
-    'model-pricing': {
-      prompt: '',
-      model: resolveDefaultModelForMenu('single-image')
+    'video-generate': {
+      projectId: '',
+      taskName: '',
+      productName: '',
+      sourceImage: null,
+      duration: '6s',
+      resolution: '768P',
+      aspectRatio: resolveVideoAspectRatioForMenu(),
+      motionStrength: 'auto',
+      videoTemplateId: 'video-main',
+      prompt: '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点',
+      model: 'MiniMax-Hailuo-2.3-Fast',
+      videoQuantity: 1
+    },
+    'model-pricing': {},
+    'prompt-library': {},
+    'model-config': {
+      apiKey: '',
+      titleModel: 'deepseek-v4-flash',
+      descriptionModel: 'deepseek-v4-pro',
+      imageModel: 'nano-banana-fast',
+      videoModel: 'MiniMax-Hailuo-2.3-Fast'
     }
   }
 }
@@ -417,19 +521,25 @@ function createDefaultResultsByMenu() {
       groupedResults: [],
       summary: null
     },
-    'single-image': {
+    'data-center': {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
       summary: null
     },
-    'single-design': {
+    'product-template': {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
       summary: null
     },
-    'series-design': {
+    'title-generator': {
+      textResults: [],
+      comparisonResults: [],
+      groupedResults: [],
+      summary: null
+    },
+    'description-generator': {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
@@ -441,7 +551,25 @@ function createDefaultResultsByMenu() {
       groupedResults: [],
       summary: null
     },
+    'video-generate': {
+      textResults: [],
+      comparisonResults: [],
+      groupedResults: [],
+      summary: null
+    },
     'model-pricing': {
+      textResults: [],
+      comparisonResults: [],
+      groupedResults: [],
+      summary: null
+    },
+    'prompt-library': {
+      textResults: [],
+      comparisonResults: [],
+      groupedResults: [],
+      summary: null
+    },
+    'model-config': {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
@@ -457,6 +585,937 @@ function createDefaultExportItemsByMenu() {
   ]))
 }
 
+function normalizeStringList(values = []) {
+  return Array.isArray(values)
+    ? values
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+    : []
+}
+
+function createDefaultProjectGenerationConfig() {
+  return {
+    enabledSteps: {
+      title: true,
+      description: true,
+      image: true,
+      video: true
+    },
+    titleMaxChars: 60,
+    descriptionMaxChars: 300,
+    imageSize: '1:1',
+    videoDuration: '6s',
+    videoResolution: '768P',
+    videoMotionStrength: 'auto',
+    titleTemplateId: '',
+    descriptionTemplateId: '',
+    imageTemplateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+    videoTemplateId: 'video-main',
+    titlePrompt: '',
+    descriptionPrompt: '',
+    imagePrompt: '',
+    videoPrompt: ''
+  }
+}
+
+function normalizeProjectEnabledSteps(enabledSteps = {}) {
+  const source = enabledSteps && typeof enabledSteps === 'object' ? enabledSteps : {}
+
+  return {
+    title: source.title !== false,
+    description: source.description !== false,
+    image: source.image !== false,
+    video: source.video !== false
+  }
+}
+
+function normalizeProjectGenerationConfig(generationConfig = {}) {
+  const defaults = createDefaultProjectGenerationConfig()
+  const source = generationConfig && typeof generationConfig === 'object' ? generationConfig : {}
+
+  return {
+    ...defaults,
+    ...source,
+    enabledSteps: normalizeProjectEnabledSteps(source.enabledSteps),
+    titleMaxChars: Math.max(1, Number(source.titleMaxChars) || defaults.titleMaxChars),
+    descriptionMaxChars: Math.max(1, Number(source.descriptionMaxChars) || defaults.descriptionMaxChars),
+    imageSize: String(source.imageSize || defaults.imageSize).trim() || defaults.imageSize,
+    videoDuration: String(source.videoDuration || defaults.videoDuration).trim() || defaults.videoDuration,
+    videoResolution: String(source.videoResolution || defaults.videoResolution).trim() || defaults.videoResolution,
+    aspectRatio: String(source.aspectRatio || defaults.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
+    videoMotionStrength: String(source.videoMotionStrength || defaults.videoMotionStrength).trim() || defaults.videoMotionStrength,
+    titleTemplateId: String(source.titleTemplateId || '').trim(),
+    descriptionTemplateId: String(source.descriptionTemplateId || '').trim(),
+    imageTemplateId: String(source.imageTemplateId || defaults.imageTemplateId).trim() || defaults.imageTemplateId,
+    videoTemplateId: String(source.videoTemplateId || defaults.videoTemplateId).trim() || defaults.videoTemplateId,
+    titlePrompt: String(source.titlePrompt || '').trim(),
+    descriptionPrompt: String(source.descriptionPrompt || '').trim(),
+    imagePrompt: String(source.imagePrompt || '').trim(),
+    videoPrompt: String(source.videoPrompt || '').trim()
+  }
+}
+
+function createDefaultProjectRunStepStates() {
+  return {
+    title: { status: 'pending', error: '', startedAt: '', completedAt: '' },
+    description: { status: 'pending', error: '', startedAt: '', completedAt: '' },
+    image: { status: 'pending', error: '', startedAt: '', completedAt: '' },
+    video: { status: 'pending', error: '', startedAt: '', completedAt: '' }
+  }
+}
+
+function normalizeProjectRunStepState(stepState = {}) {
+  const source = stepState && typeof stepState === 'object' ? stepState : {}
+  const supportedStatusSet = new Set(['pending', 'running', 'success', 'failed'])
+
+  return {
+    status: supportedStatusSet.has(source.status) ? source.status : 'pending',
+    error: String(source.error || '').trim(),
+    startedAt: typeof source.startedAt === 'string' ? source.startedAt : '',
+    completedAt: typeof source.completedAt === 'string' ? source.completedAt : ''
+  }
+}
+
+function normalizeProjectRun(projectRun = {}) {
+  const source = projectRun && typeof projectRun === 'object' ? projectRun : {}
+  const outputs = source.outputs && typeof source.outputs === 'object' ? source.outputs : {}
+  const storage = source.storage && typeof source.storage === 'object' ? source.storage : {}
+  const defaultStepStates = createDefaultProjectRunStepStates()
+
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    projectId: typeof source.projectId === 'string' ? source.projectId : '',
+    taskId: typeof source.taskId === 'string' ? source.taskId : '',
+    taskNumber: typeof source.taskNumber === 'string' ? source.taskNumber : '',
+    triggerMenuKey: typeof source.triggerMenuKey === 'string' ? source.triggerMenuKey : '',
+    status: ['pending', 'running', 'success', 'failed'].includes(source.status) ? source.status : 'pending',
+    stepStates: {
+      title: normalizeProjectRunStepState(source.stepStates?.title || defaultStepStates.title),
+      description: normalizeProjectRunStepState(source.stepStates?.description || defaultStepStates.description),
+      image: normalizeProjectRunStepState(source.stepStates?.image || defaultStepStates.image),
+      video: normalizeProjectRunStepState(source.stepStates?.video || defaultStepStates.video)
+    },
+    outputs: {
+      title: String(outputs.title || '').trim(),
+      description: String(outputs.description || '').trim(),
+      images: Array.isArray(outputs.images) ? outputs.images.slice() : [],
+      video: outputs.video && typeof outputs.video === 'object'
+        ? { ...outputs.video }
+        : null
+    },
+    storage: {
+      runDirectory: String(storage.runDirectory || '').trim(),
+      titleFile: String(storage.titleFile || '').trim(),
+      descriptionFile: String(storage.descriptionFile || '').trim(),
+      imageDirectory: String(storage.imageDirectory || '').trim(),
+      videoDirectory: String(storage.videoDirectory || '').trim()
+    },
+    createdAt: typeof source.createdAt === 'string' ? source.createdAt : '',
+    completedAt: typeof source.completedAt === 'string' ? source.completedAt : ''
+  }
+}
+
+function normalizeProjectRuns(projectRuns = []) {
+  return Array.isArray(projectRuns)
+    ? projectRuns
+      .map((projectRun) => normalizeProjectRun(projectRun))
+      .filter((projectRun) => projectRun.id || projectRun.projectId)
+    : []
+}
+
+function normalizeProductProject(project = {}) {
+  const source = project && typeof project === 'object' ? project : {}
+  const baseInfo = source.baseInfo && typeof source.baseInfo === 'object' ? source.baseInfo : {}
+  const assets = source.assets && typeof source.assets === 'object' ? source.assets : {}
+  const content = source.content && typeof source.content === 'object' ? source.content : {}
+  const publishDraft = source.publishDraft && typeof source.publishDraft === 'object' ? source.publishDraft : {}
+  const generationConfig = source.generationConfig && typeof source.generationConfig === 'object' ? source.generationConfig : {}
+  const supportedStatusSet = new Set(['draft', 'ready', 'archived'])
+
+  return {
+    id: typeof source.id === 'string' ? source.id : '',
+    name: String(source.name || '').trim(),
+    status: supportedStatusSet.has(source.status) ? source.status : 'draft',
+    platformTarget: normalizeStringList(source.platformTarget),
+    baseInfo: {
+      productName: String(baseInfo.productName || '').trim(),
+      brand: String(baseInfo.brand || '').trim(),
+      category: String(baseInfo.category || '').trim(),
+      highlights: normalizeStringList(baseInfo.highlights),
+      keywords: normalizeStringList(baseInfo.keywords),
+      language: String(baseInfo.language || 'zh-CN').trim() || 'zh-CN'
+    },
+    generationConfig: normalizeProjectGenerationConfig(generationConfig),
+    assets: {
+      sourceImages: Array.isArray(assets.sourceImages) ? assets.sourceImages.slice() : [],
+      generatedImages: Array.isArray(assets.generatedImages) ? assets.generatedImages.slice() : [],
+      generatedVideo: assets.generatedVideo && typeof assets.generatedVideo === 'object'
+        ? { ...assets.generatedVideo }
+        : null
+    },
+    content: {
+      titleCandidates: normalizeStringList(content.titleCandidates),
+      descriptionCandidates: normalizeStringList(content.descriptionCandidates),
+      selectedTitle: String(content.selectedTitle || '').trim(),
+      selectedDescription: String(content.selectedDescription || '').trim()
+    },
+    publishDraft: {
+      attributes: publishDraft.attributes && typeof publishDraft.attributes === 'object'
+        ? { ...publishDraft.attributes }
+        : {},
+      variants: Array.isArray(publishDraft.variants) ? publishDraft.variants.slice() : [],
+      platformDrafts: publishDraft.platformDrafts && typeof publishDraft.platformDrafts === 'object'
+        ? { ...publishDraft.platformDrafts }
+        : {}
+    },
+    latestRunId: typeof source.latestRunId === 'string' ? source.latestRunId : '',
+    runIds: normalizeStringList(source.runIds),
+    taskRefs: normalizeStringList(source.taskRefs),
+    createdAt: typeof source.createdAt === 'string' ? source.createdAt : '',
+    updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : ''
+  }
+}
+
+function normalizeProductProjects(productProjects = []) {
+  return Array.isArray(productProjects)
+    ? productProjects
+      .map((project) => normalizeProductProject(project))
+      .filter((project) => project.id || project.name)
+    : []
+}
+
+function resolveActiveProductProjectId(productProjects = [], activeProductProjectId = '') {
+  const normalizedActiveId = String(activeProductProjectId || '').trim()
+
+  if (normalizedActiveId && productProjects.some((project) => project.id === normalizedActiveId)) {
+    return normalizedActiveId
+  }
+
+  return productProjects[0]?.id || ''
+}
+
+function resolveActiveProjectRunId(projectRuns = [], activeProjectRunId = '') {
+  const normalizedActiveId = String(activeProjectRunId || '').trim()
+
+  if (normalizedActiveId && projectRuns.some((projectRun) => projectRun.id === normalizedActiveId)) {
+    return normalizedActiveId
+  }
+
+  return projectRuns[0]?.id || ''
+}
+
+function upsertProjectRun(projectRuns = [], nextProjectRun = {}) {
+  return [
+    normalizeProjectRun(nextProjectRun),
+    ...normalizeProjectRuns(projectRuns).filter((projectRun) => projectRun.id !== nextProjectRun.id)
+  ]
+}
+
+function resolveProjectRunStepKey(menuKey = '') {
+  if (menuKey === 'workspace') {
+    return null
+  }
+
+  if (menuKey === 'title-generator') {
+    return 'title'
+  }
+
+  if (menuKey === 'description-generator') {
+    return 'description'
+  }
+
+  if (menuKey === 'series-generate') {
+    return 'image'
+  }
+
+  if (menuKey === 'video-generate') {
+    return 'video'
+  }
+
+  return null
+}
+
+function resolveWorkspaceEnabledRunSteps(draft = {}, currentProject = null) {
+  const generationConfig = currentProject?.generationConfig || {}
+  const enabledSteps = normalizeProjectEnabledSteps(generationConfig.enabledSteps)
+  const hasSourceImage = Boolean(draft.sourceImage || draft.referenceImage || currentProject?.assets?.sourceImages?.length)
+
+  return {
+    title: enabledSteps.title !== false,
+    description: enabledSteps.description !== false,
+    image: enabledSteps.image !== false && hasSourceImage,
+    video: enabledSteps.video !== false && hasSourceImage
+  }
+}
+
+function buildProjectRunStepStatesForTask({ menuKey = '', draft = {}, currentProject = null, createdAt = '' } = {}) {
+  const defaultStepStates = createDefaultProjectRunStepStates()
+  const enabledSteps = menuKey === 'workspace'
+    ? resolveWorkspaceEnabledRunSteps(draft, currentProject)
+    : {
+        title: false,
+        description: false,
+        image: false,
+        video: false
+      }
+
+  if (menuKey !== 'workspace') {
+    const stepKey = resolveProjectRunStepKey(menuKey)
+    if (stepKey) {
+      enabledSteps[stepKey] = true
+    }
+  }
+
+  return Object.fromEntries(Object.entries(defaultStepStates).map(([stepKey, stepState]) => {
+    if (!enabledSteps[stepKey]) {
+      return [
+        stepKey,
+        {
+          ...stepState,
+          status: 'success',
+          completedAt: createdAt || ''
+        }
+      ]
+    }
+
+    return [stepKey, stepState]
+  }))
+}
+
+function buildProjectRunRecord({
+  runId = '',
+  projectId = '',
+  menuKey = '',
+  draft = {},
+  currentProject = null,
+  taskId = '',
+  taskNumber = '',
+  createdAt = '',
+  runDirectory = ''
+} = {}) {
+  return normalizeProjectRun({
+    id: runId,
+    projectId,
+    taskId,
+    taskNumber,
+    triggerMenuKey: menuKey,
+    status: 'pending',
+    stepStates: buildProjectRunStepStatesForTask({
+      menuKey,
+      draft,
+      currentProject,
+      createdAt
+    }),
+    outputs: {
+      title: '',
+      description: '',
+      images: [],
+      video: null
+    },
+    storage: {
+      runDirectory: String(runDirectory || '').trim(),
+      titleFile: '',
+      descriptionFile: '',
+      imageDirectory: '',
+      videoDirectory: ''
+    },
+    createdAt,
+    completedAt: ''
+  })
+}
+
+function attachProjectRunToProject(project = {}, runId = '', updatedAt = '') {
+  const normalizedRunId = String(runId || '').trim()
+  const currentRunIds = normalizeStringList(project.runIds)
+
+  return normalizeProductProject({
+    ...project,
+    latestRunId: normalizedRunId,
+    runIds: normalizedRunId
+      ? [
+          normalizedRunId,
+          ...currentRunIds.filter((item) => item !== normalizedRunId)
+        ]
+      : currentRunIds,
+    updatedAt: updatedAt || project.updatedAt || ''
+  })
+}
+
+function updateProjectRunStepState(projectRun = {}, stepKey = '', patch = {}) {
+  if (!stepKey) {
+    return normalizeProjectRun(projectRun)
+  }
+
+  const normalizedProjectRun = normalizeProjectRun(projectRun)
+  const defaultStepStates = createDefaultProjectRunStepStates()
+  const currentStepState = normalizedProjectRun.stepStates[stepKey] || defaultStepStates[stepKey]
+
+  return normalizeProjectRun({
+    ...normalizedProjectRun,
+    stepStates: {
+      ...normalizedProjectRun.stepStates,
+      [stepKey]: {
+        ...currentStepState,
+        ...(patch || {})
+      }
+    }
+  })
+}
+
+function resolveProjectRunStatus(stepStates = {}) {
+  const normalizedStepStates = stepStates && typeof stepStates === 'object'
+    ? stepStates
+    : createDefaultProjectRunStepStates()
+  const statuses = Object.values(normalizedStepStates).map((stepState) => stepState?.status || 'pending')
+
+  if (statuses.some((status) => status === 'failed')) {
+    return 'failed'
+  }
+
+  if (statuses.every((status) => status === 'success')) {
+    return 'success'
+  }
+
+  if (statuses.some((status) => status === 'running')) {
+    return 'running'
+  }
+
+  return 'pending'
+}
+
+function resolveRunDirectoryFromExportItems(exportItems = [], outputDirectory = '') {
+  const candidateDirectory = (Array.isArray(exportItems) ? exportItems : [])
+    .map((item) => item?.directoryPath || item?.outputDirectory || '')
+    .find(Boolean)
+
+  if (candidateDirectory) {
+    return path.resolve(candidateDirectory, '..')
+  }
+
+  return String(outputDirectory || '').trim()
+}
+
+function resolveTextStorageFromResultPayload(resultPayload = {}, exportItems = []) {
+  const directories = (Array.isArray(exportItems) ? exportItems : [])
+    .map((item) => item?.directoryPath || item?.outputDirectory || '')
+    .filter(Boolean)
+
+  if (!directories.length) {
+    return {
+      titleFile: '',
+      descriptionFile: ''
+    }
+  }
+
+  const groupDirectory = directories[0]
+  const textResults = Array.isArray(resultPayload.textResults) ? resultPayload.textResults : []
+  const titleIndex = textResults.findIndex((item) => item?.kind === 'title')
+  const descriptionIndex = textResults.findIndex((item) => item?.kind === 'description')
+  const titleItem = titleIndex >= 0 ? textResults[titleIndex] : null
+  const descriptionItem = descriptionIndex >= 0 ? textResults[descriptionIndex] : null
+
+  return {
+    titleFile: titleItem
+      ? path.resolve(groupDirectory, `${String(titleIndex).padStart(2, '0')}-${sanitizePathSegment(titleItem.title || `text-${titleIndex + 1}`, `text-${titleIndex + 1}`)}.txt`)
+      : '',
+    descriptionFile: descriptionItem
+      ? path.resolve(groupDirectory, `${String(descriptionIndex).padStart(2, '0')}-${sanitizePathSegment(descriptionItem.title || `text-${descriptionIndex + 1}`, `text-${descriptionIndex + 1}`)}.txt`)
+      : ''
+  }
+}
+
+function buildStartedProjectRun({
+  projectRun = {},
+  menuKey = '',
+  startedAt = ''
+} = {}) {
+  const normalizedProjectRun = normalizeProjectRun(projectRun)
+  const nextStepStates = {
+    ...normalizedProjectRun.stepStates
+  }
+
+  if (menuKey === 'workspace') {
+    for (const stepKey of Object.keys(nextStepStates)) {
+      if (nextStepStates[stepKey]?.status !== 'pending') {
+        continue
+      }
+
+      nextStepStates[stepKey] = {
+        ...nextStepStates[stepKey],
+        status: 'running',
+        startedAt
+      }
+    }
+  } else {
+    const stepKey = resolveProjectRunStepKey(menuKey)
+    if (stepKey && nextStepStates[stepKey]?.status === 'pending') {
+      nextStepStates[stepKey] = {
+        ...nextStepStates[stepKey],
+        status: 'running',
+        startedAt
+      }
+    }
+  }
+
+  return normalizeProjectRun({
+    ...normalizedProjectRun,
+    status: 'running',
+    stepStates: nextStepStates
+  })
+}
+
+function resolveImageRunOutput(resultPayload = {}) {
+  return (resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .filter((item) => {
+      const savedPath = String(item.savedPath || item.path || '').trim()
+      return Boolean(savedPath) && !/\.mp4$/i.test(savedPath)
+    })
+    .map((item) => ({
+      ...item,
+      path: item.savedPath || item.path || '',
+      savedPath: item.savedPath || item.path || ''
+    }))
+}
+
+function resolveVideoRunOutput(resultPayload = {}) {
+  return (resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .find((item) => {
+      const savedPath = String(item.savedPath || item.path || '').trim()
+      return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
+    }) || null
+}
+
+function buildProjectRunUpdateFromResult({
+  projectRun = {},
+  menuKey = '',
+  resultPayload = {},
+  exportItems = [],
+  outputDirectory = '',
+  completedAt = ''
+} = {}) {
+  let nextProjectRun = normalizeProjectRun(projectRun)
+  const runDirectory = resolveRunDirectoryFromExportItems(exportItems, outputDirectory)
+  const stepStates = {
+    ...nextProjectRun.stepStates
+  }
+  const nextOutputs = {
+    ...nextProjectRun.outputs
+  }
+  const nextStorage = {
+    ...nextProjectRun.storage,
+    runDirectory
+  }
+
+  if (menuKey === 'workspace' || menuKey === 'title-generator') {
+    const titleValue = menuKey === 'workspace'
+      ? (resultPayload.textResults || []).find((item) => item.kind === 'title')?.content || ''
+      : (resultPayload.textResults || [])[0]?.content || ''
+    const titleStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
+    nextOutputs.title = String(titleValue || '').trim()
+    nextStorage.titleFile = titleStorage.titleFile || nextStorage.titleFile
+    stepStates.title = {
+      ...stepStates.title,
+      status: 'success',
+      completedAt
+    }
+  }
+
+  if (menuKey === 'workspace' || menuKey === 'description-generator') {
+    const descriptionValue = menuKey === 'workspace'
+      ? (resultPayload.textResults || []).find((item) => item.kind === 'description')?.content || ''
+      : (resultPayload.textResults || [])[0]?.content || ''
+    const textStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
+    nextOutputs.description = String(descriptionValue || '').trim()
+    nextStorage.descriptionFile = textStorage.descriptionFile || nextStorage.descriptionFile
+    stepStates.description = {
+      ...stepStates.description,
+      status: 'success',
+      completedAt
+    }
+  }
+
+  if (menuKey === 'workspace' || menuKey === 'series-generate') {
+    const imageOutputs = resolveImageRunOutput(resultPayload)
+    if (imageOutputs.length) {
+      nextOutputs.images = imageOutputs
+      nextStorage.imageDirectory = imageOutputs[0]?.savedPath
+        ? path.dirname(imageOutputs[0].savedPath)
+        : nextStorage.imageDirectory
+    }
+    stepStates.image = {
+      ...stepStates.image,
+      status: 'success',
+      completedAt
+    }
+  }
+
+  if (menuKey === 'workspace' || menuKey === 'video-generate') {
+    const videoOutput = resolveVideoRunOutput(resultPayload)
+    if (videoOutput) {
+      nextOutputs.video = {
+        ...videoOutput,
+        path: videoOutput.savedPath || videoOutput.path || '',
+        savedPath: videoOutput.savedPath || videoOutput.path || ''
+      }
+      nextStorage.videoDirectory = nextOutputs.video.savedPath
+        ? path.dirname(nextOutputs.video.savedPath)
+        : nextStorage.videoDirectory
+    }
+    stepStates.video = {
+      ...stepStates.video,
+      status: 'success',
+      completedAt
+    }
+  }
+
+  nextProjectRun = normalizeProjectRun({
+    ...nextProjectRun,
+    stepStates,
+    outputs: nextOutputs,
+    storage: nextStorage,
+    completedAt
+  })
+
+  return normalizeProjectRun({
+    ...nextProjectRun,
+    status: resolveProjectRunStatus(nextProjectRun.stepStates)
+  })
+}
+
+function buildFailedProjectRun({
+  projectRun = {},
+  menuKey = '',
+  errorMessage = '',
+  failedAt = ''
+} = {}) {
+  const normalizedProjectRun = normalizeProjectRun(projectRun)
+  const nextStepStates = {
+    ...normalizedProjectRun.stepStates
+  }
+
+  if (menuKey === 'workspace') {
+    for (const stepKey of Object.keys(nextStepStates)) {
+      const currentState = nextStepStates[stepKey]
+      if (currentState.status === 'success') {
+        continue
+      }
+
+      nextStepStates[stepKey] = {
+        ...currentState,
+        status: 'failed',
+        error: String(errorMessage || '').trim(),
+        completedAt: failedAt
+      }
+    }
+  } else {
+    const stepKey = resolveProjectRunStepKey(menuKey)
+    if (stepKey) {
+      nextStepStates[stepKey] = {
+        ...nextStepStates[stepKey],
+        status: 'failed',
+        error: String(errorMessage || '').trim(),
+        completedAt: failedAt
+      }
+    }
+  }
+
+  return normalizeProjectRun({
+    ...normalizedProjectRun,
+    status: 'failed',
+    stepStates: nextStepStates,
+    completedAt: failedAt
+  })
+}
+
+function splitWorkspaceTextValues(value = '') {
+  return String(value || '')
+    .split(/[\r\n,，;；]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function resolveWorkspaceProjectDisplayName(draft = {}) {
+  const projectName = String(draft.projectName || '').trim()
+  if (projectName) {
+    return projectName
+  }
+
+  const productName = String(draft.productName || '').trim()
+  if (productName) {
+    return `${productName}项目`
+  }
+
+  return '未命名商品项目'
+}
+
+function upsertProductProject(productProjects = [], nextProject = {}) {
+  return [
+    nextProject,
+    ...normalizeProductProjects(productProjects).filter((project) => project.id !== nextProject.id)
+  ]
+}
+
+function attachTaskRefToProductProject(project = {}, taskId = '', updatedAt = '') {
+  return normalizeProductProject({
+    ...project,
+    taskRefs: [
+      taskId,
+      ...normalizeStringList(project.taskRefs)
+    ],
+    updatedAt: updatedAt || project.updatedAt || ''
+  })
+}
+
+function buildWorkspaceProjectDraft({
+  currentProject = null,
+  draft = {},
+  projectId = '',
+  createdAt = '',
+  updatedAt = ''
+} = {}) {
+  return normalizeProductProject({
+    ...(currentProject || {}),
+    id: projectId,
+    name: resolveWorkspaceProjectDisplayName(draft),
+    status: currentProject?.status || 'draft',
+    platformTarget: splitWorkspaceTextValues(draft.platformTargetsText),
+    baseInfo: {
+      ...(currentProject?.baseInfo || {}),
+      productName: String(draft.productName || '').trim(),
+      brand: String(draft.brand || '').trim(),
+      category: String(draft.category || '').trim(),
+      highlights: splitWorkspaceTextValues(draft.highlightsText),
+      keywords: splitWorkspaceTextValues(draft.keywordsText),
+      language: String(draft.language || 'zh-CN').trim() || 'zh-CN'
+    },
+    createdAt: currentProject?.createdAt || createdAt,
+    updatedAt
+  })
+}
+
+function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const titleCandidates = (resultPayload.textResults || [])
+    .filter((item) => item.kind === 'title')
+    .map((item) => String(item.content || '').trim())
+    .filter(Boolean)
+  const descriptionCandidates = (resultPayload.textResults || [])
+    .filter((item) => item.kind === 'description')
+    .map((item) => String(item.content || '').trim())
+    .filter(Boolean)
+
+  return normalizeProductProject({
+    ...project,
+    status: titleCandidates.length || descriptionCandidates.length ? 'ready' : (project.status || 'draft'),
+    content: {
+      ...(project.content || {}),
+      titleCandidates,
+      descriptionCandidates,
+      selectedTitle: titleCandidates[0] || project.content?.selectedTitle || '',
+      selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
+    },
+    updatedAt
+  })
+}
+
+function applyTitleResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const titleCandidates = (resultPayload.textResults || [])
+    .map((item) => String(item.content || '').trim())
+    .filter(Boolean)
+
+  return normalizeProductProject({
+    ...project,
+    status: titleCandidates.length ? 'ready' : (project.status || 'draft'),
+    content: {
+      ...(project.content || {}),
+      titleCandidates,
+      selectedTitle: titleCandidates[0] || project.content?.selectedTitle || ''
+    },
+    updatedAt
+  })
+}
+
+function applyDescriptionResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const descriptionCandidates = (resultPayload.textResults || [])
+    .map((item) => String(item.content || '').trim())
+    .filter(Boolean)
+
+  return normalizeProductProject({
+    ...project,
+    status: descriptionCandidates.length ? 'ready' : (project.status || 'draft'),
+    content: {
+      ...(project.content || {}),
+      descriptionCandidates,
+      selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
+    },
+    updatedAt
+  })
+}
+
+function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const generatedImages = (resultPayload.groupedResults || []).flatMap((group) => {
+    return (group.outputs || []).map((item) => ({
+      ...item,
+      path: item.savedPath || item.path || '',
+      savedPath: item.savedPath || item.path || ''
+    }))
+  })
+
+  return normalizeProductProject({
+    ...project,
+    status: generatedImages.length ? 'ready' : (project.status || 'draft'),
+    assets: {
+      ...(project.assets || {}),
+      generatedImages
+    },
+    updatedAt
+  })
+}
+
+function applyVideoResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const generatedVideo = (resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .find((item) => {
+      return String(item.savedPath || item.path || '').trim()
+    }) || null
+
+  return normalizeProductProject({
+    ...project,
+    status: generatedVideo ? 'ready' : (project.status || 'draft'),
+    assets: {
+      ...(project.assets || {}),
+      generatedVideo: generatedVideo
+        ? {
+            ...generatedVideo,
+            path: generatedVideo.savedPath || generatedVideo.path || '',
+            savedPath: generatedVideo.savedPath || generatedVideo.path || ''
+          }
+        : project.assets?.generatedVideo || null
+    },
+    updatedAt
+  })
+}
+
+function buildProjectCardFromAsset({
+  asset = {},
+  projectId = '',
+  createdAt = '',
+  platform = 'temu',
+  language = 'zh-CN'
+} = {}) {
+  const fallbackName = String(asset.name || '').replace(/\.[^.]+$/, '').trim() || '未命名商品'
+
+  return normalizeProductProject({
+    id: projectId,
+    name: fallbackName,
+    status: 'draft',
+    platformTarget: [platform],
+    baseInfo: {
+      productName: fallbackName,
+      brand: '',
+      category: '',
+      highlights: [],
+      keywords: [],
+      language
+    },
+    assets: {
+      sourceImages: [normalizeImageAsset(asset)].filter(Boolean),
+      generatedImages: [],
+      generatedVideo: null
+    },
+    content: {
+      titleCandidates: [],
+      descriptionCandidates: [],
+      selectedTitle: '',
+      selectedDescription: ''
+    },
+    createdAt,
+    updatedAt: createdAt
+  })
+}
+
+function buildEmptyProductProject({
+  projectId = '',
+  productName = '',
+  platform = 'temu',
+  language = 'zh-CN',
+  createdAt = ''
+} = {}) {
+  const resolvedProductName = String(productName || '').trim()
+
+  return normalizeProductProject({
+    id: projectId,
+    name: resolvedProductName,
+    status: 'draft',
+    platformTarget: [platform],
+    baseInfo: {
+      productName: resolvedProductName,
+      brand: '',
+      category: '',
+      highlights: [],
+      keywords: [],
+      language
+    },
+    assets: {
+      sourceImages: [],
+      generatedImages: [],
+      generatedVideo: null
+    },
+    content: {
+      titleCandidates: [],
+      descriptionCandidates: [],
+      selectedTitle: '',
+      selectedDescription: ''
+    },
+    createdAt,
+    updatedAt: createdAt
+  })
+}
+
+function updateProductProjectFields(project = {}, patch = {}, updatedAt = '') {
+  const normalizedProject = normalizeProductProject(project)
+  const nextPatch = patch && typeof patch === 'object' ? patch : {}
+  const baseInfoPatch = nextPatch.baseInfo && typeof nextPatch.baseInfo === 'object' ? nextPatch.baseInfo : {}
+  const assetsPatch = nextPatch.assets && typeof nextPatch.assets === 'object' ? nextPatch.assets : {}
+  const contentPatch = nextPatch.content && typeof nextPatch.content === 'object' ? nextPatch.content : {}
+
+  return normalizeProductProject({
+    ...normalizedProject,
+    ...nextPatch,
+    name: Object.prototype.hasOwnProperty.call(nextPatch, 'name')
+      ? String(nextPatch.name || '').trim()
+      : normalizedProject.name,
+    platformTarget: Object.prototype.hasOwnProperty.call(nextPatch, 'platformTarget')
+      ? normalizeStringList(nextPatch.platformTarget)
+      : normalizedProject.platformTarget,
+    baseInfo: {
+      ...normalizedProject.baseInfo,
+      ...baseInfoPatch
+    },
+    assets: {
+      ...normalizedProject.assets,
+      ...assetsPatch,
+      sourceImages: Object.prototype.hasOwnProperty.call(assetsPatch, 'sourceImages')
+        ? (Array.isArray(assetsPatch.sourceImages) ? assetsPatch.sourceImages.map((item) => normalizeImageAsset(item)).filter(Boolean) : [])
+        : normalizedProject.assets.sourceImages,
+      generatedImages: Object.prototype.hasOwnProperty.call(assetsPatch, 'generatedImages')
+        ? (Array.isArray(assetsPatch.generatedImages) ? assetsPatch.generatedImages.slice() : [])
+        : normalizedProject.assets.generatedImages,
+      generatedVideo: Object.prototype.hasOwnProperty.call(assetsPatch, 'generatedVideo')
+        ? (assetsPatch.generatedVideo && typeof assetsPatch.generatedVideo === 'object'
+            ? { ...assetsPatch.generatedVideo }
+            : null)
+        : normalizedProject.assets.generatedVideo
+    },
+    content: {
+      ...normalizedProject.content,
+      ...contentPatch
+    },
+    updatedAt
+  })
+}
+
 function createDefaultTasks() {
   return []
 }
@@ -470,6 +1529,10 @@ function createDefaultState() {
     formDrafts: createDefaultDrafts(),
     resultsByMenu: createDefaultResultsByMenu(),
     exportItemsByMenu: createDefaultExportItemsByMenu(),
+    productProjects: [],
+    activeProductProjectId: '',
+    projectRuns: [],
+    activeProjectRunId: '',
     tasks: createDefaultTasks(),
     requestMetrics: createDefaultRequestMetrics()
   }
@@ -537,7 +1600,13 @@ function scanStoredExportItemsByMenu({
   statSync = fsSync.statSync
 } = {}) {
   const exportItemsByMenu = createDefaultExportItemsByMenu()
-  const supportedMenuKeys = ['single-image', 'single-design', 'series-design', 'series-generate']
+  const supportedMenuKeys = [
+    'workspace',
+    'title-generator',
+    'description-generator',
+    'series-generate',
+    'video-generate'
+  ]
 
   for (const menuKey of supportedMenuKeys) {
     const featureRootDirectory = path.resolve(outputRootDirectory, getFeatureDirectoryKey(menuKey))
@@ -620,6 +1689,8 @@ function mergeExportItemsByMenu({
 
 function mergeStudioState(savedState = {}) {
   const defaultState = createDefaultState()
+  const normalizedProductProjects = normalizeProductProjects(savedState.productProjects)
+  const normalizedProjectRuns = normalizeProjectRuns(savedState.projectRuns)
   const mergedFormDrafts = {
     ...defaultState.formDrafts,
     ...(savedState.formDrafts || {})
@@ -650,6 +1721,16 @@ function mergeStudioState(savedState = {}) {
           : (defaultState.exportItemsByMenu[item.key] || [])
       ]
     })),
+    productProjects: normalizedProductProjects,
+    activeProductProjectId: resolveActiveProductProjectId(
+      normalizedProductProjects,
+      savedState.activeProductProjectId
+    ),
+    projectRuns: normalizedProjectRuns,
+    activeProjectRunId: resolveActiveProjectRunId(
+      normalizedProjectRuns,
+      savedState.activeProjectRunId
+    ),
     tasks: Array.isArray(savedState.tasks) ? savedState.tasks : defaultState.tasks,
     requestMetrics: normalizeRequestMetrics(savedState.requestMetrics)
   }
@@ -740,23 +1821,21 @@ function resolveModelCreditCost(modelName = '') {
 }
 
 function estimateTaskCredits(menuKey, draft = {}) {
-  if (menuKey === 'single-image') {
-    return normalizeCompareModels(draft.compareModels).reduce((total, modelName) => {
-      return total + resolveModelCreditCost(modelName)
-    }, 0)
+  if (menuKey === 'title-generator' || menuKey === 'description-generator') {
+    return 0
   }
 
-  if (menuKey === 'single-design') {
-    return resolveModelCreditCost(draft.model)
-  }
-
-  if (menuKey === 'series-design') {
-    const selectedCount = resolveSeriesSelectedAssignmentCount(draft)
-    return selectedCount * Math.max(1, Number(draft.batchCount) || 1) * resolveModelCreditCost(draft.model)
+  if (menuKey === 'workspace') {
+    const imageCost = Math.max(1, Number(draft.generateCount) || 4) * resolveModelCreditCost(draft.imageModel || 'gpt-image-2')
+    return (draft.sourceImage || draft.referenceImage) ? imageCost : 0
   }
 
   if (menuKey === 'series-generate') {
     return resolveGroupImageCount(menuKey, draft) * Math.max(1, Number(draft.batchCount) || 1) * resolveModelCreditCost(draft.model)
+  }
+
+  if (menuKey === 'video-generate') {
+    return 0
   }
 
   return 0
@@ -767,22 +1846,49 @@ function buildCreditOverview(settings = {}) {
   const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
     ? settings.dashboardCreditState
     : {}
-  const remainingCredits = Math.max(0, Number(dashboardCreditState.remainingCredits) || 0)
-  const totalCredits = Math.max(0, Number(dashboardCreditState.totalCredits) || 0)
+  const textBalanceCny = Math.max(0, Number(dashboardCreditState.text?.balanceCny) || 0)
+  const imageRemainingCredits = Math.max(0, Number(dashboardCreditState.image?.remainingCredits) || 0)
+  const imageTotalCredits = Math.max(0, Number(dashboardCreditState.image?.totalCredits) || 0)
+  const videoBalanceCny = Math.max(0, Number(dashboardCreditState.video?.balanceCny) || 0)
   const baseModelCreditCost = resolveModelCreditCost('gpt-image-2') || 600
   const latestAdjustmentLabel = creditState.lastAdjustmentAt
     ? `${creditState.lastAdjustmentOperation === 'decrease' ? '扣减' : '增加'} ${creditState.lastAdjustmentAmount}`
     : '--'
 
   return {
-    title: '积分仪表盘',
-    items: [
-      { label: '剩余积分', value: String(remainingCredits) },
-      { label: '总积分', value: String(totalCredits) },
-      { label: '冻结积分', value: String(creditState.frozenCredits) },
-      { label: '已用积分', value: String(creditState.usedCredits) },
-      { label: '最近调整', value: latestAdjustmentLabel },
-      { label: '按 gpt-image-2 约可生成', value: String(Math.floor(remainingCredits / baseModelCreditCost)) }
+    ledgers: [
+      {
+        key: 'text',
+        title: '文本',
+        unit: 'CNY',
+        value: textBalanceCny.toFixed(2),
+        items: [
+          { label: '充值余额', value: textBalanceCny.toFixed(2) }
+        ]
+      },
+      {
+        key: 'image',
+        title: '图片',
+        unit: '积分',
+        value: String(imageRemainingCredits),
+        items: [
+          { label: '剩余积分', value: String(imageRemainingCredits) },
+          { label: '总积分', value: String(imageTotalCredits) },
+          { label: '冻结积分', value: String(creditState.frozenCredits) },
+          { label: '已用积分', value: String(creditState.usedCredits) },
+          { label: '最近调整', value: latestAdjustmentLabel },
+          { label: '按 gpt-image-2 约可生成', value: String(Math.floor(imageRemainingCredits / baseModelCreditCost)) }
+        ]
+      },
+      {
+        key: 'video',
+        title: '视频',
+        unit: 'CNY',
+        value: videoBalanceCny.toFixed(2),
+        items: [
+          { label: '可用额度', value: videoBalanceCny.toFixed(2) }
+        ]
+      }
     ]
   }
 }
@@ -837,16 +1943,47 @@ function resolveCreditActivityDescription(item = {}) {
 
 function buildCreditMessages(settings = {}) {
   const creditState = normalizeCreditStateForDisplay(settings.creditState)
+  const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
+    ? settings.dashboardCreditState
+    : {}
 
   return {
-    title: '本地任务积分记录',
-    helperText: '（本栏为本地模拟记账，真实数据以仪表盘为准）',
-    items: creditState.activityHistory.map((item) => ({
-      ...item,
-      label: resolveCreditActivityLabel(item),
-      description: resolveCreditActivityDescription(item),
-      amountDisplay: `${item.operation === 'decrease' ? '-' : '+'}${item.amount}`
-    }))
+    ledgers: [
+      {
+        key: 'text',
+        title: '文本记录',
+        items: dashboardCreditState.text?.lastSyncedAt
+          ? [{
+              id: `text-sync-${dashboardCreditState.text.lastSyncedAt}`,
+              createdAt: dashboardCreditState.text.lastSyncedAt,
+              note: '文本余额同步',
+              amount: Number(dashboardCreditState.text.balanceCny || 0).toFixed(2)
+            }]
+          : []
+      },
+      {
+        key: 'image',
+        title: '图片记录',
+        items: creditState.activityHistory.map((item) => ({
+          ...item,
+          label: resolveCreditActivityLabel(item),
+          description: resolveCreditActivityDescription(item),
+          amountDisplay: `${item.operation === 'decrease' ? '-' : '+'}${item.amount}`
+        }))
+      },
+      {
+        key: 'video',
+        title: '视频记录',
+        items: dashboardCreditState.video?.lastSyncedAt
+          ? [{
+              id: `video-sync-${dashboardCreditState.video.lastSyncedAt}`,
+              createdAt: dashboardCreditState.video.lastSyncedAt,
+              note: '视频额度同步',
+              amount: Number(dashboardCreditState.video.balanceCny || 0).toFixed(2)
+            }]
+          : []
+      }
+    ]
   }
 }
 
@@ -937,13 +2074,11 @@ function buildSettingsSummary(settings = {}) {
     apiKeys: Array.isArray(settings.apiKeys) ? settings.apiKeys.slice(0, 2) : ['', ''],
     activeApiKeyIndex: Number.isInteger(settings.activeApiKeyIndex) ? settings.activeApiKeyIndex : 0,
     dashboardCreditState: settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-      ? {
-          totalCredits: Math.max(0, Number(settings.dashboardCreditState.totalCredits) || 0),
-          remainingCredits: Math.max(0, Number(settings.dashboardCreditState.remainingCredits) || 0)
-        }
+      ? settings.dashboardCreditState
       : {
-          totalCredits: 0,
-          remainingCredits: 0
+          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
         },
     creditState: normalizeCreditStateForDisplay(settings.creditState)
   }
@@ -951,41 +2086,272 @@ function buildSettingsSummary(settings = {}) {
 
 async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   generateImageResults,
+  generateCopywritingResults,
+  generateVideoResults,
   onProgress
 }) {
-  if (menuKey === 'single-image') {
-    return generateImageResults({
-      menuKey,
-      draft,
-      taskId,
-      outputDirectory,
-      onProgress
+  if (menuKey === 'workspace') {
+    const enabledSteps = normalizeProjectEnabledSteps(draft.enabledSteps)
+    await onProgress?.({
+      progress: 12,
+      status: 'running'
     })
+
+    const workspaceProjectName = resolveWorkspaceProjectDisplayName(draft)
+    const highlightText = splitWorkspaceTextValues(draft.highlightsText).join('、') || '暂无'
+    const keywordText = splitWorkspaceTextValues(draft.keywordsText).join('、') || '暂无'
+    const platformText = splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'
+
+    const titleResults = enabledSteps.title
+      ? await generateCopywritingResults({
+          taskId: `${taskId}-title`,
+          draft: {
+            model: draft.model,
+            quantity: Math.max(1, Number(draft.titleQuantity) || 1),
+            prompt: [
+              `商品名称：${draft.productName || workspaceProjectName}`,
+              `品牌：${draft.brand || '未提供'}`,
+              `类目：${draft.category || '未提供'}`,
+              `卖点：${highlightText}`,
+              `关键词：${keywordText}`,
+              `目标平台：${platformText}`,
+              `语言：${draft.language || 'zh-CN'}`,
+              `任务要求：${draft.titlePrompt || ''}`,
+              `最大字数：${draft.titleMaxChars || 60}`,
+              '请输出适合电商上架的商品标题，长度适中，优先突出商品主体、关键卖点和购买价值。'
+            ].filter(Boolean).join('\n')
+          }
+        })
+      : []
+
+    await onProgress?.({
+      progress: 58,
+      status: 'running'
+    })
+
+    const descriptionResults = enabledSteps.description
+      ? await generateCopywritingResults({
+          taskId: `${taskId}-description`,
+          draft: {
+            model: draft.model,
+            quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
+            prompt: [
+              `商品名称：${draft.productName || workspaceProjectName}`,
+              `品牌：${draft.brand || '未提供'}`,
+              `类目：${draft.category || '未提供'}`,
+              `卖点：${highlightText}`,
+              `关键词：${keywordText}`,
+              `目标平台：${platformText}`,
+              `语言：${draft.language || 'zh-CN'}`,
+              `任务要求：${draft.descriptionPrompt || ''}`,
+              `最大字数：${draft.descriptionMaxChars || 300}`,
+              '请输出适合商品详情页或上架页的商品描述，要求信息清晰、卖点明确、语气自然，不要分点编号。'
+            ].filter(Boolean).join('\n')
+          }
+        })
+      : []
+
+    await onProgress?.({
+      progress: 72,
+      status: 'running'
+    })
+
+    const workspaceImagePromptBase = String(
+      draft.imagePrompt ||
+      draft.globalPrompt ||
+      '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'
+    ).trim()
+    const workspaceImageTypeLabels = SERIES_GENERATE_DEFAULT_TYPE_ORDER
+    const imageDraft = {
+      ...draft,
+      sourceImage: draft.sourceImage || draft.referenceImage || null,
+      model: draft.imageModel || 'gpt-image-2',
+      generateCount: Math.max(1, Number(draft.generateCount) || 4),
+      batchCount: 1,
+      size: draft.size || draft.imageSize || '1:1',
+      promptAssignments: normalizePromptAssignments(
+        Array.from({ length: Math.max(1, Number(draft.generateCount) || 4) }, (_unused, index) => ({
+          id: `workspace-series-${index + 1}`,
+          prompt: `${workspaceImageTypeLabels[index] || '详情图'}：${workspaceImagePromptBase}`,
+          templateId: SERIES_GENERATE_TEMPLATE_ID_BY_TYPE[workspaceImageTypeLabels[index] || '详情图'] || draft.imageTemplateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+          imageType: workspaceImageTypeLabels[index] || '详情图',
+          differenceLevel: 'off'
+        })),
+        Math.max(1, Number(draft.generateCount) || 4)
+      )
+    }
+
+    const imageResults = enabledSteps.image && imageDraft.sourceImage
+      ? await generateImageResults({
+          menuKey: 'series-generate',
+          draft: imageDraft,
+          taskId: `${taskId}-series`,
+          outputDirectory,
+          onProgress: async ({ progress, status } = {}) => {
+            const mappedProgress = 72 + Math.round((Math.max(0, Number(progress) || 0) * 0.18))
+            await onProgress?.({
+              progress: Math.min(90, mappedProgress),
+              status
+            })
+          }
+        })
+      : {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: {
+            title: '套图结果',
+            description: '未提供样图，跳过套图生成'
+          }
+        }
+
+    await onProgress?.({
+      progress: 91,
+      status: 'running'
+    })
+
+    const videoDraft = {
+      ...draft,
+      sourceImage: draft.sourceImage || draft.referenceImage || null,
+      model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
+      prompt: String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim(),
+      duration: draft.duration || draft.videoDuration || '6s',
+      resolution: draft.resolution || draft.videoResolution || '768P',
+      motionStrength: draft.motionStrength || draft.videoMotionStrength || 'auto',
+      videoTemplateId: draft.videoTemplateId || 'video-main'
+    }
+
+    const videoResults = enabledSteps.video && videoDraft.sourceImage
+      ? await generateVideoResults({
+          draft: videoDraft,
+          taskId: `${taskId}-video`,
+          outputDirectory,
+          onProgress: async ({ progress, status } = {}) => {
+            const mappedProgress = 91 + Math.round((Math.max(0, Number(progress) || 0) * 0.09))
+            await onProgress?.({
+              progress: Math.min(100, mappedProgress),
+              status
+            })
+          }
+        })
+      : {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: {
+            title: '视频结果',
+            description: '未提供样图，跳过视频生成'
+          }
+        }
+
+    await onProgress?.({
+      progress: 100,
+      status: 'succeeded'
+    })
+
+    return {
+      textResults: [
+        ...titleResults.map((item, index) => ({
+          ...item,
+          id: `${taskId}-title-${index + 1}`,
+          title: `标题 ${index + 1}`,
+          kind: 'title'
+        })),
+        ...descriptionResults.map((item, index) => ({
+          ...item,
+          id: `${taskId}-description-${index + 1}`,
+          title: `描述 ${index + 1}`,
+          kind: 'description'
+        }))
+      ],
+      comparisonResults: [],
+      groupedResults: [
+        ...(imageResults.groupedResults || []),
+        ...(videoResults.groupedResults || [])
+      ],
+      summary: {
+        title: `${workspaceProjectName} / 全链路生成结果`,
+        description: `已生成 ${titleResults.length} 条标题、${descriptionResults.length} 条描述，并完成套图与视频流程`
+      }
+    }
   }
 
-  if (menuKey === 'single-design') {
-    return generateImageResults({
-      menuKey,
-      draft,
+  if (menuKey === 'title-generator') {
+    const titleResults = await generateCopywritingResults({
       taskId,
-      outputDirectory,
-      onProgress
+      draft: {
+        model: draft.model || resolveTextModelForMenu(menuKey),
+        quantity: draft.titleQuantity || 3,
+        prompt: [
+          `商品名称：${draft.productName || '未命名商品'}`,
+          `目标平台：${draft.platformTargetsText || 'temu'}`,
+          `语言：${draft.language || 'zh-CN'}`,
+          `任务要求：${draft.titlePrompt || ''}`,
+          `最大字数：${draft.titleMaxChars || 60}`,
+          '请输出适合商品上架的商品标题，不要解释，不要编号。'
+        ].join('\n')
+      }
     })
+
+    return {
+      textResults: titleResults.map((item, index) => ({
+        ...item,
+        id: `${taskId}-title-${index + 1}`,
+        kind: 'title',
+        title: `标题 ${index + 1}`
+      })),
+      comparisonResults: [],
+      groupedResults: [],
+      summary: {
+        title: '标题生成结果'
+      }
+    }
   }
 
-  if (menuKey === 'series-design') {
-    return generateImageResults({
-      menuKey,
-      draft,
+  if (menuKey === 'description-generator') {
+    const descriptionResults = await generateCopywritingResults({
       taskId,
-      outputDirectory,
-      onProgress
+      draft: {
+        model: draft.model || resolveTextModelForMenu(menuKey),
+        quantity: draft.descriptionQuantity || 2,
+        prompt: [
+          `商品名称：${draft.productName || '未命名商品'}`,
+          `目标平台：${draft.platformTargetsText || 'temu'}`,
+          `语言：${draft.language || 'zh-CN'}`,
+          `任务要求：${draft.descriptionPrompt || ''}`,
+          `最大字数：${draft.descriptionMaxChars || 300}`,
+          '请输出适合商品详情页或上架页的商品描述，不要解释，不要编号。'
+        ].join('\n')
+      }
     })
+
+    return {
+      textResults: descriptionResults.map((item, index) => ({
+        ...item,
+        id: `${taskId}-description-${index + 1}`,
+        kind: 'description',
+        title: `描述 ${index + 1}`
+      })),
+      comparisonResults: [],
+      groupedResults: [],
+      summary: {
+        title: '描述生成结果'
+      }
+    }
   }
 
   if (menuKey === 'series-generate') {
     return generateImageResults({
       menuKey,
+      draft,
+      taskId,
+      outputDirectory,
+      onProgress
+    })
+  }
+
+  if (menuKey === 'video-generate') {
+    return generateVideoResults({
       draft,
       taskId,
       outputDirectory,
@@ -1154,9 +2520,7 @@ async function saveStudioResults({
     const folderName = `${folderBaseName}${groupIndex}`
     const groupDirectory = path.resolve(outputDirectory, folderName)
     await ensureDirectory(groupDirectory)
-    const defaultCompletedCount = menuKey === 'series-design'
-      ? (group.outputs || []).filter((item) => item.sourceTag === 'generated').length
-      : (group.outputs || []).length
+    const defaultCompletedCount = (group.outputs || []).length
     const persistedGroup = {
       ...group,
       groupIndex: Number.isInteger(group.groupIndex) ? group.groupIndex : groupIndex,
@@ -1224,19 +2588,15 @@ async function saveStudioResults({
 }
 
 function resolveInputCount(menuKey, draft) {
-  if (menuKey === 'single-image') {
-    return draft.sourceImage ? 1 : 0
-  }
-
-  if (menuKey === 'single-design') {
-    return draft.sourceImage ? 1 : 0
-  }
-
-  if (menuKey === 'series-design') {
-    return (draft.imageAssignments || []).filter((item) => item.selected !== false).length
+  if (menuKey === 'workspace') {
+    return (draft.projectId && (draft.sourceImage || draft.referenceImage)) ? 1 : 0
   }
 
   if (menuKey === 'series-generate') {
+    return draft.sourceImage ? 1 : 0
+  }
+
+  if (menuKey === 'video-generate') {
     return draft.sourceImage ? 1 : 0
   }
 
@@ -1253,15 +2613,7 @@ function formatElapsedLabel(elapsedMilliseconds = 0) {
 }
 
 function resolveSummaryModels(menuKey, draft = {}, resultPayload = {}) {
-  if (menuKey === 'single-image') {
-    return [...new Set((resultPayload.comparisonResults || []).map((item) => item.model).filter(Boolean))]
-  }
-
-  if (menuKey === 'single-design') {
-    return [...new Set((resultPayload.comparisonResults || []).map((item) => item.model).filter(Boolean))]
-  }
-
-  if (menuKey === 'series-design' || menuKey === 'series-generate') {
+  if (menuKey === 'series-generate') {
     const groupedModels = (resultPayload.groupedResults || []).flatMap((group) => {
       return (group.outputs || []).map((item) => item.model).filter(Boolean)
     })
@@ -1289,21 +2641,15 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
 }
 
 function resolveEstimatedInputCount(menuKey, draft = {}) {
-  if (menuKey === 'single-image') {
-    return draft.sourceImage ? 1 : 0
-  }
-
-  if (menuKey === 'single-design') {
-    return draft.sourceImage ? 1 : 0
-  }
-
-  if (menuKey === 'series-design') {
-    return Array.isArray(draft.imageAssignments)
-      ? draft.imageAssignments.filter((item) => item.selected !== false).length
-      : 0
+  if (menuKey === 'workspace') {
+    return (draft.projectId && (draft.sourceImage || draft.referenceImage)) ? 1 : 0
   }
 
   if (menuKey === 'series-generate') {
+    return draft.sourceImage ? 1 : 0
+  }
+
+  if (menuKey === 'video-generate') {
     return draft.sourceImage ? 1 : 0
   }
 
@@ -1311,55 +2657,52 @@ function resolveEstimatedInputCount(menuKey, draft = {}) {
 }
 
 function resolveEstimatedPlannedOutputCount(menuKey, draft = {}) {
-  if (menuKey === 'single-image') {
-    return normalizeCompareModels(draft.compareModels).length
-  }
-
-  if (menuKey === 'single-design') {
-    return 1
-  }
-
-  if (menuKey === 'series-design') {
-    const assignmentCount = Array.isArray(draft.imageAssignments) ? draft.imageAssignments.length : 0
-    return assignmentCount * Math.max(1, Number(draft.batchCount) || 1)
+  if (menuKey === 'workspace') {
+    return Math.max(1, Number(draft.titleQuantity) || 0) +
+      Math.max(1, Number(draft.descriptionQuantity) || 0) +
+      ((draft.sourceImage || draft.referenceImage) ? (Math.max(1, Number(draft.generateCount) || 4) + 1) : 0)
   }
 
   if (menuKey === 'series-generate') {
     return Math.max(1, Number(draft.batchCount) || 1) * resolveGroupImageCount(menuKey, draft)
   }
 
+  if (menuKey === 'title-generator') {
+    return Math.max(1, Number(draft.titleQuantity) || 1)
+  }
+
+  if (menuKey === 'description-generator') {
+    return Math.max(1, Number(draft.descriptionQuantity) || 1)
+  }
+
   return 0
 }
 
 function resolveTaskTitle(menuKey, draft = {}) {
-  if (menuKey === 'single-image') {
-    return '单图四模型对比'
+  if (menuKey === 'workspace') {
+    return `${resolveWorkspaceProjectDisplayName(draft)} / 全链路生成`
   }
 
-  if (menuKey === 'single-design') {
-    return '单图设计效果'
+  if (menuKey === 'title-generator') {
+    return '标题生成'
   }
 
-  if (menuKey === 'series-design') {
-    return `套图定向生成 ${Math.max(1, Number(draft.batchCount) || 1)} 组`
+  if (menuKey === 'description-generator') {
+    return '描述生成'
   }
 
   if (menuKey === 'series-generate') {
     return `套图生成 ${Math.max(1, Number(draft.batchCount) || 1)} 批 x ${resolveGroupImageCount(menuKey, draft)} 张`
   }
 
+  if (menuKey === 'video-generate') {
+    return `视频生成 ${Math.max(1, Number(draft.videoQuantity) || 1)} 条`
+  }
+
   return `${menuLabelMap[menuKey]}任务`
 }
 
 function resolveTaskModelSummary(menuKey, draft = {}) {
-  if (menuKey === 'single-image') {
-    return normalizeCompareModels(draft.compareModels).join(' / ')
-  }
-
-  if (menuKey === 'single-design') {
-    return draft.model || ''
-  }
-
   return draft.model || ''
 }
 
@@ -1368,17 +2711,7 @@ function resolveGroupImageCount(menuKey, draft = {}) {
     return Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(draft.generateCount) || 1))
   }
 
-  if (menuKey === 'series-design') {
-    return Array.isArray(draft.imageAssignments) ? draft.imageAssignments.length : 0
-  }
-
   return 0
-}
-
-function resolveSeriesSelectedAssignmentCount(draft = {}) {
-  return Array.isArray(draft.imageAssignments)
-    ? draft.imageAssignments.filter((item) => item.selected !== false).length
-    : 0
 }
 
 function resolveGroupedTaskBaseState(menuKey, draft = {}) {
@@ -1392,20 +2725,6 @@ function resolveGroupedTaskBaseState(menuKey, draft = {}) {
       currentGroupIndex: 0,
       currentGroupCompletedCount: 0,
       currentGroupTotalCount: groupImageCount
-    }
-  }
-
-  if (menuKey === 'series-design') {
-    const groupImageCount = resolveGroupImageCount(menuKey, draft)
-    const selectedAssignmentCount = resolveSeriesSelectedAssignmentCount(draft)
-    return {
-      groupImageCount,
-      totalSubtaskCount: selectedAssignmentCount * Math.max(1, Number(draft.batchCount) || 1),
-      completedSubtaskCount: 0,
-      failedSubtaskCount: 0,
-      currentGroupIndex: 0,
-      currentGroupCompletedCount: 0,
-      currentGroupTotalCount: selectedAssignmentCount
     }
   }
 
@@ -1424,17 +2743,13 @@ function resolveGroupedProgressState(menuKey, draft = {}, resultPayload = {}) {
   const baseState = resolveGroupedTaskBaseState(menuKey, draft)
   const groups = Array.isArray(resultPayload.groupedResults) ? resultPayload.groupedResults : []
 
-  if (!groups.length || (menuKey !== 'series-design' && menuKey !== 'series-generate')) {
+  if (!groups.length || menuKey !== 'series-generate') {
     return baseState
   }
 
   const completedSubtaskCount = groups.reduce((total, group) => {
     if (Number.isFinite(group.completedCount)) {
       return total + Number(group.completedCount)
-    }
-
-    if (menuKey === 'series-design') {
-      return total + (group.outputs || []).filter((item) => item.sourceTag === 'generated').length
     }
 
     return total + (group.outputs || []).length
@@ -1452,11 +2767,7 @@ function resolveGroupedProgressState(menuKey, draft = {}, resultPayload = {}) {
     ? (
         Number.isFinite(currentGroup.completedCount)
           ? Number(currentGroup.completedCount)
-          : (
-              menuKey === 'series-design'
-                ? (currentGroup.outputs || []).filter((item) => item.sourceTag === 'generated').length
-                : (currentGroup.outputs || []).length
-            )
+          : (currentGroup.outputs || []).length
       )
     : 0
 
@@ -1496,7 +2807,7 @@ function buildTaskRecord({
     id: taskId,
     taskNumber,
     menuKey,
-    category: taskCategoryMap[menuKey] || '单图测试',
+    category: taskCategoryMap[menuKey] || '工作台',
     title: resolveTaskTitle(menuKey, draft, plannedOutputCount),
     modelSummary: resolveTaskModelSummary(menuKey, draft),
     inputCount,
@@ -1539,7 +2850,7 @@ function buildQueuedTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt,
     plannedOutputCount: resolveEstimatedPlannedOutputCount(menuKey, draft),
     batchCount: menuKey === 'series-generate'
       ? Math.max(1, Number(draft.batchCount) || 1)
-      : (menuKey === 'series-design' ? Math.max(1, Number(draft.batchCount) || 1) : 1),
+      : 1,
     status: '等待中',
     progress: 0,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
@@ -1587,7 +2898,7 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     plannedOutputCount: resolvePlannedOutputCount(resultPayload),
     batchCount: menuKey === 'series-generate'
       ? Math.max(1, Number(draft.batchCount) || 1)
-      : (menuKey === 'series-design' ? Math.max(1, Number(draft.batchCount) || 1) : 1),
+      : 1,
     status: '已完成',
     progress: 100,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
@@ -1610,7 +2921,7 @@ function buildFailedTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt,
     plannedOutputCount: 0,
     batchCount: menuKey === 'series-generate'
       ? Math.max(1, Number(draft.batchCount) || 1)
-      : (menuKey === 'series-design' ? Math.max(1, Number(draft.batchCount) || 1) : 1),
+      : 1,
     status: '失败',
     progress: 100,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
@@ -1620,12 +2931,12 @@ function buildFailedTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt,
 }
 
 function resolveTaskSize(menuKey, draft = {}) {
-  if (menuKey === 'series-generate') {
-    return Math.max(1, Number(draft.batchCount) || 1) * resolveGroupImageCount(menuKey, draft)
+  if (menuKey === 'workspace') {
+    return Math.max(1, Number(draft.generateCount) || 4) + 1
   }
 
-  if (menuKey === 'series-design') {
-    return resolveSeriesSelectedAssignmentCount(draft) * Math.max(1, Number(draft.batchCount) || 1)
+  if (menuKey === 'series-generate') {
+    return Math.max(1, Number(draft.batchCount) || 1) * resolveGroupImageCount(menuKey, draft)
   }
 
   return 0
@@ -1856,7 +3167,9 @@ function createStudioWorkspaceService({
   store,
   settingsService,
   apiKeyCreditService,
+  deepseekBalanceService,
   promptTemplateService,
+  remoteLicensePlatformClient,
   messageRecorder,
   runtimeLogger,
   outputRootDirectory = OUTPUT_ROOT_DIRECTORY,
@@ -1877,6 +3190,8 @@ function createStudioWorkspaceService({
   exportScanCacheTtlMs = 3000,
   exportTaskDirectory: exportTaskDirectoryDependency = defaultExportTaskDirectory,
   generateImageResults,
+  generateCopywritingResults,
+  generateVideoResults,
   taskManagerService
 }) {
   const studioImageGenerationService = createStudioImageGenerationService({
@@ -1896,7 +3211,28 @@ function createStudioWorkspaceService({
       })
     }
   })
+  const studioVideoGenerationService = createStudioVideoGenerationService({
+    settingsService,
+    messageRecorder,
+    runtimeLogger,
+    requestMetricRecorder: async (metric) => {
+      const latestState = getStoredState()
+      saveState({
+        ...latestState,
+        requestMetrics: appendRequestMetric(latestState.requestMetrics, {
+          id: createId(),
+          createdAt: getNow(),
+          ...metric
+        })
+      })
+    }
+  })
   const generateImageResultsDependency = generateImageResults || studioImageGenerationService.generateImageResults
+  const generateCopywritingResultsDependency = generateCopywritingResults || createCopywritingGenerationService({
+    settingsService,
+    messageRecorder
+  }).generateCopywritingResults
+  const generateVideoResultsDependency = generateVideoResults || studioVideoGenerationService.generateVideoResults
   const queuedTaskExecutions = []
   const activeTaskControllers = new Map()
   let isTaskQueueRunning = false
@@ -1921,6 +3257,35 @@ function createStudioWorkspaceService({
       tasks,
       exportItemsByMenu,
       derivedState
+    }
+  }
+
+  function buildAgentReadinessSnapshot(tasks = getStoredTasks()) {
+    const queuedTaskIds = queuedTaskExecutions
+      .map((item) => String(item?.taskId || '').trim())
+      .filter(Boolean)
+    const activeTaskIds = Array.from(activeTaskControllers.keys()).filter(Boolean)
+
+    return {
+      queue: {
+        queuedCount: queuedTaskIds.length,
+        runningCount: activeTaskIds.length,
+        isProcessing: isTaskQueueRunning,
+        queuedTaskIds,
+        activeTaskIds
+      },
+      executionLog: tasks
+        .slice(0, 20)
+        .map((task) => ({
+          taskId: task.id,
+          taskNumber: task.taskNumber || '',
+          menuKey: task.menuKey || '',
+          title: task.title || '',
+          status: task.status || '',
+          progress: Number(task.progress || 0),
+          createdAt: task.createdAt || '',
+          outputDirectory: task.outputDirectory || ''
+        }))
     }
   }
 
@@ -1969,7 +3334,11 @@ function createStudioWorkspaceService({
     task,
     formDraftPatch = null,
     resultsByMenuPatch = null,
-    exportItemsByMenuPatch = null
+    exportItemsByMenuPatch = null,
+    productProjectsPatch = null,
+    activeProductProjectId = null,
+    projectRunsPatch = null,
+    activeProjectRunId = null
   }) {
     const latestState = getStoredState()
     const nextTasks = [
@@ -1997,6 +3366,18 @@ function createStudioWorkspaceService({
             ...exportItemsByMenuPatch
           }
         : latestState.exportItemsByMenu,
+      productProjects: Array.isArray(productProjectsPatch)
+        ? productProjectsPatch
+        : latestState.productProjects,
+      activeProductProjectId: typeof activeProductProjectId === 'string'
+        ? activeProductProjectId
+        : latestState.activeProductProjectId,
+      projectRuns: Array.isArray(projectRunsPatch)
+        ? projectRunsPatch
+        : latestState.projectRuns,
+      activeProjectRunId: typeof activeProjectRunId === 'string'
+        ? activeProjectRunId
+        : latestState.activeProjectRunId,
       tasks: nextTasks
     })
 
@@ -2018,36 +3399,18 @@ function createStudioWorkspaceService({
     const sourcePaths = []
     const sourcePathAssignments = []
 
-    if (menuKey === 'single-image') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
-      if (sourcePath) {
-        sourcePathAssignments.push({ type: 'single-source' })
-        sourcePaths.push(sourcePath)
-      }
-    }
-
-    if (menuKey === 'single-design') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
-      if (sourcePath) {
-        sourcePathAssignments.push({ type: 'single-design-source' })
-        sourcePaths.push(sourcePath)
-      }
-    }
-
-    if (menuKey === 'series-design') {
-      draft.imageAssignments.forEach((item, index) => {
-        const sourcePath = item.path || item.storedPath || ''
-        if (sourcePath) {
-          sourcePathAssignments.push({ type: 'series-design', index })
-          sourcePaths.push(sourcePath)
-        }
-      })
-    }
-
     if (menuKey === 'series-generate') {
       const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
       if (sourcePath) {
         sourcePathAssignments.push({ type: 'series-generate-source' })
+        sourcePaths.push(sourcePath)
+      }
+    }
+
+    if (menuKey === 'video-generate') {
+      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+      if (sourcePath) {
+        sourcePathAssignments.push({ type: 'video-generate-source' })
         sourcePaths.push(sourcePath)
       }
     }
@@ -2066,19 +3429,11 @@ function createStudioWorkspaceService({
         return
       }
 
-      if (assignment.type === 'single-source' && preparedDraft.sourceImage) {
-        preparedDraft.sourceImage.storedPath = storedPath
-      }
-
-      if (assignment.type === 'single-design-source' && preparedDraft.sourceImage) {
-        preparedDraft.sourceImage.storedPath = storedPath
-      }
-
-      if (assignment.type === 'series-design' && preparedDraft.imageAssignments?.[assignment.index]) {
-        preparedDraft.imageAssignments[assignment.index].storedPath = storedPath
-      }
-
       if (assignment.type === 'series-generate-source' && preparedDraft.sourceImage) {
+        preparedDraft.sourceImage.storedPath = storedPath
+      }
+
+      if (assignment.type === 'video-generate-source' && preparedDraft.sourceImage) {
         preparedDraft.sourceImage.storedPath = storedPath
       }
     })
@@ -2093,10 +3448,16 @@ function createStudioWorkspaceService({
     taskNumber,
     createdAt,
     inputDirectory,
-    outputDirectory
+    outputDirectory,
+    projectRunId = ''
   }) {
     const executionController = createTaskExecutionController(taskId)
     activeTaskControllers.set(taskId, executionController)
+    const executionUpdatedAt = getNow()
+    const latestStateBeforeRun = getStoredState()
+    const currentProjectRun = projectRunId
+      ? normalizeProjectRuns(latestStateBeforeRun.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
+      : null
     const runningTask = buildRunningTaskSummary({
       menuKey,
       draft,
@@ -2108,7 +3469,18 @@ function createStudioWorkspaceService({
     })
 
     await persistTaskAndState({
-      task: runningTask
+      task: runningTask,
+      projectRunsPatch: currentProjectRun
+        ? upsertProjectRun(
+            latestStateBeforeRun.projectRuns,
+            buildStartedProjectRun({
+              projectRun: currentProjectRun,
+              menuKey,
+              startedAt: executionUpdatedAt
+            })
+          )
+        : null,
+      activeProjectRunId: currentProjectRun ? currentProjectRun.id : null
     })
 
     try {
@@ -2149,6 +3521,8 @@ function createStudioWorkspaceService({
       const resultPayloadOutcome = await Promise.race([
         Promise.resolve(buildResultPayload(menuKey, preparedDraft, taskId, outputDirectory, {
           generateImageResults: generateImageResultsDependency,
+          generateCopywritingResults: generateCopywritingResultsDependency,
+          generateVideoResults: generateVideoResultsDependency,
           onProgress: handleTaskProgress
         })).then((resultPayload) => ({
           type: 'result',
@@ -2204,6 +3578,102 @@ function createStudioWorkspaceService({
         outputDirectory,
         resultPayload: enrichedResultPayload
       })
+      const latestState = getStoredState()
+      const currentProject = preparedDraft.projectId
+        ? (
+            latestState.productProjects.find((project) => project.id === preparedDraft.projectId) || buildWorkspaceProjectDraft({
+              draft: preparedDraft,
+              projectId: preparedDraft.projectId,
+              createdAt,
+              updatedAt: getNow()
+            })
+          )
+        : null
+      const currentProjectRunAfterExecution = projectRunId
+        ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
+        : null
+      let nextProductProjects = latestState.productProjects
+      let nextProjectRuns = latestState.projectRuns
+
+      if (currentProject && menuKey === 'workspace') {
+        const projectWithTaskRef = attachTaskRefToProductProject(currentProject, taskId, getNow())
+        const projectWithText = applyWorkspaceTextResultsToProject(
+          projectWithTaskRef,
+          enrichedResultPayload,
+          getNow()
+        )
+        const projectWithImages = applyImageResultsToProject(
+          projectWithText,
+          enrichedResultPayload,
+          getNow()
+        )
+        nextProductProjects = upsertProductProject(
+          latestState.productProjects,
+          applyVideoResultsToProject(
+            projectWithImages,
+            enrichedResultPayload,
+            getNow()
+          )
+        )
+      }
+
+      if (currentProject && menuKey === 'title-generator') {
+        nextProductProjects = upsertProductProject(
+          latestState.productProjects,
+          applyTitleResultsToProject(
+            attachTaskRefToProductProject(currentProject, taskId, getNow()),
+            enrichedResultPayload,
+            getNow()
+          )
+        )
+      }
+
+      if (currentProject && menuKey === 'description-generator') {
+        nextProductProjects = upsertProductProject(
+          latestState.productProjects,
+          applyDescriptionResultsToProject(
+            attachTaskRefToProductProject(currentProject, taskId, getNow()),
+            enrichedResultPayload,
+            getNow()
+          )
+        )
+      }
+
+      if (currentProject && menuKey === 'series-generate') {
+        nextProductProjects = upsertProductProject(
+          latestState.productProjects,
+          applyImageResultsToProject(
+            attachTaskRefToProductProject(currentProject, taskId, getNow()),
+            enrichedResultPayload,
+            getNow()
+          )
+        )
+      }
+
+      if (currentProject && menuKey === 'video-generate') {
+        nextProductProjects = upsertProductProject(
+          latestState.productProjects,
+          applyVideoResultsToProject(
+            attachTaskRefToProductProject(currentProject, taskId, getNow()),
+            enrichedResultPayload,
+            getNow()
+          )
+        )
+      }
+
+      if (currentProjectRunAfterExecution) {
+        nextProjectRuns = upsertProjectRun(
+          latestState.projectRuns,
+          buildProjectRunUpdateFromResult({
+            projectRun: currentProjectRunAfterExecution,
+            menuKey,
+            resultPayload: enrichedResultPayload,
+            exportItems,
+            outputDirectory,
+            completedAt: getNow()
+          })
+        )
+      }
 
       await persistTaskAndState({
         task: completedTask,
@@ -2215,7 +3685,11 @@ function createStudioWorkspaceService({
         },
         exportItemsByMenuPatch: {
           [menuKey]: exportItems
-        }
+        },
+        productProjectsPatch: nextProductProjects,
+        activeProductProjectId: preparedDraft.projectId || null,
+        projectRunsPatch: nextProjectRuns,
+        activeProjectRunId: currentProjectRunAfterExecution?.id || null
       })
 
       const settledCreditState = settleCreditsForTask({
@@ -2245,9 +3719,25 @@ function createStudioWorkspaceService({
         outputDirectory,
         errorMessage: error.message
       })
+      const latestState = getStoredState()
+      const currentProjectRun = projectRunId
+        ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
+        : null
 
       await persistTaskAndState({
-        task: failedTask
+        task: failedTask,
+        projectRunsPatch: currentProjectRun
+          ? upsertProjectRun(
+              latestState.projectRuns,
+              buildFailedProjectRun({
+                projectRun: currentProjectRun,
+                menuKey,
+                errorMessage: error.message,
+                failedAt: getNow()
+              })
+            )
+          : null,
+        activeProjectRunId: currentProjectRun?.id || null
       })
 
       const refundedCreditState = refundCreditsForTask({
@@ -2442,10 +3932,15 @@ function createStudioWorkspaceService({
       batchOptions,
       imageModelOptions,
       modelPricingCatalog,
+      productProjects: state.productProjects,
+      activeProductProjectId: state.activeProductProjectId,
+      projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
+      activeProjectRunId: state.activeProjectRunId,
       formDrafts: state.formDrafts,
       resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
       exportItemsByMenu,
       tasks,
+      agentReadiness: buildAgentReadinessSnapshot(tasks),
       workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
       settingsSummary: buildSettingsSummary(settings),
       hostInfo: buildHostInfo()
@@ -2453,36 +3948,109 @@ function createStudioWorkspaceService({
   }
 
   async function refreshDashboardCredits({
-    target = 'remaining'
+    target = 'image'
   } = {}) {
     const settings = settingsService.getSettings()
     const currentDashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
       ? settings.dashboardCreditState
-      : { totalCredits: 0, remainingCredits: 0 }
-    const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
-      ? await apiKeyCreditService.getRealtimeCredits()
-      : null
+      : {
+          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
+        }
+    let nextDashboardCreditState = currentDashboardCreditState
 
-    if (!realtimeCredits || !Number.isFinite(Number(realtimeCredits.remainingCredits))) {
-      return {
-        totalCredits: Math.max(0, Number(currentDashboardCreditState.totalCredits) || 0),
-        remainingCredits: Math.max(0, Number(currentDashboardCreditState.remainingCredits) || 0)
+    if (target === 'text' || target === 'all') {
+      const realtimeTextBalance = deepseekBalanceService && typeof deepseekBalanceService.getRealtimeBalance === 'function'
+        ? await deepseekBalanceService.getRealtimeBalance()
+        : null
+
+      if (realtimeTextBalance && Number.isFinite(Number(realtimeTextBalance.balanceCny))) {
+        nextDashboardCreditState = {
+          ...nextDashboardCreditState,
+          text: {
+            balanceCny: Math.max(0, Number(realtimeTextBalance.balanceCny) || 0),
+            lastSyncedAt: realtimeTextBalance.lastSyncedAt || getNow(),
+            syncStatus: realtimeTextBalance.syncStatus || 'success'
+          }
+        }
       }
     }
 
-    const fetchedCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
-    const nextDashboardCreditState = target === 'total'
-      ? {
-          totalCredits: fetchedCredits,
-          remainingCredits: Math.min(
-            Math.max(0, Number(currentDashboardCreditState.remainingCredits) || 0),
-            fetchedCredits
-          )
+    if (target === 'image' || target === 'all') {
+      const authPlatform = settings.authPlatform && typeof settings.authPlatform === 'object'
+        ? settings.authPlatform
+        : { enabled: false, sessionToken: '' }
+      const shouldUseRemoteWallet = authPlatform.enabled !== false && typeof authPlatform.sessionToken === 'string' && authPlatform.sessionToken.trim()
+
+      if (shouldUseRemoteWallet && remoteLicensePlatformClient && typeof remoteLicensePlatformClient.getWalletSummary === 'function') {
+        try {
+          const walletSummary = await remoteLicensePlatformClient.getWalletSummary({
+            sessionToken: authPlatform.sessionToken
+          })
+          nextDashboardCreditState = {
+            ...nextDashboardCreditState,
+            image: {
+              totalCredits: Math.max(0, Number(nextDashboardCreditState.image?.totalCredits) || 0),
+              remainingCredits: Math.max(0, Number(nextDashboardCreditState.image?.remainingCredits) || 0),
+              balanceCny: Math.max(0, Number(walletSummary?.imageBalanceCny) || 0),
+              lastSyncedAt: walletSummary?.updatedAt || getNow(),
+              syncStatus: 'success'
+            },
+            video: {
+              balanceCny: Math.max(0, Number(walletSummary?.videoBalanceCny) || 0),
+              lastSyncedAt: walletSummary?.updatedAt || getNow(),
+              syncStatus: 'success'
+            }
+          }
+        } catch {
+          nextDashboardCreditState = {
+            ...nextDashboardCreditState,
+            image: {
+              ...nextDashboardCreditState.image,
+              syncStatus: 'remote-failed'
+            },
+            video: {
+              ...nextDashboardCreditState.video,
+              syncStatus: 'remote-failed'
+            }
+          }
         }
-      : {
-          totalCredits: Math.max(0, Number(currentDashboardCreditState.totalCredits) || 0),
-          remainingCredits: fetchedCredits
+      }
+
+      const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
+        ? await apiKeyCreditService.getRealtimeCredits()
+        : null
+
+      if (realtimeCredits && Number.isFinite(Number(realtimeCredits.remainingCredits))) {
+        const fetchedCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
+        nextDashboardCreditState = {
+          ...nextDashboardCreditState,
+          image: target === 'total'
+            ? {
+                totalCredits: fetchedCredits,
+                remainingCredits: Math.min(
+                  Math.max(0, Number(nextDashboardCreditState.image?.remainingCredits) || 0),
+                  fetchedCredits
+                ),
+                balanceCny: Math.max(0, Number(nextDashboardCreditState.image?.balanceCny) || 0),
+                lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
+                syncStatus: realtimeCredits.syncStatus || 'success'
+              }
+            : {
+                totalCredits: Math.max(0, Number(nextDashboardCreditState.image?.totalCredits) || 0),
+                remainingCredits: fetchedCredits,
+                balanceCny: Math.max(0, Number(nextDashboardCreditState.image?.balanceCny) || 0),
+                lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
+                syncStatus: realtimeCredits.syncStatus || 'success'
+              }
         }
+      }
+    }
+
+    if (nextDashboardCreditState === currentDashboardCreditState) {
+      return currentDashboardCreditState
+    }
 
     await settingsService.saveSettings({
       dashboardCreditState: nextDashboardCreditState
@@ -2495,7 +4063,11 @@ function createStudioWorkspaceService({
     const settings = settingsService.getSettings()
     const currentDashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
       ? settings.dashboardCreditState
-      : { totalCredits: 0, remainingCredits: 0 }
+      : {
+          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
+          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
+        }
     const currentCreditState = normalizeCreditStateForDisplay(settings.creditState)
     const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
       ? await apiKeyCreditService.getRealtimeCredits()
@@ -2507,11 +4079,16 @@ function createStudioWorkspaceService({
     if (realtimeCredits && Number.isFinite(Number(realtimeCredits.remainingCredits))) {
       resolvedRemainingCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
       nextDashboardCreditState = {
-        totalCredits: Math.max(0, Number(currentDashboardCreditState.totalCredits) || 0),
-        remainingCredits: resolvedRemainingCredits
+        ...currentDashboardCreditState,
+        image: {
+          totalCredits: Math.max(0, Number(currentDashboardCreditState.image?.totalCredits) || 0),
+          remainingCredits: resolvedRemainingCredits,
+          lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
+          syncStatus: realtimeCredits.syncStatus || 'success'
+        }
       }
-    } else if (Number.isFinite(Number(currentDashboardCreditState.remainingCredits)) && Number(currentDashboardCreditState.remainingCredits) > 0) {
-      resolvedRemainingCredits = Math.max(0, Math.round(Number(currentDashboardCreditState.remainingCredits)))
+    } else if (Number.isFinite(Number(currentDashboardCreditState.image?.remainingCredits)) && Number(currentDashboardCreditState.image?.remainingCredits) > 0) {
+      resolvedRemainingCredits = Math.max(0, Math.round(Number(currentDashboardCreditState.image?.remainingCredits)))
     }
 
     if (resolvedRemainingCredits === null) {
@@ -2541,7 +4118,7 @@ function createStudioWorkspaceService({
 
   async function getDisplaySnapshot() {
     await refreshDashboardCredits({
-      target: 'remaining'
+      target: 'all'
     })
     const {
       state,
@@ -2558,13 +4135,38 @@ function createStudioWorkspaceService({
       batchOptions,
       imageModelOptions,
       modelPricingCatalog,
+      productProjects: state.productProjects,
+      activeProductProjectId: state.activeProductProjectId,
+      projectRuns: state.projectRuns,
+      activeProjectRunId: state.activeProjectRunId,
       formDrafts: state.formDrafts,
       resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
       exportItemsByMenu,
       tasks,
+      agentReadiness: buildAgentReadinessSnapshot(tasks),
       workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
       settingsSummary: buildSettingsSummary(settings),
       hostInfo: buildHostInfo()
+    }
+  }
+
+  function getRuntimeSnapshot() {
+    const {
+      state,
+      tasks,
+      exportItemsByMenu
+    } = buildBaseSnapshot()
+
+    return {
+      productProjects: state.productProjects,
+      activeProductProjectId: state.activeProductProjectId,
+      projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
+      activeProjectRunId: state.activeProjectRunId,
+      formDrafts: state.formDrafts,
+      resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
+      exportItemsByMenu,
+      tasks,
+      agentReadiness: buildAgentReadinessSnapshot(tasks)
     }
   }
 
@@ -2586,17 +4188,145 @@ function createStudioWorkspaceService({
     return nextDraft
   }
 
+  async function createProject({
+    productName = '',
+    platform = 'temu',
+    language = 'zh-CN'
+  } = {}) {
+    const state = getStoredState()
+    const createdAt = getNow()
+    const createdProject = buildEmptyProductProject({
+      projectId: `project-${createId()}`,
+      productName,
+      platform,
+      language,
+      createdAt
+    })
+
+    const nextProjects = [
+      createdProject,
+      ...normalizeProductProjects(state.productProjects)
+    ]
+
+    saveState({
+      ...state,
+      productProjects: nextProjects,
+      activeProductProjectId: createdProject.id
+    })
+
+    return createdProject
+  }
+
+  async function createProjectsFromAssets({
+    files = [],
+    platform = 'temu',
+    language = 'zh-CN'
+  } = {}) {
+    const normalizedFiles = Array.isArray(files) ? files.map((item) => normalizeImageAsset(item)).filter(Boolean) : []
+
+    if (!normalizedFiles.length) {
+      return {
+        createdProjects: [],
+        activeProductProjectId: ''
+      }
+    }
+
+    const state = getStoredState()
+    const createdAt = getNow()
+    const createdProjects = normalizedFiles.map((asset, index) => {
+      return buildProjectCardFromAsset({
+        asset,
+        projectId: `project-${createId()}-${index + 1}`,
+        createdAt,
+        platform,
+        language
+      })
+    })
+
+    const nextProjects = [
+      ...createdProjects,
+      ...normalizeProductProjects(state.productProjects)
+    ]
+
+    saveState({
+      ...state,
+      productProjects: nextProjects,
+      activeProductProjectId: createdProjects[0]?.id || state.activeProductProjectId
+    })
+
+    return {
+      createdProjects,
+      activeProductProjectId: createdProjects[0]?.id || ''
+    }
+  }
+
+  async function updateProject({
+    projectId = '',
+    patch = {}
+  } = {}) {
+    const normalizedProjectId = String(projectId || '').trim()
+    if (!normalizedProjectId) {
+      throw new Error('商品项目 ID 不能为空')
+    }
+
+    const state = getStoredState()
+    const existingProject = normalizeProductProjects(state.productProjects).find((item) => item.id === normalizedProjectId)
+    if (!existingProject) {
+      throw new Error('未找到需要更新的商品项目')
+    }
+
+    const nextProject = updateProductProjectFields(existingProject, patch, getNow())
+    const nextProjects = upsertProductProject(state.productProjects, nextProject)
+
+    saveState({
+      ...state,
+      productProjects: nextProjects,
+      activeProductProjectId: normalizedProjectId
+    })
+
+    return nextProject
+  }
+
+  async function deleteProject({
+    projectId = ''
+  } = {}) {
+    const normalizedProjectId = String(projectId || '').trim()
+    if (!normalizedProjectId) {
+      throw new Error('商品项目 ID 不能为空')
+    }
+
+    const state = getStoredState()
+    const nextProjects = normalizeProductProjects(state.productProjects).filter((item) => item.id !== normalizedProjectId)
+    const nextActiveProductProjectId = resolveActiveProductProjectId(nextProjects, state.activeProductProjectId === normalizedProjectId ? '' : state.activeProductProjectId)
+
+    saveState({
+      ...state,
+      productProjects: nextProjects,
+      activeProductProjectId: nextActiveProductProjectId
+    })
+
+    return {
+      deleted: true,
+      projectId: normalizedProjectId
+    }
+  }
+
   async function createTask({ menuKey = 'workspace', draft: incomingDraft } = {}) {
     const state = getStoredState()
     let settings = settingsService.getSettings()
     const taskId = createId()
+    const projectRunId = `run-${createId()}`
     const taskNumber = createTaskNumber()
-    const draft = normalizeDraftForMenu(menuKey, {
+    let draft = normalizeDraftForMenu(menuKey, {
       ...(state.formDrafts[menuKey] || createDefaultDrafts()[menuKey] || {}),
       ...(incomingDraft || {})
     })
-    validateTaskScale(menuKey, draft)
-    const estimatedCredits = estimateTaskCredits(menuKey, draft)
+    let nextProductProjects = state.productProjects
+    let nextActiveProductProjectId = state.activeProductProjectId
+    let nextProjectRuns = state.projectRuns
+    let nextActiveProjectRunId = state.activeProjectRunId
+    let currentProjectForRun = null
+    const createdAt = formatDisplayDateTime(getNow())
     const {
       inputDirectory,
       outputDirectory
@@ -2604,7 +4334,66 @@ function createStudioWorkspaceService({
       featureKey: menuKey,
       taskId
     })
-    const createdAt = formatDisplayDateTime(getNow())
+
+    if (menuKey === 'workspace') {
+      const existingProject = state.productProjects.find((project) => {
+        return project.id === draft.projectId || project.id === state.activeProductProjectId
+      }) || null
+      const projectId = draft.projectId || existingProject?.id || `project-${createId()}`
+      const updatedProject = attachTaskRefToProductProject(
+        buildWorkspaceProjectDraft({
+          currentProject: existingProject,
+          draft,
+          projectId,
+          createdAt: existingProject?.createdAt || getNow(),
+          updatedAt: getNow()
+        }),
+        taskId,
+        getNow()
+      )
+      currentProjectForRun = updatedProject
+      nextProductProjects = upsertProductProject(
+        state.productProjects,
+        attachProjectRunToProject(updatedProject, projectRunId, getNow())
+      )
+      nextActiveProductProjectId = projectId
+      draft = {
+        ...draft,
+        projectId,
+        projectName: updatedProject.name
+      }
+    } else if (draft.projectId) {
+      const existingProject = normalizeProductProjects(state.productProjects).find((project) => project.id === draft.projectId) || null
+      if (existingProject) {
+        currentProjectForRun = attachTaskRefToProductProject(existingProject, taskId, getNow())
+        nextProductProjects = upsertProductProject(
+          state.productProjects,
+          attachProjectRunToProject(currentProjectForRun, projectRunId, getNow())
+        )
+        nextActiveProductProjectId = existingProject.id
+      }
+    }
+
+    if (draft.projectId && currentProjectForRun) {
+      const runDirectory = path.resolve(outputDirectory)
+      const createdProjectRun = buildProjectRunRecord({
+        runId: projectRunId,
+        projectId: draft.projectId,
+        menuKey,
+        draft,
+        currentProject: currentProjectForRun,
+        taskId,
+        taskNumber,
+        createdAt,
+        runDirectory
+      })
+
+      nextProjectRuns = upsertProjectRun(state.projectRuns, createdProjectRun)
+      nextActiveProjectRunId = createdProjectRun.id
+    }
+
+    validateTaskScale(menuKey, draft)
+    const estimatedCredits = estimateTaskCredits(menuKey, draft)
     const queuedTask = buildQueuedTaskSummary({
       menuKey,
       draft,
@@ -2641,7 +4430,17 @@ function createStudioWorkspaceService({
         task: queuedTask,
         formDraftPatch: {
           [menuKey]: draft
-        }
+        },
+        resultsByMenuPatch: {
+          [menuKey]: createDefaultResultsByMenu()[menuKey]
+        },
+        exportItemsByMenuPatch: {
+          [menuKey]: []
+        },
+        productProjectsPatch: nextProductProjects,
+        activeProductProjectId: nextActiveProductProjectId,
+        projectRunsPatch: nextProjectRuns,
+        activeProjectRunId: nextActiveProjectRunId
       })
 
       enqueueTaskExecution({
@@ -2651,7 +4450,8 @@ function createStudioWorkspaceService({
         taskNumber,
         createdAt,
         inputDirectory,
-        outputDirectory
+        outputDirectory,
+        projectRunId: draft.projectId && currentProjectForRun ? projectRunId : ''
       })
 
       return queuedTask
@@ -2668,6 +4468,75 @@ function createStudioWorkspaceService({
       }
 
       throw error
+    }
+  }
+
+  async function exportProjectBundle({
+    projectId = '',
+    targetZipPath = ''
+  } = {}) {
+    const normalizedProjectId = String(projectId || '').trim()
+    if (!normalizedProjectId) {
+      throw new Error('商品项目 ID 不能为空')
+    }
+
+    if (!targetZipPath) {
+      throw new Error('导出压缩包路径不能为空')
+    }
+
+    const state = getStoredState()
+    const project = normalizeProductProjects(state.productProjects).find((item) => item.id === normalizedProjectId)
+
+    if (!project) {
+      throw new Error('未找到可导出的商品项目')
+    }
+
+    const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'qiuai-project-export-'))
+    const projectDirectory = path.resolve(stagingDirectory, sanitizePathSegment(project.name || 'product-project', 'product-project'))
+
+    try {
+      await ensureDirectoryDependency(projectDirectory)
+
+      const titleText = project.content?.selectedTitle || (project.content?.titleCandidates || []).join('\n')
+      const descriptionText = project.content?.selectedDescription || (project.content?.descriptionCandidates || []).join('\n')
+
+      await writeFile(path.resolve(projectDirectory, 'title.txt'), `${String(titleText || '')}\n`, 'utf8')
+      await writeFile(path.resolve(projectDirectory, 'description.txt'), `${String(descriptionText || '')}\n`, 'utf8')
+
+      if (Array.isArray(project.assets?.generatedImages) && project.assets.generatedImages.length) {
+        const imagesDirectory = path.resolve(projectDirectory, 'images')
+        await ensureDirectoryDependency(imagesDirectory)
+
+        for (const [index, image] of project.assets.generatedImages.entries()) {
+          const sourcePath = image.savedPath || image.path || image.storedPath || ''
+          if (!sourcePath) {
+            continue
+          }
+
+          await copyFile(
+            sourcePath,
+            path.resolve(imagesDirectory, `${String(index + 1).padStart(2, '0')}-${path.basename(sourcePath)}`)
+          )
+        }
+      }
+
+      if (project.assets?.generatedVideo?.savedPath) {
+        const videoPath = project.assets.generatedVideo.savedPath
+        await copyFile(videoPath, path.resolve(projectDirectory, path.basename(videoPath)))
+      }
+
+      const exportedArchive = await exportTaskDirectoryDependency({
+        sourceDirectory: projectDirectory,
+        targetZipPath
+      })
+
+      return {
+        canceled: false,
+        projectId: normalizedProjectId,
+        targetZipPath: exportedArchive.targetZipPath
+      }
+    } finally {
+      await removeDirectory(stagingDirectory).catch(() => {})
     }
   }
 
@@ -2842,6 +4711,11 @@ function createStudioWorkspaceService({
   return {
     getSnapshot,
     getDisplaySnapshot,
+    getRuntimeSnapshot,
+    createProject,
+    createProjectsFromAssets,
+    updateProject,
+    deleteProject,
     refreshDashboardCredits,
     saveDraft,
     createTask,
@@ -2849,6 +4723,7 @@ function createStudioWorkspaceService({
     clearRuntimeState,
     deleteExportItem,
     exportSelectedResults,
+    exportProjectBundle,
     waitForIdle: async () => {
       await taskQueuePromise
     }

@@ -1,18 +1,21 @@
 const { createHttpClientService } = require('./httpClientService')
 const { resolveProviderApiKey } = require('./providerApiKeyService')
 
-const API_KEY_CREDITS_PATH = '/client/openapi/getAPIKeyCredits'
+const DEEPSEEK_BALANCE_PATH = '/user/balance'
 
-function normalizeRemainingCredits(value = 0) {
-  const numericValue = Number(value)
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
+function normalizeBalanceCny(responseData = {}) {
+  const balanceInfos = Array.isArray(responseData.balance_infos) ? responseData.balance_infos : []
+  const cnyBalance = balanceInfos.find((item) => String(item?.currency || '').toUpperCase() === 'CNY')
+  const totalBalance = Number(cnyBalance?.total_balance)
+
+  if (!Number.isFinite(totalBalance) || totalBalance < 0) {
     return 0
   }
 
-  return Math.round(numericValue)
+  return Number(totalBalance.toFixed(2))
 }
 
-function createApiKeyCreditService({
+function createDeepseekBalanceService({
   settingsService,
   messageRecorder,
   requestMetricRecorder,
@@ -21,9 +24,9 @@ function createApiKeyCreditService({
 }) {
   let lastSuccessfulSnapshot = null
 
-  async function getRealtimeCredits() {
+  async function getRealtimeBalance() {
     const settings = settingsService.getSettings()
-    const apiKey = resolveProviderApiKey(settings, 'general')
+    const apiKey = resolveProviderApiKey(settings, 'deepseek')
 
     if (!apiKey) {
       return lastSuccessfulSnapshot
@@ -36,22 +39,16 @@ function createApiKeyCreditService({
 
     try {
       const httpClient = createHttpClientServiceDependency({
-        apiBaseUrl: settings.apiBaseUrl,
+        apiBaseUrl: 'https://api.deepseek.com',
         apiKey,
         messageRecorder,
         requestMetricRecorder
       })
-      const response = await httpClient.post(API_KEY_CREDITS_PATH, {
-        apiKey
-      })
+      const response = await httpClient.get(DEEPSEEK_BALANCE_PATH)
       const responseData = response?.data || {}
 
-      if (responseData.code !== 0 || !responseData.data || typeof responseData.data.credits === 'undefined') {
-        throw new Error(responseData.msg || '积分查询失败')
-      }
-
       lastSuccessfulSnapshot = {
-        remainingCredits: normalizeRemainingCredits(responseData.data.credits),
+        balanceCny: normalizeBalanceCny(responseData),
         lastSyncedAt: getNow(),
         syncStatus: 'success'
       }
@@ -68,11 +65,11 @@ function createApiKeyCreditService({
   }
 
   return {
-    getRealtimeCredits
+    getRealtimeBalance
   }
 }
 
 module.exports = {
-  createApiKeyCreditService,
-  API_KEY_CREDITS_PATH
+  createDeepseekBalanceService,
+  DEEPSEEK_BALANCE_PATH
 }

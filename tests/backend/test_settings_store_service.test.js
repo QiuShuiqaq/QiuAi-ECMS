@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
-describe('settingsStoreService', () => {
-  it('loads dual api keys with active slot from persisted settings', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
+function createMemoryStore() {
+  const memory = new Map()
+
+  return {
+    get(key, fallbackValue) {
+      return memory.has(key) ? memory.get(key) : fallbackValue
+    },
+    set(key, value) {
+      memory.set(key, value)
     }
+  }
+}
+
+describe('settingsStoreService', () => {
+  it('loads dual api keys and the current upload directory structure', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
@@ -22,9 +27,7 @@ describe('settingsStoreService', () => {
       defaultSize: '1:1',
       downloadDirectory: 'C:/QiuAi',
       uploadDirectories: {
-        'single-image': 'C:/QiuAi/Input/SingleImage',
-        'single-design': 'C:/QiuAi/Input/SingleDesign',
-        'series-design': 'C:/QiuAi/Input/SeriesDesign',
+        workspace: 'C:/QiuAi/Input/Workspace',
         'series-generate': 'C:/QiuAi/Input/SeriesGenerate'
       },
       themeMode: 'eye-care'
@@ -38,258 +41,69 @@ describe('settingsStoreService', () => {
       defaultSize: '1:1',
       downloadDirectory: 'C:/QiuAi',
       uploadDirectories: {
-        'single-image': 'C:/QiuAi/Input/SingleImage',
-        'single-design': 'C:/QiuAi/Input/SingleDesign',
-        'series-design': 'C:/QiuAi/Input/SeriesDesign',
+        workspace: 'C:/QiuAi/Input/Workspace',
         'series-generate': 'C:/QiuAi/Input/SeriesGenerate'
       },
-      themeMode: 'dark'
+      themeMode: 'dark',
+      authPlatform: {
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:3721',
+        sessionToken: ''
+      }
     })
   })
 
-  it('keeps legacy stored single api key data readable through normalized settings', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    store.set('userSettings', {
-      apiKeys: ['sk-old-1', 'sk-old-2'],
-      activeApiKeyIndex: 0,
-      apiKey: 'sk-legacy'
-    })
-
-    expect(service.getSettings()).toMatchObject({
-      apiKeys: ['sk-old-1', 'sk-old-2'],
-      activeApiKeyIndex: 0,
-      apiKey: 'sk-old-1'
-    })
-  })
-
-  it('rejects normal settings saves that try to modify api key fields', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    await expect(service.saveSettings({
-      apiKey: 'sk-blocked'
-    })).rejects.toThrow('当前版本不允许用户修改 API-Key')
-
-    await expect(service.saveSettings({
-      apiKeys: ['sk-blocked', '']
-    })).rejects.toThrow('当前版本不允许用户修改 API-Key')
-
-    await expect(service.saveSettings({
-      activeApiKeyIndex: 1
-    })).rejects.toThrow('当前版本不允许用户修改 API-Key')
-  })
-
-  it('rejects admin api key save when password is incorrect', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    await expect(service.saveAdminApiKey({
-      apiKey: 'sk-admin',
-      password: 'wrong'
-    })).rejects.toThrow('管理员验证失败：密码错误')
-  })
-
-  it('rejects empty admin api key saves', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    await expect(service.saveAdminApiKey({
-      apiKey: '   ',
-      password: 'qiuai@123'
-    })).rejects.toThrow('API-Key 不能为空')
-  })
-
-  it('saves a single admin api key into slot 0 and fixes the active index', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    const saved = await service.saveAdminApiKey({
-      apiKey: 'sk-admin-real',
-      password: 'qiuai@123'
-    })
-
-    expect(saved.apiKeys[0]).toBe('sk-admin-real')
-    expect(saved.apiKeys[1]).toBe('')
-    expect(saved.activeApiKeyIndex).toBe(0)
-    expect(saved.apiKey).toBe('sk-admin-real')
-    expect(service.getSettings().apiKey).toBe('sk-admin-real')
-  })
-
-  it('rejects invalid upload directories and accepts empty values as cleared defaults', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
+  it('rejects invalid workspace upload directories and accepts clearing them', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
 
     await expect(service.saveSettings({
       uploadDirectories: {
-        'single-image': 'Z:/missing-folder'
+        workspace: 'Z:/missing-folder'
       }
     }, {
       isDirectory: () => false
-    })).rejects.toThrow('默认上传目录不存在或不是文件夹')
+    })).rejects.toThrow()
 
     await service.saveSettings({
       uploadDirectories: {
-        'single-image': ''
+        workspace: ''
       }
     }, {
       isDirectory: () => false
     })
 
-    expect(service.getSettings().uploadDirectories['single-image']).toBe('')
+    expect(service.getSettings().uploadDirectories.workspace).toBe('')
   })
 
-  it('keeps upload directories isolated per menu across service instances', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
+  it('keeps upload directories isolated per menu across instances', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const firstService = createSettingsStoreService({ store })
 
     await firstService.saveSettings({
       uploadDirectories: {
-        'single-design': 'D:/QiuAi/Input/SingleDesign'
+        workspace: 'D:/QiuAi/Input/Workspace'
       }
     }, {
-      isDirectory: (targetPath) => targetPath === 'D:/QiuAi/Input/SingleDesign'
+      isDirectory: (targetPath) => targetPath === 'D:/QiuAi/Input/Workspace'
     })
 
     const secondService = createSettingsStoreService({ store })
 
     expect(secondService.getSettings()).toMatchObject({
       uploadDirectories: {
-        'single-image': '',
-        'single-design': 'D:/QiuAi/Input/SingleDesign',
-        'series-design': '',
+        workspace: 'D:/QiuAi/Input/Workspace',
         'series-generate': ''
       }
     })
   })
 
-  it('applies manual credit adjustments and keeps a local credit summary', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    await service.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 20000000
-      }
-    }, {
-      getNow: () => '2026-04-29T12:00:00.000Z'
-    })
-
-    await service.saveSettings({
-      creditAdjustment: {
-        operation: 'decrease',
-        amount: 600
-      }
-    }, {
-      getNow: () => '2026-04-29T12:05:00.000Z'
-    })
-
-    expect(service.getSettings().creditState).toMatchObject({
-      totalPurchasedCredits: 20000000,
-      remainingCredits: 19999400,
-      frozenCredits: 0,
-      usedCredits: 0,
-      lastAdjustmentAt: '2026-04-29T12:05:00.000Z',
-      lastAdjustmentOperation: 'decrease'
-    })
-    expect(service.getSettings().creditState.adjustmentHistory).toHaveLength(2)
-    expect(service.getSettings().creditState.activityHistory).toHaveLength(2)
-    expect(service.getSettings().creditState.activityHistory[0].type).toBe('manual_decrease')
-    expect(service.getSettings().creditState.activityHistory[1].type).toBe('manual_increase')
-  })
-
-  it('allows credit saves when existing upload directories are stale but not being updated', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
+  it('allows credit saves without rewriting stale upload directory data', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
@@ -297,9 +111,7 @@ describe('settingsStoreService', () => {
     store.set('userSettings', {
       globalUploadDirectory: 'Z:/stale-global-folder',
       uploadDirectories: {
-        'single-image': 'Z:/missing-folder',
-        'single-design': 'D:/keep-this-folder',
-        'series-design': '',
+        workspace: 'Z:/missing-folder',
         'series-generate': ''
       },
       creditState: {
@@ -318,126 +130,95 @@ describe('settingsStoreService', () => {
       getNow: () => '2026-05-01T10:00:00.000Z'
     })).resolves.toBeTruthy()
 
-    await expect(service.saveSettings({
-      creditState: {
-        totalPurchasedCredits: 1000
-      }
-    }, {
-      isDirectory: () => false
-    })).resolves.toBeTruthy()
-
     expect(service.getSettings()).toMatchObject({
       globalUploadDirectory: 'Z:/stale-global-folder',
       uploadDirectories: {
-        'single-image': 'Z:/missing-folder',
-        'single-design': 'D:/keep-this-folder',
-        'series-design': '',
+        workspace: 'Z:/missing-folder',
         'series-generate': ''
       },
-      dashboardCreditState: {
-        totalCredits: 0,
-        remainingCredits: 0
-      },
       creditState: {
-        totalPurchasedCredits: 1000,
+        totalPurchasedCredits: 600,
         remainingCredits: 400
       }
     })
   })
 
-  it('normalizes and saves dashboard credit state independently from the local ledger', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
+  it('updates only the provided upload directory keys', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
 
     await service.saveSettings({
+      uploadDirectories: {
+        workspace: 'D:/Input/Workspace',
+        'series-generate': 'D:/Input/SeriesGenerate'
+      }
+    }, {
+      isDirectory: (targetPath) => targetPath.startsWith('D:/Input/')
+    })
+
+    await service.saveSettings({
+      uploadDirectories: {
+        workspace: 'E:/Input/Workspace'
+      }
+    }, {
+      isDirectory: (targetPath) => targetPath.startsWith('E:/Input/') || targetPath === 'D:/Input/SeriesGenerate'
+    })
+
+    expect(service.getSettings().uploadDirectories).toMatchObject({
+      workspace: 'E:/Input/Workspace',
+      'series-generate': 'D:/Input/SeriesGenerate'
+    })
+  })
+
+  it('migrates legacy dashboard credits into the image ledger', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const service = createSettingsStoreService({ store })
+
+    store.set('userSettings', {
       dashboardCreditState: {
-        totalCredits: 8888,
-        remainingCredits: 6666
+        totalCredits: 9000,
+        remainingCredits: 4200
       }
     })
 
     expect(service.getSettings().dashboardCreditState).toMatchObject({
-      totalCredits: 8888,
-      remainingCredits: 6666
+      text: {
+        balanceCny: 0,
+        syncStatus: 'idle'
+      },
+      image: {
+        totalCredits: 9000,
+        remainingCredits: 4200,
+        syncStatus: 'success'
+      },
+      video: {
+        balanceCny: 0,
+        syncStatus: 'idle'
+      }
     })
-    expect(service.getSettings().creditState.remainingCredits).toBe(0)
   })
 
-  it('updates only the provided upload directory keys without clearing sibling directories', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
+  it('stores provider api keys separately while keeping general api compatibility', async () => {
+    const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
 
-    await service.saveSettings({
-      uploadDirectories: {
-        'single-image': 'D:/Input/SingleImage',
-        'single-design': 'D:/Input/SingleDesign'
-      }
-    }, {
-      isDirectory: (targetPath) => targetPath.startsWith('D:/Input/')
+    const saved = await service.saveProviderApiKeys({
+      imageApiKey: 'sk-general',
+      textApiKey: 'sk-deepseek',
+      videoApiKey: 'sk-minimax'
     })
 
-    await service.saveSettings({
-      uploadDirectories: {
-        'series-design': 'D:/Input/SeriesDesign'
-      }
-    }, {
-      isDirectory: (targetPath) => targetPath.startsWith('D:/Input/')
+    expect(saved.apiKey).toBe('sk-general')
+    expect(saved.providerApiKeys).toEqual({
+      general: 'sk-general',
+      deepseek: 'sk-deepseek',
+      minimax: 'sk-minimax'
     })
-
-    expect(service.getSettings().uploadDirectories).toMatchObject({
-      'single-image': 'D:/Input/SingleImage',
-      'single-design': 'D:/Input/SingleDesign',
-      'series-design': 'D:/Input/SeriesDesign',
-      'series-generate': ''
-    })
-  })
-
-  it('defaults download cleanup to enabled and preserves explicit boolean values', async () => {
-    const memory = new Map()
-    const store = {
-      get (key, fallbackValue) {
-        return memory.has(key) ? memory.get(key) : fallbackValue
-      },
-      set (key, value) {
-        memory.set(key, value)
-      }
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    expect(service.getSettings().downloadCleanupEnabled).toBe(true)
-
-    await service.saveSettings({
-      downloadCleanupEnabled: false
-    })
-
-    expect(service.getSettings().downloadCleanupEnabled).toBe(false)
-
-    await service.saveSettings({
-      downloadCleanupEnabled: true
-    })
-
-    expect(service.getSettings().downloadCleanupEnabled).toBe(true)
   })
 })

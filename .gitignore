@@ -3,6 +3,8 @@ node_modules/
 build/
 dist/
 .logs/
+output/
+temp/
 
 DATA/log.txt
 DATA/message.txt

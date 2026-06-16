@@ -3,17 +3,18 @@ const registerSettingsIpc = require('../ipc/settingsIpc')
 const registerDrawIpc = require('../ipc/drawIpc')
 const registerLicenseIpc = require('../ipc/licenseIpc')
 const registerPromptIpc = require('../ipc/promptIpc')
-const registerNegativePromptTemplateIpc = require('../ipc/negativePromptTemplateIpc')
 const registerTaskIpc = require('../ipc/taskIpc')
 const registerStudioIpc = require('../ipc/studioIpc')
 const { createDeviceFingerprintService } = require('../services/deviceFingerprintService')
+const { createAuthorizationService } = require('../services/authorizationService')
 const { createLicenseService } = require('../services/licenseService')
+const { createQiuAiLicensePlatformClientService } = require('../services/qiuAiLicensePlatformClientService')
 const { LICENSE_PUBLIC_KEY } = require('../services/licensePublicKey')
 const { createActivationGuardService } = require('../services/activationGuardService')
 const { createSettingsStoreService } = require('../services/settingsStoreService')
 const { createApiKeyCreditService } = require('../services/apiKeyCreditService')
+const { createDeepseekBalanceService } = require('../services/deepseekBalanceService')
 const { createPromptTemplateStoreService } = require('../services/promptTemplateStoreService')
-const { createNegativePromptTemplateStoreService } = require('../services/negativePromptTemplateStoreService')
 const { createLocalTaskStoreService } = require('../services/localTaskStoreService')
 const { createStudioWorkspaceService } = require('../services/studioWorkspaceService')
 const { createStudioTaskManagerService } = require('../services/studioTaskManagerService')
@@ -24,11 +25,10 @@ const { createDataTraceService } = require('../services/dataTraceService')
 const { attachConsoleCapture } = require('../services/consoleCaptureService')
 const { ensureDataLayout } = require('../services/dataPathsService')
 
-function registerIpc () {
+function registerIpc() {
   ensureDataLayout().catch(() => {})
   const settingsStore = new Store({ name: 'qiuai-settings' })
   const promptStore = new Store({ name: 'qiuai-prompts' })
-  const negativePromptStore = new Store({ name: 'qiuai-negative-prompts' })
   const taskStore = new Store({ name: 'qiuai-tasks' })
   const studioStore = new Store({ name: 'qiuai-studio' })
   const dataTraceService = createDataTraceService()
@@ -42,22 +42,37 @@ function registerIpc () {
     messageRecorder: dataTraceService,
     requestMetricRecorder: async () => {}
   })
+  const deepseekBalanceService = createDeepseekBalanceService({
+    settingsService,
+    messageRecorder: dataTraceService,
+    requestMetricRecorder: async () => {}
+  })
   const licenseService = createLicenseService({
     publicKey: LICENSE_PUBLIC_KEY,
     getDeviceCode: () => deviceFingerprintService.getDeviceCode()
   })
+  const remoteLicensePlatformClient = createQiuAiLicensePlatformClientService({
+    baseUrl: settingsService.getSettings().authPlatform.baseUrl
+  })
+  const authorizationService = createAuthorizationService({
+    legacyLicenseService: licenseService,
+    remoteLicensePlatformClient,
+    getRemoteConfig: () => settingsService.getSettings().authPlatform,
+    getDeviceCode: () => deviceFingerprintService.getDeviceCode()
+  })
   const activationGuard = createActivationGuardService({
-    licenseService
+    authorizationService
   })
   const promptTemplateService = createPromptTemplateStoreService({ store: promptStore })
-  const negativePromptTemplateService = createNegativePromptTemplateStoreService({ store: negativePromptStore })
   const localTaskStoreService = createLocalTaskStoreService({ store: taskStore })
   const studioTaskManagerService = createStudioTaskManagerService()
   const studioWorkspaceService = createStudioWorkspaceService({
     store: studioStore,
     settingsService,
     apiKeyCreditService,
+    deepseekBalanceService,
     promptTemplateService,
+    remoteLicensePlatformClient,
     messageRecorder: dataTraceService,
     runtimeLogger: dataTraceService,
     taskManagerService: studioTaskManagerService
@@ -69,7 +84,11 @@ function registerIpc () {
   })
 
   registerSettingsIpc({ settingsService })
-  registerLicenseIpc({ licenseService })
+  registerLicenseIpc({
+    authorizationService,
+    remoteLicensePlatformClient,
+    settingsService
+  })
   registerDrawIpc({
     settingsService,
     messageRecorder: dataTraceService,
@@ -77,7 +96,6 @@ function registerIpc () {
     activationGuard
   })
   registerPromptIpc({ promptTemplateService })
-  registerNegativePromptTemplateIpc({ negativePromptTemplateService })
   registerTaskIpc({
     settingsService,
     promptTemplateService,
@@ -97,7 +115,9 @@ function registerIpc () {
   })
 
   return {
+    authorizationService,
     licenseService,
+    remoteLicensePlatformClient,
     studioTaskManagerService,
     studioWorkspaceService,
     taskRunnerService

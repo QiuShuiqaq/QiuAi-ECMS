@@ -9,15 +9,15 @@ F:\ProgramDevelopment\VSCODE\vscode\VSCode2026.4\workspace\Pro_QiuAi\QiuAi
 2. 进入项目目录：
 cd F:\ProgramDevelopment\VSCODE\vscode\VSCode2026.4\workspace\Pro_QiuAi\QiuAi
 3. 如果还没有安装依赖，执行：
-npm install
+npm.cmd install
 4. 启动项目：
-npm run dev
+npm.cmd run dev
 
 三、日常启动
 以后每次启动只需要执行：
 
 cd F:\ProgramDevelopment\VSCODE\vscode\VSCode2026.4\workspace\Pro_QiuAi\QiuAi
-npm run dev
+npm.cmd run dev
 
 四、启动后会发生什么
 1. Vite 前端开发服务会启动，默认端口为 5173
@@ -30,14 +30,15 @@ npm run dev
 1. 5173 端口被占用
 2. 依赖没有安装完整
 3. 上一次运行残留进程没有退出
+4. PowerShell 执行策略拦截了 npm.ps1，请改用 npm.cmd
 
 六、常用排查命令
 1. 重新安装依赖：
-npm install
+npm.cmd install
 
 2. 检查代码是否有问题：
-npm test
-npm run lint
+npm.cmd test
+npm.cmd run lint
 
 3. 如果需要强制停止当前运行：
 直接关闭 PowerShell 窗口，或者按：

@@ -3,7 +3,6 @@ const fs = require('node:fs')
 const SETTINGS_KEY = 'userSettings'
 const API_KEY_SLOT_COUNT = 2
 const CREDIT_HISTORY_LIMIT = 20
-const ADMIN_API_KEY_PASSWORD = 'qiuai@123'
 
 const defaultCreditState = {
   totalPurchasedCredits: 0,
@@ -19,8 +18,32 @@ const defaultCreditState = {
 }
 
 const defaultDashboardCreditState = {
-  totalCredits: 0,
-  remainingCredits: 0
+  text: {
+    balanceCny: 0,
+    lastSyncedAt: '',
+    syncStatus: 'idle'
+  },
+  image: {
+    totalCredits: 0,
+    remainingCredits: 0,
+    balanceCny: 0,
+    lastSyncedAt: '',
+    syncStatus: 'idle'
+  },
+  video: {
+    balanceCny: 0,
+    lastSyncedAt: '',
+    syncStatus: 'idle'
+  }
+}
+
+const defaultAuthPlatform = {
+  enabled: true,
+  baseUrl: 'http://127.0.0.1:3721',
+  sessionToken: '',
+  lastUserId: '',
+  lastLicenseId: '',
+  lastSyncedAt: ''
 }
 
 const defaultSettings = {
@@ -28,19 +51,23 @@ const defaultSettings = {
   apiKeys: ['', ''],
   activeApiKeyIndex: 0,
   apiKey: '',
+  providerApiKeys: {
+    general: '',
+    deepseek: '',
+    minimax: ''
+  },
   defaultSize: '1:1',
   downloadDirectory: '',
   globalUploadDirectory: '',
   uploadDirectories: {
-    'single-image': '',
-    'single-design': '',
-    'series-design': '',
+    workspace: '',
     'series-generate': ''
   },
   themeMode: 'dark',
   downloadCleanupEnabled: true,
   dashboardCreditState: defaultDashboardCreditState,
-  creditState: defaultCreditState
+  creditState: defaultCreditState,
+  authPlatform: defaultAuthPlatform
 }
 
 function normalizeThemeMode() {
@@ -48,12 +75,10 @@ function normalizeThemeMode() {
 }
 
 function normalizeApiKeys(apiKeys = []) {
-  const normalizedApiKeys = Array.from({ length: API_KEY_SLOT_COUNT }, (_unused, index) => {
+  return Array.from({ length: API_KEY_SLOT_COUNT }, (_unused, index) => {
     const value = Array.isArray(apiKeys) ? apiKeys[index] : ''
     return typeof value === 'string' ? value : ''
   })
-
-  return normalizedApiKeys
 }
 
 function normalizeActiveApiKeyIndex(activeApiKeyIndex = 0) {
@@ -70,15 +95,24 @@ function normalizeUploadDirectories(uploadDirectories = {}) {
   const source = uploadDirectories && typeof uploadDirectories === 'object' ? uploadDirectories : {}
 
   return {
-    'single-image': typeof source['single-image'] === 'string' ? source['single-image'] : '',
-    'single-design': typeof source['single-design'] === 'string' ? source['single-design'] : '',
-    'series-design': typeof source['series-design'] === 'string' ? source['series-design'] : '',
+    workspace: typeof source.workspace === 'string' ? source.workspace : '',
     'series-generate': typeof source['series-generate'] === 'string' ? source['series-generate'] : ''
   }
 }
 
 function normalizeGlobalUploadDirectory(globalUploadDirectory = '') {
   return typeof globalUploadDirectory === 'string' ? globalUploadDirectory : ''
+}
+
+function normalizeProviderApiKeys(providerApiKeys = {}, fallbackApiKey = '') {
+  const source = providerApiKeys && typeof providerApiKeys === 'object' ? providerApiKeys : {}
+  const normalizedFallbackApiKey = typeof fallbackApiKey === 'string' ? fallbackApiKey.trim() : ''
+
+  return {
+    general: typeof source.general === 'string' ? source.general.trim() : normalizedFallbackApiKey,
+    deepseek: typeof source.deepseek === 'string' ? source.deepseek.trim() : '',
+    minimax: typeof source.minimax === 'string' ? source.minimax.trim() : ''
+  }
 }
 
 function normalizeDownloadCleanupEnabled(downloadCleanupEnabled = true) {
@@ -112,7 +146,7 @@ function normalizeUploadDirectoryPatch(uploadDirectories = {}) {
 
   const patch = {}
 
-  for (const key of ['single-image', 'single-design', 'series-design', 'series-generate']) {
+  for (const key of ['workspace', 'series-generate']) {
     if (Object.prototype.hasOwnProperty.call(uploadDirectories, key)) {
       patch[key] = typeof uploadDirectories[key] === 'string' ? uploadDirectories[key] : ''
     }
@@ -190,9 +224,63 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
     ? rawDashboardCreditState
     : {}
 
+  if (
+    Object.prototype.hasOwnProperty.call(source, 'totalCredits') ||
+    Object.prototype.hasOwnProperty.call(source, 'remainingCredits')
+  ) {
+    return {
+      text: {
+        balanceCny: 0,
+        lastSyncedAt: '',
+        syncStatus: 'idle'
+      },
+      image: {
+        totalCredits: normalizeNonNegativeInteger(source.totalCredits),
+        remainingCredits: normalizeNonNegativeInteger(source.remainingCredits),
+        balanceCny: Math.max(0, Number(source.balanceCny) || 0),
+        lastSyncedAt: '',
+        syncStatus: 'success'
+      },
+      video: {
+        balanceCny: 0,
+        lastSyncedAt: '',
+        syncStatus: 'idle'
+      }
+    }
+  }
+
   return {
-    totalCredits: normalizeNonNegativeInteger(source.totalCredits),
-    remainingCredits: normalizeNonNegativeInteger(source.remainingCredits)
+    text: {
+      balanceCny: Math.max(0, Number(source.text?.balanceCny) || 0),
+      lastSyncedAt: typeof source.text?.lastSyncedAt === 'string' ? source.text.lastSyncedAt : '',
+      syncStatus: typeof source.text?.syncStatus === 'string' ? source.text.syncStatus : 'idle'
+    },
+    image: {
+      totalCredits: normalizeNonNegativeInteger(source.image?.totalCredits),
+      remainingCredits: normalizeNonNegativeInteger(source.image?.remainingCredits),
+      balanceCny: Math.max(0, Number(source.image?.balanceCny) || 0),
+      lastSyncedAt: typeof source.image?.lastSyncedAt === 'string' ? source.image.lastSyncedAt : '',
+      syncStatus: typeof source.image?.syncStatus === 'string' ? source.image.syncStatus : 'idle'
+    },
+    video: {
+      balanceCny: Math.max(0, Number(source.video?.balanceCny) || 0),
+      lastSyncedAt: typeof source.video?.lastSyncedAt === 'string' ? source.video.lastSyncedAt : '',
+      syncStatus: typeof source.video?.syncStatus === 'string' ? source.video.syncStatus : 'idle'
+    }
+  }
+}
+
+function normalizeAuthPlatform(rawAuthPlatform = {}) {
+  const source = rawAuthPlatform && typeof rawAuthPlatform === 'object' ? rawAuthPlatform : {}
+  return {
+    enabled: source.enabled !== false,
+    baseUrl: typeof source.baseUrl === 'string' && source.baseUrl.trim()
+      ? source.baseUrl.trim().replace(/\/+$/, '')
+      : defaultAuthPlatform.baseUrl,
+    sessionToken: typeof source.sessionToken === 'string' ? source.sessionToken.trim() : '',
+    lastUserId: typeof source.lastUserId === 'string' ? source.lastUserId.trim() : '',
+    lastLicenseId: typeof source.lastLicenseId === 'string' ? source.lastLicenseId.trim() : '',
+    lastSyncedAt: typeof source.lastSyncedAt === 'string' ? source.lastSyncedAt : ''
   }
 }
 
@@ -298,18 +386,23 @@ function normalizeSettings(rawSettings = {}) {
     uploadDirectories: normalizeUploadDirectories(mergedSettings.uploadDirectories),
     dashboardCreditState: normalizeDashboardCreditState(mergedSettings.dashboardCreditState),
     creditState: normalizeCreditState(mergedSettings.creditState),
+    authPlatform: normalizeAuthPlatform(mergedSettings.authPlatform),
+    providerApiKeys: normalizeProviderApiKeys(
+      mergedSettings.providerApiKeys,
+      apiKeys[activeApiKeyIndex] || mergedSettings.apiKey || ''
+    ),
     apiKeys,
     activeApiKeyIndex,
     apiKey: apiKeys[activeApiKeyIndex] || ''
   }
 }
 
-function createSettingsStoreService ({ store }) {
-  function getSettings () {
+function createSettingsStoreService({ store }) {
+  function getSettings() {
     return normalizeSettings(store.get(SETTINGS_KEY, {}))
   }
 
-  async function saveSettings (payload = {}, options = {}) {
+  async function saveSettings(payload = {}, options = {}) {
     const hasSensitiveApiKeyFields = ['apiKeys', 'apiKey', 'activeApiKeyIndex'].some((field) => {
       return Object.prototype.hasOwnProperty.call(payload || {}, field)
     })
@@ -365,23 +458,28 @@ function createSettingsStoreService ({ store }) {
     return nextSettings
   }
 
-  async function saveAdminApiKey ({ apiKey = '', password = '' } = {}) {
-    if (password !== ADMIN_API_KEY_PASSWORD) {
-      throw new Error('管理员验证失败：密码错误')
-    }
+  async function saveProviderApiKeys({ imageApiKey = '', textApiKey = '', videoApiKey = '' } = {}) {
+    const normalizedImageApiKey = typeof imageApiKey === 'string' ? imageApiKey.trim() : ''
+    const normalizedTextApiKey = typeof textApiKey === 'string' ? textApiKey.trim() : ''
+    const normalizedVideoApiKey = typeof videoApiKey === 'string' ? videoApiKey.trim() : ''
 
-    const normalizedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
-    if (!normalizedApiKey) {
+    if (!normalizedImageApiKey && !normalizedTextApiKey && !normalizedVideoApiKey) {
       throw new Error('API-Key 不能为空')
     }
 
     const currentSettings = getSettings()
-    const nextApiKeys = normalizeApiKeys([normalizedApiKey, ''])
+    const nextGeneralApiKey = normalizedImageApiKey || currentSettings.providerApiKeys?.general || currentSettings.apiKey || ''
+    const nextApiKeys = normalizeApiKeys([nextGeneralApiKey, ''])
     const nextSettings = normalizeSettings({
       ...currentSettings,
       apiKeys: nextApiKeys,
       activeApiKeyIndex: 0,
-      apiKey: normalizedApiKey
+      apiKey: nextGeneralApiKey,
+      providerApiKeys: {
+        general: nextGeneralApiKey,
+        deepseek: normalizedTextApiKey || currentSettings.providerApiKeys?.deepseek || '',
+        minimax: normalizedVideoApiKey || currentSettings.providerApiKeys?.minimax || ''
+      }
     })
 
     store.set(SETTINGS_KEY, nextSettings)
@@ -391,7 +489,7 @@ function createSettingsStoreService ({ store }) {
   return {
     getSettings,
     saveSettings,
-    saveAdminApiKey
+    saveProviderApiKeys
   }
 }
 
@@ -399,5 +497,6 @@ module.exports = {
   createSettingsStoreService,
   defaultSettings,
   defaultCreditState,
-  defaultDashboardCreditState
+  defaultDashboardCreditState,
+  defaultAuthPlatform
 }

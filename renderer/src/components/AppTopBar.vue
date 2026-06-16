@@ -17,10 +17,14 @@ defineProps({
   activationSummary: {
     type: Object,
     default: null
+  },
+  rechargeEnabled: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['brand-click', 'theme-change', 'cleanup-click'])
+const emit = defineEmits(['theme-change', 'cleanup-click', 'recharge-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -30,7 +34,7 @@ const contactGroups = [
     key: 'wechat',
     label: '微信',
     iconUrl: wechatIconUrl,
-    description: '点击图片可查看你的微信联系入口',
+    description: '点击图片查看微信联系方式',
     images: [
       {
         name: 'Dockerfans',
@@ -42,7 +46,7 @@ const contactGroups = [
     key: 'enterprise-wechat',
     label: '企业微信',
     iconUrl: enterpriseWechatIconUrl,
-    description: '点击图片可查看你的企业微信联系入口',
+    description: '点击图片查看企业微信联系方式',
     images: [
       {
         name: 'Qiyeweixin',
@@ -58,23 +62,15 @@ const activeContactGroup = computed(() => {
   return contactGroups.find((item) => item.key === activeContactKey.value) || null
 })
 
-function onBrandClick() {
-  // Logo 点击事件预留：顶部品牌位后续可接入返回或首页导航。
-  emit('brand-click')
-}
-
 function onThemeChange(event) {
-  // 主题切换事件预留：后续可接入三主题全局持久化。
   emit('theme-change', event.target.value)
 }
 
 function onCleanupClick() {
-  // 一键清理按钮点击事件预留：后续可接入本地缓存/草稿/日志清理逻辑。
   emit('cleanup-click')
 }
 
 function openContactPreview(contactKey) {
-  // 微信 / 企业微信图片预览切换：点击按钮后展示对应联系图片。
   activeContactKey.value = contactKey
 }
 
@@ -84,11 +80,14 @@ function closeContactPreview() {
 </script>
 
 <template>
-  <header class="topbar-shell">
-    <button class="brand-button" type="button" @click="onBrandClick">
-      <span class="brand-mark">秋</span>
-      <span class="brand-copy">{{ brandLabel }}</span>
-    </button>
+  <header class="topbar-shell" :class="{ 'topbar-shell--compact': themeOptions.length <= 1 }">
+    <div class="brand-button" role="img" aria-label="QiuAi">
+      <span class="brand-mark">Q</span>
+      <span class="brand-copy-wrap">
+        <span class="brand-copy">{{ brandLabel }}</span>
+        <span class="brand-meta">ECMS Studio</span>
+      </span>
+    </div>
 
     <label v-if="themeOptions.length > 1" class="topbar-theme">
       <span>主题</span>
@@ -100,13 +99,22 @@ function closeContactPreview() {
     </label>
 
     <div class="topbar-right-actions">
+      <button
+        v-if="rechargeEnabled"
+        class="topbar-recharge-button"
+        type="button"
+        @click="emit('recharge-click')"
+      >
+        充值
+      </button>
+
       <div v-if="activationSummary" class="topbar-activation-pill">
         <span>已激活</span>
         <strong>{{ activationSummary.customerName || '已授权设备' }}</strong>
       </div>
 
-      <button class="topbar-clean-button" type="button" aria-label="一键清理" @click="onCleanupClick">
-        一键清理
+      <button class="topbar-clean-button" type="button" aria-label="清理缓存" @click="onCleanupClick">
+        清理缓存
       </button>
 
       <div class="topbar-contact-actions">

@@ -49,13 +49,13 @@ GitHub: [QiuShuiqaq/QiuAi](https://github.com/QiuShuiqaq/QiuAi)
 ## 安装依赖
 
 ```bash
-npm install
+npm.cmd install
 ```
 
 ## 启动开发环境
 
 ```bash
-npm run dev
+npm.cmd run dev
 ```
 
 启动后会同时拉起：
@@ -63,20 +63,23 @@ npm run dev
 - Renderer 开发服务：`http://127.0.0.1:5173`
 - Electron 主进程与桌面窗口
 
+如果 `5173` 端口被其他本地项目占用，请先结束占用进程后再启动。
+在当前 Windows PowerShell 环境下，如果执行策略拦截 `npm.ps1`，请统一使用 `npm.cmd`。
+
 ## 测试与检查
 
 ```bash
-npm test
+npm.cmd test
 ```
 
 ```bash
-npm run lint
+npm.cmd run lint
 ```
 
 ## Windows 打包
 
 ```bash
-npm run package:win
+npm.cmd run package:win
 ```
 
 默认输出目录：
@@ -136,7 +139,7 @@ QiuAi/DATA
 
 ## 常见问题
 
-- 如果 `5173` 端口被占用，请先结束占用进程后再执行 `npm run dev`
+- 如果 `5173` 端口被占用，请先结束占用进程后再执行 `npm.cmd run dev`
 - 如果 Electron 未正常弹出，请优先检查终端输出与残留 `node` / `electron` 进程
 - 如果出现“图片内容触发平台审核限制”，请调整提示词、主体表达或图片素材后重试
 

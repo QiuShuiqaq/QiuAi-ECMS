@@ -527,7 +527,7 @@ describe('studioImageGenerationService', () => {
     expect(result.summary.title).toBe('套图设计 100 组')
   })
 
-  it('rejects series-generate drafts that do not provide a full set of prompt assignments', async () => {
+  it('rejects standalone series-generate drafts when the single prompt is missing', async () => {
     const service = createService()
 
     await expect(service.generateImageResults({
@@ -540,44 +540,15 @@ describe('studioImageGenerationService', () => {
           name: 'main.png',
           path: 'C:/input/main.png'
         },
-        globalPrompt: '统一高级电商详情页风格',
-        generateCount: 3,
+        prompt: '',
+        generateCount: 1,
         batchCount: 1,
-        promptAssignments: [
-          { index: 1, prompt: '场景图，突出产品整体外观' },
-          { index: 2, prompt: '' }
-        ],
         size: '1:1'
       }
-    })).rejects.toThrow('套图生成需要为每一张图片填写单独提示词')
+    })).rejects.toThrow('\u5957\u56fe\u751f\u6210\u9700\u8981\u586b\u5199\u63d0\u793a\u8bcd')
   })
 
-  it('rejects series-generate drafts that do not provide a full set of image types', async () => {
-    const service = createService()
-
-    await expect(service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-missing-type',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一高级电商详情页风格',
-        generateCount: 2,
-        batchCount: 1,
-        promptAssignments: [
-          { index: 1, prompt: '突出产品整体外观', imageType: '商品主图' },
-          { index: 2, prompt: '强调尺寸标注信息', imageType: '' }
-        ],
-        size: '1:1'
-      }
-    })).rejects.toThrow('套图生成需要为每一张图片选择图片类型')
-  })
-
-  it('builds series-generate batches from typed prompt assignments and names outputs by type with counters', async () => {
+  it('duplicates the standalone single prompt across batches and output count', async () => {
     const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
       id: `remote-${createDrawTaskDependency.mock.calls.length}`,
       prompt
@@ -588,7 +559,7 @@ describe('studioImageGenerationService', () => {
 
     const result = await service.generateImageResults({
       menuKey: 'series-generate',
-      taskId: 'task-series-generate-valid',
+      taskId: 'task-series-generate-standalone',
       outputDirectory: 'C:/output',
       draft: {
         model: 'gpt-image-2',
@@ -596,37 +567,68 @@ describe('studioImageGenerationService', () => {
           name: 'main.png',
           path: 'C:/input/main.png'
         },
-        globalPrompt: '统一高级电商详情页风格',
-        negativePrompt: '水印，logo，文字，低清像素',
+        prompt: '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+        imageType: '\u5546\u54c1\u4e3b\u56fe',
         generateCount: 3,
         batchCount: 2,
-        promptAssignments: [
-          { index: 1, prompt: '突出产品整体外观和电商氛围', imageType: '商品主图' },
-          { index: 2, prompt: '重点展示材质和纹理', imageType: '细节图' },
-          { index: 3, prompt: '提供另一个主视觉构图', imageType: '商品主图' }
-        ],
         size: '1:1'
       }
     })
 
     expect(createDrawTaskDependency).toHaveBeenCalledTimes(6)
     expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
-      '重点展示材质和纹理\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
-      '提供另一个主视觉构图\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
-      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
-      '重点展示材质和纹理\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素',
-      '提供另一个主视觉构图\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素'
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f',
+      '\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f'
     ])
     expect(result.groupedResults).toHaveLength(2)
     expect(result.groupedResults[0].outputs).toHaveLength(3)
-    expect(result.groupedResults[0].outputs[0].title).toBe('主图0')
-    expect(result.groupedResults[0].outputs[0].promptFinal).toBe(
-      '突出产品整体外观和电商氛围\n统一高级电商详情页风格\n严格避免以下问题：水印，logo，文字，低清像素'
-    )
-    expect(result.groupedResults[0].outputs[1].title).toBe('细节图0')
-    expect(result.groupedResults[0].outputs[2].title).toBe('主图1')
-    expect(result.summary.title).toBe('套图生成 2 组 x 3 张')
+    expect(result.groupedResults[0].outputs[0].title).toBe('\u4e3b\u56fe0')
+    expect(result.groupedResults[0].outputs[0].promptFinal).toBe('\u7a81\u51fa\u624b\u5de5\u73ab\u7470\u4e3b\u4f53\u4e0e\u9ad8\u7ea7\u8d28\u611f')
+    expect(result.groupedResults[0].outputs[1].title).toBe('\u4e3b\u56fe1')
+    expect(result.groupedResults[0].outputs[2].title).toBe('\u4e3b\u56fe2')
+    expect(result.summary.title).toBe('\u5957\u56fe\u751f\u6210 2 \u7ec4 x 3 \u5f20')
+  })
+
+  it('uses workspace-style prompt assignments directly as the source of truth for series-generate', async () => {
+    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
+      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
+      prompt
+    }))
+    const service = createService({
+      createDrawTaskDependency
+    })
+
+    const result = await service.generateImageResults({
+      menuKey: 'series-generate',
+      taskId: 'task-series-generate-workspace',
+      outputDirectory: 'C:/output',
+      draft: {
+        model: 'gpt-image-2',
+        sourceImage: {
+          name: 'main.png',
+          path: 'C:/input/main.png'
+        },
+        generateCount: 3,
+        batchCount: 1,
+        promptAssignments: [
+          { index: 1, prompt: '\u5546\u54c1\u4e3b\u56fe\uff1a\u7a81\u51fa\u4e3b\u4f53\u5c55\u793a', imageType: '\u5546\u54c1\u4e3b\u56fe' },
+          { index: 2, prompt: '\u8be6\u60c5\u56fe\uff1a\u5c55\u793a\u4f7f\u7528\u573a\u666f', imageType: '\u8be6\u60c5\u56fe' },
+          { index: 3, prompt: '\u7ec6\u8282\u56fe\uff1a\u5f3a\u8c03\u82b1\u74e3\u5c42\u6b21', imageType: '\u7ec6\u8282\u56fe' }
+        ],
+        size: '1:1'
+      }
+    })
+
+    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
+      '\u5546\u54c1\u4e3b\u56fe\uff1a\u7a81\u51fa\u4e3b\u4f53\u5c55\u793a',
+      '\u8be6\u60c5\u56fe\uff1a\u5c55\u793a\u4f7f\u7528\u573a\u666f',
+      '\u7ec6\u8282\u56fe\uff1a\u5f3a\u8c03\u82b1\u74e3\u5c42\u6b21'
+    ])
+    expect(result.groupedResults[0].outputs.map((item) => item.title)).toEqual(['\u4e3b\u56fe0', '\u8be6\u60c5\u56fe0', '\u7ec6\u8282\u56fe0'])
   })
 
   it('keeps series-generate batches running when one generated image hits output moderation and falls back to the source image', async () => {
@@ -640,7 +642,7 @@ describe('studioImageGenerationService', () => {
           status: 'failed',
           progress: 100,
           failure_reason: 'output_moderation',
-          error: '杈撳嚭鍐呭瑙﹀彂瀹℃牳闄愬埗'
+          error: 'output moderation triggered'
         }
       }
 
@@ -671,13 +673,12 @@ describe('studioImageGenerationService', () => {
           name: 'main.png',
           path: 'C:/input/main.png'
         },
-        globalPrompt: 'series generate global style',
         generateCount: 3,
         batchCount: 1,
         promptAssignments: [
-          { index: 1, prompt: 'primary output', templateId: 'system-empty-image-type', imageType: '' },
-          { index: 2, prompt: 'moderated output', templateId: 'system-empty-image-type', imageType: '' },
-          { index: 3, prompt: 'final output', templateId: 'system-empty-image-type', imageType: '' }
+          { index: 1, prompt: 'primary output', imageType: '\u5546\u54c1\u4e3b\u56fe' },
+          { index: 2, prompt: 'moderated output', imageType: '\u8be6\u60c5\u56fe' },
+          { index: 3, prompt: 'final output', imageType: '\u7ec6\u8282\u56fe' }
         ],
         size: '1:1'
       }
@@ -697,96 +698,16 @@ describe('studioImageGenerationService', () => {
     })
     expect(result.groupedResults[0].outputs[1]).toMatchObject({
       sourceTag: 'fallback',
-      model: '原图保留',
-      status: '失败',
+      model: '\u539f\u56fe\u4fdd\u7559',
+      status: '\u5931\u8d25',
       savedPath: 'C:/input/main.png',
-      error: '图片任务失败：输出内容触发审核限制'
+      error: '\u56fe\u7247\u4efb\u52a1\u5931\u8d25\uff1a\u8f93\u51fa\u5185\u5bb9\u89e6\u53d1\u5ba1\u6838\u9650\u5236'
     })
     expect(result.groupedResults[0].outputs[2]).toMatchObject({
       sourceTag: 'generated',
       model: 'gpt-image-2',
       savedPath: 'C:/output/remote-3.png'
     })
-  })
-
-  it('uses batch-specific prompts for series-generate when differential mode is enabled', async () => {
-    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
-      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
-      prompt
-    }))
-    const service = createService({
-      createDrawTaskDependency
-    })
-
-    await service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-differential',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一高级电商详情页风格',
-        generateCount: 1,
-        batchCount: 2,
-        promptAssignments: [
-          {
-            index: 1,
-            prompt: '默认提示词',
-            imageType: '商品主图',
-            differentialEnabled: true,
-            batchPrompts: ['第一组提示词', '第二组提示词']
-          }
-        ],
-        size: '1:1'
-      }
-    })
-
-    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '第一组提示词\n统一高级电商详情页风格',
-      '第二组提示词\n统一高级电商详情页风格'
-    ])
-  })
-
-  it('does not append image-type template instructions again when series-generate prompt already contains the selected template content', async () => {
-    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
-      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
-      prompt
-    }))
-    const service = createService({
-      createDrawTaskDependency
-    })
-
-    await service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-no-template-duplication',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一高级电商详情页风格',
-        generateCount: 1,
-        batchCount: 1,
-        promptAssignments: [
-          {
-            index: 1,
-            imageType: '商品主图',
-            prompt: '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n突出产品整体外观和电商氛围'
-          }
-        ],
-        size: '1:1'
-      }
-    })
-
-    expect(createDrawTaskDependency).toHaveBeenCalledTimes(1)
-    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
-      '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。\n突出产品整体外观和电商氛围\n统一高级电商详情页风格'
-    )
   })
 
   it('supports series-generate group sizes above 20 and preserves all outputs', async () => {
@@ -809,14 +730,10 @@ describe('studioImageGenerationService', () => {
           name: 'main.png',
           path: 'C:/input/main.png'
         },
-        globalPrompt: '统一高级电商详情页风格',
+        prompt: '\u7edf\u4e00\u9ad8\u7ea7\u7535\u5546\u624b\u5de5\u73ab\u7470\u89c6\u89c9',
+        imageType: '\u5546\u54c1\u4e3b\u56fe',
         generateCount,
         batchCount: 1,
-        promptAssignments: Array.from({ length: generateCount }, (_unused, index) => ({
-          index: index + 1,
-          prompt: `提示词-${index + 1}`,
-          imageType: index % 2 === 0 ? '商品主图' : '详情图'
-        })),
         size: '1:1'
       }
     })
@@ -920,14 +837,10 @@ describe('studioImageGenerationService', () => {
           name: 'main.png',
           path: 'C:/input/main.png'
         },
-        globalPrompt: '统一高级电商详情页风格',
+        prompt: '\u7edf\u4e00\u9ad8\u7ea7\u7535\u5546\u73ab\u7470\u4e3b\u56fe',
+        imageType: '\u5546\u54c1\u4e3b\u56fe',
         generateCount,
         batchCount,
-        promptAssignments: Array.from({ length: generateCount }, (_unused, index) => ({
-          index: index + 1,
-          prompt: `提示词-${index + 1}`,
-          imageType: '商品主图'
-        })),
         size: '1:1'
       }
     })
@@ -943,131 +856,12 @@ describe('studioImageGenerationService', () => {
     const result = await resultPromise
 
     expect(result.groupedResults).toHaveLength(batchCount)
-    expect(result.groupedResults.map((group) => group.groupTitle)).toEqual(['第 1 组', '第 2 组'])
+    expect(result.groupedResults.map((group) => group.groupTitle)).toEqual(['\u7b2c 1 \u7ec4', '\u7b2c 2 \u7ec4'])
     expect(secondGroupStartedAtCompletionCount).toBe(firstGroupSize)
     expect(activeBeforeSecondGroupStart).toBe(0)
     expect(finishedBeforeSecondGroupStart).toEqual(startedJobIds.slice(0, firstGroupSize))
     expect(activeBeforeFirstCompletion).toBe(5)
     expect(maxConcurrent).toBe(5)
-  })
-
-  it('does not append prompt template service content during generation when assignment prompt is already the source of truth', async () => {
-    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
-      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
-      prompt
-    }))
-    const service = createService({
-      createDrawTaskDependency,
-      promptTemplateService: {
-        listTemplates: () => [
-          {
-            id: 'product-main',
-            name: '商品主图',
-            category: '按钮提示词',
-            prompt: '这里是用户改过的主图按钮提示词',
-            source: 'system-fixed'
-          }
-        ]
-      }
-    })
-
-    await service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-custom-fixed-template',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一风格',
-        generateCount: 1,
-        batchCount: 1,
-        promptAssignments: [
-          { index: 1, prompt: '补充主体卖点', imageType: '商品主图' }
-        ],
-        size: '1:1'
-      }
-    })
-
-    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe('补充主体卖点\n统一风格')
-  })
-
-  it('does not append negative prompt section when series-generate negativePrompt is empty', async () => {
-    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
-      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
-      prompt
-    }))
-    const service = createService({
-      createDrawTaskDependency
-    })
-
-    await service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-without-negative',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一风格',
-        negativePrompt: '',
-        generateCount: 1,
-        batchCount: 1,
-        promptAssignments: [
-          { index: 1, prompt: '突出主体卖点', imageType: '商品主图' }
-        ],
-        size: '1:1'
-      }
-    })
-
-    expect(createDrawTaskDependency.mock.calls[0][0].prompt).toBe(
-      '突出主体卖点\n统一风格'
-    )
-  })
-
-  it('falls back to the original single prompt when differential mode is disabled even if batch prompts exist', async () => {
-    const createDrawTaskDependency = vi.fn(async ({ prompt }) => ({
-      id: `remote-${createDrawTaskDependency.mock.calls.length}`,
-      prompt
-    }))
-    const service = createService({
-      createDrawTaskDependency
-    })
-
-    await service.generateImageResults({
-      menuKey: 'series-generate',
-      taskId: 'task-series-generate-differential-disabled',
-      outputDirectory: 'C:/output',
-      draft: {
-        model: 'gpt-image-2',
-        sourceImage: {
-          name: 'main.png',
-          path: 'C:/input/main.png'
-        },
-        globalPrompt: '统一风格',
-        generateCount: 1,
-        batchCount: 2,
-        promptAssignments: [
-          {
-            index: 1,
-            prompt: '默认提示词',
-            imageType: '商品主图',
-            differentialEnabled: false,
-            batchPrompts: ['第一组提示词', '第二组提示词']
-          }
-        ],
-        size: '1:1'
-      }
-    })
-
-    expect(createDrawTaskDependency.mock.calls.map((call) => call[0].prompt)).toEqual([
-      '默认提示词\n统一风格',
-      '默认提示词\n统一风格'
-    ])
   })
 
   it('fails with a stall-timeout message when remote draw result keeps running without progress for too long', async () => {

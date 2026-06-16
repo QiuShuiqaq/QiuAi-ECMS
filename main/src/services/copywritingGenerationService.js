@@ -1,8 +1,10 @@
 const { createHttpClientService } = require('./httpClientService')
 const { createChatCompletion } = require('./chatCompletionService')
 const { toDataUrl, getMimeTypeFromPath } = require('./localInputAssetService')
+const { resolveProviderApiKey } = require('./providerApiKeyService')
 
 const COPYWRITING_TIMEOUT_MS = 120000
+const DEEPSEEK_API_BASE_URL = 'https://api.deepseek.com'
 
 function getReferenceImagePaths(draft = {}) {
   return Array.isArray(draft.referenceImages)
@@ -22,19 +24,21 @@ function resolveQuantity(draft = {}) {
 
 function buildUserPrompt(draft = {}) {
   const quantity = resolveQuantity(draft)
+  const maxChars = Math.max(0, Number(draft.maxChars) || 0)
 
   return [
     `总体要求：${draft.prompt || '请结合输入生成内容'}`,
+    maxChars ? `单条最大字数：${maxChars}` : '',
     `请一次性输出 ${quantity} 条可直接使用的中文文案结果。`,
     '输出要求：每条结果单独换行，不要编号，不要解释，不要分点，不要 Markdown。'
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function normalizeResultLines(rawContent = '') {
   return String(rawContent || '')
     .split(/\r?\n/)
     .map((item) => item.trim())
-    .map((item) => item.replace(/^(?:\d+[.、)]\s*|[-*]\s*)/, '').trim())
+    .map((item) => item.replace(/^(?:\d+[.、]\s*|[-*]\s*)/, '').trim())
     .filter(Boolean)
 }
 
@@ -61,16 +65,6 @@ async function createReferenceImageContentParts(draft = {}, {
   return contentParts
 }
 
-function resolveApiKey(settings = {}) {
-  if (typeof settings.apiKey === 'string' && settings.apiKey.trim()) {
-    return settings.apiKey.trim()
-  }
-
-  const activeIndex = Number.isInteger(settings.activeApiKeyIndex) ? settings.activeApiKeyIndex : 0
-  const apiKey = Array.isArray(settings.apiKeys) ? settings.apiKeys[activeIndex] : ''
-  return typeof apiKey === 'string' ? apiKey.trim() : ''
-}
-
 function createCopywritingGenerationService({
   settingsService,
   messageRecorder,
@@ -81,18 +75,19 @@ function createCopywritingGenerationService({
 }) {
   async function generateCopywritingResults({ draft, taskId }) {
     const settings = settingsService.getSettings()
-    const apiKey = resolveApiKey(settings)
+    const apiKey = resolveProviderApiKey(settings, 'deepseek')
 
     if (!apiKey) {
       throw new Error('请先保存可用的 API-Key。')
     }
 
     const httpClient = createHttpClientServiceDependency({
-      apiBaseUrl: settings.apiBaseUrl,
+      apiBaseUrl: DEEPSEEK_API_BASE_URL,
       apiKey,
       messageRecorder,
       timeoutMs: COPYWRITING_TIMEOUT_MS
     })
+
     const referenceImageParts = draft.copyMode === 'image-reference'
       ? await createReferenceImageContentParts(draft, {
           toDataUrlDependency,

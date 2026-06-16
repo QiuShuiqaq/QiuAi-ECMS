@@ -1,18 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-
-function createPreviewDataUrl(label) {
-  return `data:image/png;base64,${Buffer.from(label, 'utf8').toString('base64')}`
-}
-
-function createEmptyOutputScanDependencies() {
-  return {
-    readdirSync: () => [],
-    statSync: () => null
-  }
-}
 
 function createMemoryStore() {
   const memory = new Map()
@@ -27,192 +16,50 @@ function createMemoryStore() {
   }
 }
 
-async function seedCredits(settingsService, amount = 50000000) {
+function createPreviewDataUrl(label) {
+  return `data:image/png;base64,${Buffer.from(label, 'utf8').toString('base64')}`
+}
+
+async function seedCredits(settingsService, amount = 5000) {
   await settingsService.saveSettings({
     creditAdjustment: {
       operation: 'increase',
       amount
     }
   }, {
-    getNow: () => '2026-04-29T00:00:00.000Z'
+    getNow: () => '2026-06-12T10:00:00.000Z'
   })
 }
 
+const tempDirectories = []
+
+async function createTempOutputRoot() {
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qiuai-studio-test-'))
+  tempDirectories.push(tempDirectory)
+  return tempDirectory
+}
+
+afterEach(async () => {
+  await Promise.all(tempDirectories.splice(0).map((targetPath) => {
+    return fs.rm(targetPath, { recursive: true, force: true })
+  }))
+})
+
 describe('studioWorkspaceService', () => {
-  it('enqueues image tasks immediately and updates progress from remote callbacks', async () => {
+  it('returns the new e-commerce workspace snapshot baseline', async () => {
     const store = createMemoryStore()
-    let resolveGeneration
-    const generationPromise = new Promise((resolve) => {
-      resolveGeneration = resolve
-    })
-    let resolveFirstProgress
-    const firstProgressPromise = new Promise((resolve) => {
-      resolveFirstProgress = resolve
-    })
-    let resolveSecondProgress
-    const secondProgressPromise = new Promise((resolve) => {
-      resolveSecondProgress = resolve
-    })
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const generateImageResults = vi.fn(async ({ onProgress, taskId }) => {
-      await onProgress({
-        progress: 18,
-        status: 'running'
-      })
-      resolveFirstProgress()
-      await generationPromise
-      await onProgress({
-        progress: 67,
-        status: 'running'
-      })
-      resolveSecondProgress()
-
-      return {
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-1`,
-            model: 'nano-banana-fast',
-            title: 'nano-banana-fast 对比结果',
-            preview: createPreviewDataUrl('single-progress-1'),
-            sourceImageName: 'bag-main.jpg',
-            status: '已完成'
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图四模型对比',
-          description: '真实进度测试'
-        }
-      }
-    })
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      ...createEmptyOutputScanDependencies(),
+      outputRootDirectory,
       ensureDirectory: async () => undefined,
       persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults,
-      createId: () => 'studio-progress-1',
-      createTaskNumber: () => 'QAI-20260427-0001',
-      getNow: () => '2026-04-27T03:00:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-image',
-      patch: {
-        prompt: '测试不同模型生图质量',
-        taskName: 'ProgressA',
-        sourceImage: {
-          name: 'bag-main.jpg',
-          path: 'C:/images/bag-main.jpg'
-        }
-      }
-    })
-
-    const createdTask = await service.createTask({
-      menuKey: 'single-image'
-    })
-
-    expect(createdTask.status).toBe('等待中')
-    expect(createdTask.progress).toBe(0)
-
-    await firstProgressPromise
-    const firstProgressSnapshot = service.getSnapshot()
-    expect(firstProgressSnapshot.tasks[0].status).toBe('进行中')
-    expect(firstProgressSnapshot.tasks[0].progress).toBe(18)
-
-    resolveGeneration()
-    await secondProgressPromise
-    const secondProgressSnapshot = service.getSnapshot()
-    expect(secondProgressSnapshot.tasks[0].progress).toBe(67)
-
-    await service.waitForIdle()
-
-    const completedSnapshot = service.getSnapshot()
-    expect(completedSnapshot.tasks[0].status).toBe('已完成')
-    expect(completedSnapshot.tasks[0].progress).toBe(100)
-    expect(generateImageResults).toHaveBeenCalledWith(expect.objectContaining({
-      menuKey: 'single-image',
-      taskId: 'studio-progress-1',
-      onProgress: expect.any(Function)
-    }))
-  })
-
-  it('marks tasks as failed instead of leaving them stuck in progress when image generation never finishes', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const generateImageResults = vi.fn(async ({ onProgress }) => {
-      await onProgress({
-        progress: 97,
-        status: 'running'
-      })
-      throw new Error('图片任务超时未完成，请稍后重试')
-    })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults,
-      createId: () => 'studio-stuck-1',
-      createTaskNumber: () => 'QAI-20260507-0001',
-      getNow: () => '2026-05-07T10:00:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'StuckTask',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-    await service.waitForIdle()
-
-    const failedTask = service.getSnapshot().tasks.find((item) => item.id === 'studio-stuck-1')
-
-    expect(failedTask).toBeTruthy()
-    expect(failedTask).toMatchObject({
-      status: '失败',
-      progress: 100,
-      error: '图片任务超时未完成，请稍后重试'
-    })
-  })
-
-  it('returns snapshot without copywriting menu and with four dashboard stats cards', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => sourcePaths.map((sourcePath) => {
-        return `${targetDirectory}/${sourcePath.split('/').pop()}`
-      }),
       writeFile: async () => undefined
     })
 
@@ -222,2112 +69,809 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.themeOptions.map((item) => item.value)).toEqual(['dark'])
     expect(snapshot.menuItems.map((item) => item.key)).toEqual([
       'workspace',
-      'single-image',
-      'single-design',
-      'series-design',
+      'data-center',
+      'product-template',
+      'title-generator',
+      'description-generator',
       'series-generate',
-      'model-pricing'
+      'video-generate',
+      'model-pricing',
+      'prompt-library',
+      'model-config'
     ])
-    expect(snapshot).not.toHaveProperty('copywritingModelOptions')
     expect(snapshot.imageModelOptions.map((item) => item.value)).toEqual([
       'gpt-image-2',
-      'nano-banana-pro',
       'nano-banana-fast',
-      'nano-banana-2',
-      'nano-banana-pro-vt',
-      'nano-banana-pro-cl',
-      'nano-banana-2-cl',
-      'nano-banana-pro-vip',
-      'nano-banana-2-4k-cl',
-      'nano-banana-pro-4k-vip',
-      'nano-banana'
+      'nano-banana-2'
     ])
-    expect(snapshot.formDrafts).not.toHaveProperty('copywriting')
-    expect(snapshot.formDrafts['single-image'].compareModels).toHaveLength(4)
-    expect(snapshot.formDrafts['single-design'].sourceImage).toBe(null)
-    expect(snapshot.formDrafts['single-design'].model).toBe('gpt-image-2')
-    expect(snapshot.formDrafts['series-design'].negativeTemplateId).toBe('system-empty-negative-prompt')
-    expect(snapshot.formDrafts['series-design'].negativePrompt).toBe('')
-    expect(snapshot.formDrafts['series-generate'].negativeTemplateId).toBe('system-empty-negative-prompt')
-    expect(snapshot.formDrafts['series-generate'].negativePrompt).toBe('')
-    expect(snapshot.formDrafts['series-design'].imageAssignments).toEqual([])
-    expect(snapshot.formDrafts['series-design'].defaultAssignmentRatio).toBe('1:1')
-    expect(snapshot.formDrafts['series-design'].defaultAssignmentModel).toBe('gpt-image-2')
-    expect(snapshot.formDrafts['series-generate'].generateCount).toBe(1)
-    expect(snapshot.formDrafts['series-generate'].promptAssignments).toHaveLength(1)
-    expect(snapshot.formDrafts['series-generate'].promptAssignments[0]).toMatchObject({
-      templateId: 'system-empty-image-type',
-      imageType: ''
+    expect(snapshot.modelPricingCatalog.map((item) => item.name)).toEqual([
+      'nano-banana-fast',
+      'gpt-image-2',
+      'nano-banana-2'
+    ])
+    expect(snapshot.formDrafts.workspace).toMatchObject({
+      platformTargetsText: 'temu, ozon',
+      language: 'zh-CN',
+      titleQuantity: 3,
+      descriptionQuantity: 2,
+      model: 'deepseek-v4-flash'
     })
-    expect(snapshot.workspaceDashboard).not.toHaveProperty('copywritingStats')
-    expect(snapshot.workspaceDashboard.singleImageStats.title).toBe('单图测试统计')
-    expect(snapshot.workspaceDashboard.singleDesignStats.title).toBe('单图设计统计')
-    expect(snapshot.workspaceDashboard.seriesDesignStats.title).toBe('套图设计统计')
-    expect(snapshot.workspaceDashboard.seriesGenerateStats.title).toBe('套图生成统计')
-    expect(snapshot.workspaceDashboard.singleImageStats.items).toHaveLength(6)
-    expect(snapshot.workspaceDashboard.networkMonitor.title).toBe('网络监控')
-    expect(snapshot.workspaceDashboard.networkMonitor.items).toEqual([])
-    expect(snapshot.workspaceDashboard.networkMonitor.summary).toEqual({
-      averageLatencyMs: 0,
-      latestLatencyMs: 0,
-      successRate: '0%'
-    })
-    expect(snapshot.settingsSummary.apiKeys).toEqual(['', ''])
-    expect(snapshot.settingsSummary.activeApiKeyIndex).toBe(0)
-    expect(snapshot.hostInfo.systemName).toBeTruthy()
-    expect(snapshot.hostInfo.runtimeName).toContain('Node')
-  })
-
-  it('clears runtime drafts and cached results while preserving task history', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    store.set(STUDIO_WORKSPACE_KEY, {
-      formDrafts: {
-        'single-design': {
-          prompt: '自定义商品主图',
-          model: 'nano-banana-fast',
-          taskName: 'NeedReset',
-          sourceImage: {
-            name: 'product.png',
-            path: 'C:/input/product.png'
-          },
-          quantity: 1,
-          size: '16:9',
-          notes: '保留高光'
-        }
-      },
-      resultsByMenu: {
-        'single-design': {
-          textResults: [],
-          comparisonResults: [
-            {
-              id: 'cached-result-1',
-              model: 'nano-banana-fast',
-              title: '旧缓存结果',
-              preview: createPreviewDataUrl('old-cache')
-            }
-          ],
-          groupedResults: [],
-          summary: null
-        }
-      },
-      exportItemsByMenu: {
-        'single-design': [
-          {
-            id: 'cached-export-1',
-            name: 'OldFolder'
-          }
-        ]
-      },
-      tasks: [
-        {
-          id: 'legacy-task-store-1',
-          menuKey: 'single-design',
-          status: '已完成',
-          progress: 100,
-          createdAt: '2026-04-29 10:00:00'
-        }
-      ]
-    })
-
-    const settingsService = createSettingsStoreService({ store })
-    const taskManagerService = {
-      listTasks: () => [
-        {
-          id: 'history-task-1',
-          menuKey: 'single-design',
-          status: '已完成',
-          progress: 100,
-          createdAt: '2026-04-29 10:00:00'
-        }
-      ]
-    }
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      taskManagerService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const cleared = await service.clearRuntimeState()
-    const snapshot = service.getSnapshot()
-
-    expect(cleared.cleared).toBe(true)
-    expect(snapshot.formDrafts['single-design'].taskName).toBe('')
-    expect(snapshot.formDrafts['single-design'].sourceImage).toBe(null)
-    expect(snapshot.formDrafts['single-design'].size).toBe('1:1')
-    expect(snapshot.resultsByMenu['single-design'].comparisonResults).toEqual([])
-    expect(snapshot.exportItemsByMenu['single-design']).toEqual([])
-    expect(snapshot.tasks).toHaveLength(1)
-    expect(snapshot.tasks[0].id).toBe('history-task-1')
-  })
-
-  it('rejects one-key cleanup while active studio tasks are still running', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    const taskManagerService = {
-      listTasks: () => [
-        {
-          id: 'running-task-1',
-          menuKey: 'series-generate',
-          status: '进行中',
-          progress: 45,
-          createdAt: '2026-04-29 12:00:00'
-        }
-      ]
-    }
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      taskManagerService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    await expect(service.clearRuntimeState()).rejects.toThrow('当前存在进行中的任务，暂不能一键清理')
-  })
-
-  it('normalizes missing negative prompt fields for legacy series drafts', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    store.set(STUDIO_WORKSPACE_KEY, {
-      formDrafts: {
-        'series-design': {
-          globalPrompt: '统一风格',
-          model: 'gpt-image-2',
-          taskName: 'legacy-design',
-          imageAssignments: [],
-          batchCount: 1,
-          size: '1:1'
-        },
-        'series-generate': {
-          globalPrompt: '统一风格',
-          model: 'gpt-image-2',
-          taskName: 'legacy-generate',
-          sourceImage: null,
-          generateCount: 20,
-          promptAssignments: [],
-          batchCount: 1,
-          size: '1:1'
-        }
-      }
-    })
-
-    const settingsService = createSettingsStoreService({ store })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const snapshot = service.getSnapshot()
-
-    expect(snapshot.formDrafts['series-design'].negativeTemplateId).toBe('system-empty-negative-prompt')
-    expect(snapshot.formDrafts['series-design'].negativePrompt).toBe('')
-    expect(snapshot.formDrafts['series-generate'].negativeTemplateId).toBe('system-empty-negative-prompt')
-    expect(snapshot.formDrafts['series-generate'].negativePrompt).toBe('')
-  })
-
-  it('normalizes legacy differential prompt fields for series drafts', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    store.set(STUDIO_WORKSPACE_KEY, {
-      formDrafts: {
-        'series-design': {
-          globalPrompt: '统一风格',
-          imageAssignments: [
-            {
-              id: 'image-1',
-              name: 'look-1.png',
-              path: 'C:/input/look-1.png',
-              selected: true,
-              prompt: '主图提示词',
-              imageType: '商品主图'
-            }
-          ],
-          batchCount: 3,
-          size: '1:1'
-        },
-        'series-generate': {
-          globalPrompt: '统一风格',
-          sourceImage: {
-            name: 'main.png',
-            path: 'C:/input/main.png'
-          },
-          generateCount: 2,
-          promptAssignments: [
-            {
-              id: 'prompt-1',
-              index: 1,
-              prompt: '提示词-1',
-              imageType: '商品主图'
-            }
-          ],
-          batchCount: 2,
-          size: '1:1'
-        }
-      }
-    })
-
-    const settingsService = createSettingsStoreService({ store })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const snapshot = service.getSnapshot()
-
-    expect(snapshot.formDrafts['series-design'].imageAssignments[0]).toMatchObject({
-      differentialEnabled: false,
-      batchPrompts: ['', '', '']
-    })
-    expect(snapshot.formDrafts['series-generate'].promptAssignments[0]).toMatchObject({
-      differentialEnabled: false,
-      batchPrompts: ['', '']
-    })
-    expect(snapshot.formDrafts['series-generate'].promptAssignments[1]).toMatchObject({
-      differentialEnabled: false,
-      batchPrompts: ['', '']
-    })
-  })
-
-  it('preserves empty-template ids while normalizing series drafts', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    store.set(STUDIO_WORKSPACE_KEY, {
-      formDrafts: {
-        'series-design': {
-          globalPrompt: '统一风格',
-          imageAssignments: [
-            {
-              id: 'image-1',
-              name: 'look-1.png',
-              path: 'C:/input/look-1.png',
-              selected: true,
-              prompt: '',
-              templateId: 'system-empty-image-type',
-              imageType: ''
-            }
-          ],
-          batchCount: 1,
-          size: '1:1'
-        },
-        'series-generate': {
-          globalPrompt: '统一风格',
-          sourceImage: {
-            name: 'main.png',
-            path: 'C:/input/main.png'
-          },
-          generateCount: 1,
-          promptAssignments: [
-            {
-              id: 'prompt-1',
-              index: 1,
-              prompt: '',
-              templateId: 'system-empty-image-type',
-              imageType: ''
-            }
-          ],
-          negativeTemplateId: 'system-empty-negative-prompt',
-          negativePrompt: '',
-          batchCount: 1,
-          size: '1:1'
-        }
-      }
-    })
-
-    const settingsService = createSettingsStoreService({ store })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const snapshot = service.getSnapshot()
-
-    expect(snapshot.formDrafts['series-design'].imageAssignments[0]).toMatchObject({
-      templateId: 'system-empty-image-type',
-      imageType: ''
-    })
-    expect(snapshot.formDrafts['series-generate'].promptAssignments[0]).toMatchObject({
-      templateId: 'system-empty-image-type',
-      imageType: ''
-    })
+    expect(snapshot.formDrafts['title-generator'].model).toBe('deepseek-v4-flash')
+    expect(snapshot.formDrafts['description-generator'].model).toBe('deepseek-v4-pro')
     expect(snapshot.formDrafts['series-generate']).toMatchObject({
-      negativeTemplateId: 'system-empty-negative-prompt',
-      negativePrompt: ''
+      model: 'gpt-image-2',
+      generateCount: 4,
+      batchCount: 1,
+      prompt: '',
+      imageType: '商品主图'
     })
+    expect(snapshot.formDrafts['series-generate'].promptAssignments).toHaveLength(4)
+    expect(snapshot.formDrafts['series-generate'].promptAssignments[0]).toMatchObject({
+      index: 1,
+      imageType: '商品主图',
+      templateId: 'image-main',
+      differenceLevel: 'off'
+    })
+    expect(snapshot.formDrafts['video-generate']).toMatchObject({
+      duration: '6s',
+      resolution: '768P',
+      model: 'MiniMax-Hailuo-2.3-Fast'
+    })
+    expect(snapshot.formDrafts['model-config']).toMatchObject({
+      titleModel: 'deepseek-v4-flash',
+      descriptionModel: 'deepseek-v4-pro',
+      imageModel: 'nano-banana-fast',
+      videoModel: 'MiniMax-Hailuo-2.3-Fast'
+    })
+    expect(snapshot.productProjects).toEqual([])
+    expect(snapshot.activeProductProjectId).toBe('')
+    expect(snapshot.projectRuns).toEqual([])
+    expect(snapshot.activeProjectRunId).toBe('')
+    expect(snapshot.exportItemsByMenu.workspace).toEqual([])
+    expect(snapshot.agentReadiness).toMatchObject({
+      queue: {
+        queuedCount: 0,
+        runningCount: 0,
+        isProcessing: false,
+        queuedTaskIds: [],
+        activeTaskIds: []
+      },
+      executionLog: []
+    })
+    expect(snapshot.workspaceDashboard.creditOverview.ledgers.map((item) => item.key)).toEqual(['text', 'image', 'video'])
+    expect(snapshot.workspaceDashboard.creditMessages.ledgers.map((item) => item.key)).toEqual(['text', 'image', 'video'])
   })
 
-  it('converts orphaned active tasks to pending confirmation before one-key cleanup proceeds', async () => {
+  it('syncs image and video balances from the remote license platform wallet summary', async () => {
     const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
     await settingsService.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 5000
+      authPlatform: {
+        enabled: true,
+        baseUrl: 'http://127.0.0.1:3721',
+        sessionToken: 'session-1'
       }
-    }, {
-      getNow: () => '2026-05-02T08:00:00.000Z'
     })
-
-    await settingsService.saveSettings({
-      creditState: {
-        frozenCredits: 600,
-        remainingCredits: 4400,
-        usedCredits: 0,
-        taskLedger: {
-          'orphan-running-task-1': {
-            taskId: 'orphan-running-task-1',
-            taskNumber: 'QAI-20260502-0001',
-            menuKey: 'single-design',
-            taskName: 'OrphanTask',
-            modelSummary: 'gpt-image-2',
-            estimatedCredits: 600,
-            status: 'frozen',
-            createdAt: '2026-05-02 08:10:00',
-            updatedAt: '2026-05-02 08:10:00'
-          }
-        }
-      }
-    }, {
-      mergeCreditState: true
-    })
-
-    const taskManagerService = {
-      tasks: [
-        {
-          id: 'orphan-running-task-1',
-          taskNumber: 'QAI-20260502-0001',
-          menuKey: 'single-design',
-          category: '单图设计',
-          status: '进行中',
-          progress: 52,
-          createdAt: '2026-05-02 08:10:00',
-          updatedAt: '2026-05-02 08:20:00',
-          estimatedCredits: 600,
-          outputDirectory: 'F:/tmp/QiuAi/output/single-design/OrphanTask0'
-        }
-      ],
-      listTasks() {
-        return [...this.tasks]
-      },
-      async saveTask(task) {
-        this.tasks = [task, ...this.tasks.filter((item) => item.id !== task.id)]
-        return task
-      }
-    }
 
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      taskManagerService,
-      ...createEmptyOutputScanDependencies(),
+      remoteLicensePlatformClient: {
+        getWalletSummary: async () => ({
+          imageBalanceCny: 123.45,
+          videoBalanceCny: 67.89,
+          updatedAt: '2026-06-15T12:00:00.000Z'
+        })
+      },
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const refreshed = await service.refreshDashboardCredits({
+      target: 'all'
+    })
+
+    expect(refreshed.image.balanceCny).toBe(123.45)
+    expect(refreshed.video.balanceCny).toBe(67.89)
+    expect(refreshed.image.syncStatus).toBe('success')
+    expect(refreshed.video.syncStatus).toBe('success')
+  })
+
+  it('creates product cards from batch assets for the new workbench flow', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
       ensureDirectory: async () => undefined,
       persistSourceFiles: async () => [],
       writeFile: async () => undefined,
-      getNow: () => '2026-05-02T08:30:00.000Z'
+      createId: (() => {
+        let sequence = 0
+        return () => `asset-${++sequence}`
+      })(),
+      getNow: () => '2026-06-12T11:00:00.000Z'
     })
 
-    const cleared = await service.clearRuntimeState()
+    const result = await service.createProjectsFromAssets({
+      files: [
+        {
+          name: 'bag-main.jpg',
+          path: 'C:/images/bag-main.jpg',
+          preview: 'preview-a'
+        },
+        {
+          name: 'cup-side.png',
+          path: 'C:/images/cup-side.png',
+          preview: 'preview-b'
+        }
+      ],
+      platform: 'temu',
+      language: 'en-US'
+    })
+
+    expect(result.createdProjects).toHaveLength(2)
+    expect(result.activeProductProjectId).toBe(result.createdProjects[0].id)
+
     const snapshot = service.getSnapshot()
-
-    expect(cleared.cleared).toBe(true)
-    expect(snapshot.tasks[0]).toMatchObject({
-      id: 'orphan-running-task-1',
-      status: '待确认',
-      progress: 52,
-      error: '任务状态待确认：软件重启前任务可能仍在远端处理中，请手动结束或重新提交'
+    expect(snapshot.productProjects).toHaveLength(2)
+    expect(snapshot.productProjects[0]).toMatchObject({
+      name: 'bag-main',
+      platformTarget: ['temu'],
+      baseInfo: {
+        productName: 'bag-main',
+        language: 'en-US'
+      },
+      generationConfig: {
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: true,
+          video: true
+        },
+        imageTemplateId: 'image-default',
+        videoTemplateId: 'video-main'
+      }
     })
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 600,
-      usedCredits: 0
+    expect(snapshot.productProjects[0].assets.sourceImages[0]).toMatchObject({
+      name: 'bag-main.jpg',
+      path: 'C:/images/bag-main.jpg',
+      preview: 'preview-a'
     })
-    expect(settingsService.getSettings().creditState.taskLedger['orphan-running-task-1']).toMatchObject({
-      status: 'frozen'
-    })
+    expect(snapshot.productProjects[0].latestRunId).toBe('')
+    expect(snapshot.productProjects[0].runIds).toEqual([])
+    expect(snapshot.productProjects[1].name).toBe('cup-side')
   })
 
-  it('allows one-key cleanup to proceed when only pending-confirmation tasks remain', async () => {
+  it('normalizes legacy stored projects with the new generation config and run record fields', async () => {
     const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    store.set(STUDIO_WORKSPACE_KEY, {
+      productProjects: [
+        {
+          id: 'legacy-project-1',
+          name: '旧商品项目',
+          status: 'ready',
+          platformTarget: ['temu'],
+          baseInfo: {
+            productName: '旧商品',
+            language: 'zh-CN'
+          },
+          assets: {
+            sourceImages: [],
+            generatedImages: []
+          },
+          content: {
+            selectedTitle: '旧标题',
+            selectedDescription: '旧描述'
+          }
+        }
+      ],
+      activeProductProjectId: 'legacy-project-1'
+    })
 
     const settingsService = createSettingsStoreService({ store })
-    const taskManagerService = {
-      listTasks: () => [
-        {
-          id: 'pending-task-1',
-          menuKey: 'series-generate',
-          status: '待确认',
-          progress: 97,
-          createdAt: '2026-05-07 12:00:00'
-        }
-      ]
-    }
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      taskManagerService,
-      ...createEmptyOutputScanDependencies(),
+      outputRootDirectory,
       ensureDirectory: async () => undefined,
       persistSourceFiles: async () => [],
       writeFile: async () => undefined
     })
 
-    const cleared = await service.clearRuntimeState()
+    const snapshot = service.getSnapshot()
 
-    expect(cleared).toEqual({
-      cleared: true
+    expect(snapshot.productProjects).toHaveLength(1)
+    expect(snapshot.productProjects[0]).toMatchObject({
+      id: 'legacy-project-1',
+      latestRunId: '',
+      runIds: [],
+      generationConfig: {
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: true,
+          video: true
+        },
+        titleMaxChars: 60,
+        descriptionMaxChars: 300,
+        imageSize: '1:1',
+        videoDuration: '6s',
+        videoResolution: '768P',
+        videoMotionStrength: 'auto',
+        imageTemplateId: 'image-default',
+        videoTemplateId: 'video-main'
+      }
     })
+    expect(snapshot.projectRuns).toEqual([])
+    expect(snapshot.activeProjectRunId).toBe('')
   })
 
-  it('persists image drafts, creates grouped tasks, and stores export folders by module', async () => {
+  it('creates a workspace project and writes generated title and description back into the card', async () => {
     const store = createMemoryStore()
-    const taskManagerRecords = []
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const generateImageResults = vi.fn(async ({ menuKey, draft, taskId }) => {
-      if (menuKey === 'single-image') {
-        return {
-          textResults: [],
-          comparisonResults: [
-            {
-              id: `${taskId}-single-1`,
-              model: 'nano-banana-fast',
-              title: 'nano-banana-fast 对比结果',
-              preview: createPreviewDataUrl('single-1'),
-              sourceImageName: draft.sourceImage?.name || '',
-              status: '已完成'
-            },
-            {
-              id: `${taskId}-single-2`,
-              model: 'gpt-image-2',
-              title: 'gpt-image-2 对比结果',
-              preview: createPreviewDataUrl('single-2'),
-              sourceImageName: draft.sourceImage?.name || '',
-              status: '已完成'
-            },
-            {
-              id: `${taskId}-single-3`,
-              model: 'nano-banana-2',
-              title: 'nano-banana-2 对比结果',
-              preview: createPreviewDataUrl('single-3'),
-              sourceImageName: draft.sourceImage?.name || '',
-              status: '已完成'
-            },
-            {
-              id: `${taskId}-single-4`,
-              model: 'nano-banana-2-cl',
-              title: 'nano-banana-2-cl 对比结果',
-              preview: createPreviewDataUrl('single-4'),
-              sourceImageName: draft.sourceImage?.name || '',
-              status: '已完成'
-            }
-          ],
-          groupedResults: [],
-          summary: {
-            title: '单图四模型对比',
-            description: '真实图片任务链'
-          }
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined,
+      generateCopywritingResults: async ({ taskId, draft }) => {
+        if (String(taskId).includes('-title')) {
+          return Array.from({ length: draft.quantity }, (_unused, index) => ({
+            id: `${taskId}-${index + 1}`,
+            content: `标题候选 ${index + 1}`
+          }))
         }
-      }
 
-      if (menuKey === 'single-design') {
-        return {
-          textResults: [],
-          comparisonResults: [
-            {
-              id: `${taskId}-single-design-1`,
-              model: draft.model,
-              title: '单图设计结果',
-              preview: createPreviewDataUrl('single-design-1'),
-              status: '已完成'
-            }
-          ],
-          groupedResults: [],
-          summary: {
-            title: '单图设计',
-            description: '真实图片任务链'
+        return Array.from({ length: draft.quantity }, (_unused, index) => ({
+          id: `${taskId}-${index + 1}`,
+          content: `描述候选 ${index + 1}`
+        }))
+      },
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260612-0001',
+      getNow: () => '2026-06-12T12:00:00.000Z'
+    })
+
+    const createdProject = await service.createProject({
+      productName: '便携水杯',
+      platform: 'ozon',
+      language: 'ru-RU'
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: createdProject.id,
+        productName: '便携水杯',
+        projectName: '便携水杯项目',
+        brand: 'QiuAi',
+        category: '家居',
+        highlightsText: '大容量, 防漏',
+        keywordsText: '水杯, 随行杯',
+        platformTargetsText: 'ozon, temu',
+        language: 'ru-RU',
+        titleQuantity: 2,
+        descriptionQuantity: 2
+      }
+    })
+
+    const createdTask = await service.createTask({
+      menuKey: 'workspace'
+    })
+
+    expect(createdTask.menuKey).toBe('workspace')
+
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const updatedProject = snapshot.productProjects.find((item) => item.id === createdProject.id)
+    const latestRun = snapshot.projectRuns.find((item) => item.id === updatedProject?.latestRunId)
+
+    expect(updatedProject).toBeTruthy()
+    expect(updatedProject).toMatchObject({
+      status: 'ready',
+      content: {
+        titleCandidates: ['标题候选 1', '标题候选 2'],
+        descriptionCandidates: ['描述候选 1', '描述候选 2'],
+        selectedTitle: '标题候选 1',
+        selectedDescription: '描述候选 1'
+      }
+    })
+    expect(updatedProject.latestRunId).toBeTruthy()
+    expect(updatedProject.runIds).toContain(updatedProject.latestRunId)
+    expect(latestRun).toMatchObject({
+      projectId: createdProject.id,
+      taskId: createdTask.id,
+      triggerMenuKey: 'workspace',
+      status: 'success'
+    })
+    expect(latestRun.outputs.title).toBeTruthy()
+    expect(latestRun.outputs.description).toBeTruthy()
+    expect(latestRun.storage.runDirectory).toContain(path.join('output', 'workspace'))
+    expect(snapshot.resultsByMenu.workspace.textResults).toHaveLength(4)
+    expect(snapshot.exportItemsByMenu.workspace).toHaveLength(1)
+  })
+
+  it('writes title, description and image generator results back to the linked product project', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedCredits(settingsService, 5000)
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateCopywritingResults: async ({ draft }) => {
+        const prefix = draft.prompt.includes('商品标题') ? '标题' : '描述'
+        return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
+      },
+      generateImageResults: async ({ taskId }) => ({
+        textResults: [],
+        comparisonResults: [],
+        groupedResults: [
+          {
+            id: `${taskId}-group-1`,
+            outputs: [
+              {
+                id: `${taskId}-image-1`,
+                model: 'gpt-image-2',
+                title: '主图 1',
+                preview: createPreviewDataUrl('series-image-1')
+              }
+            ]
           }
+        ],
+        summary: {
+          title: '套图结果'
         }
-      }
+      }),
+      createId: (() => {
+        let sequence = 0
+        return () => `generator-${++sequence}`
+      })(),
+      createTaskNumber: (() => {
+        let sequence = 0
+        return () => `QAI-20260612-${String(++sequence).padStart(4, '0')}`
+      })(),
+      getNow: () => '2026-06-12T13:00:00.000Z'
+    })
 
-      if (menuKey === 'series-design') {
+    const project = await service.createProject({
+      productName: '露营灯',
+      platform: 'temu',
+      language: 'zh-CN'
+    })
+
+    await service.saveDraft({
+      menuKey: 'title-generator',
+      patch: {
+        projectId: project.id,
+        productName: '露营灯',
+        titleQuantity: 1
+      }
+    })
+    await service.createTask({ menuKey: 'title-generator' })
+    await service.waitForIdle()
+
+    await service.saveDraft({
+      menuKey: 'description-generator',
+      patch: {
+        projectId: project.id,
+        productName: '露营灯',
+        descriptionQuantity: 1
+      }
+    })
+    await service.createTask({ menuKey: 'description-generator' })
+    await service.waitForIdle()
+
+    await service.saveDraft({
+      menuKey: 'series-generate',
+      patch: {
+        projectId: project.id,
+        taskName: '露营灯套图',
+        sourceImage: {
+          name: 'camp-lamp.jpg',
+          path: 'C:/images/camp-lamp.jpg',
+          preview: 'preview-camp-lamp'
+        },
+        model: 'gpt-image-2',
+        generateCount: 1,
+        batchCount: 1
+      }
+    })
+
+    const imageTask = await service.createTask({ menuKey: 'series-generate' })
+    expect(imageTask.estimatedCredits).toBe(600)
+    expect(settingsService.getSettings().creditState).toMatchObject({
+      remainingCredits: 4400,
+      frozenCredits: 600
+    })
+
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const updatedProject = snapshot.productProjects.find((item) => item.id === project.id)
+    const projectRuns = snapshot.projectRuns.filter((item) => item.projectId === project.id)
+    const latestRun = projectRuns.find((item) => item.id === updatedProject?.latestRunId)
+
+    expect(updatedProject).toBeTruthy()
+    expect(updatedProject.content.selectedTitle).toBe('标题结果 1')
+    expect(updatedProject.content.selectedDescription).toBe('描述结果 1')
+    expect(updatedProject.assets.generatedImages).toHaveLength(1)
+    expect(updatedProject.assets.generatedImages[0].savedPath).toContain(path.join('series-generate', 'generator-'))
+    expect(projectRuns).toHaveLength(3)
+    expect(latestRun).toMatchObject({
+      triggerMenuKey: 'series-generate',
+      status: 'success'
+    })
+    expect(latestRun.outputs.images).toHaveLength(1)
+    expect(latestRun.storage.imageDirectory).toContain(path.join('series-generate', 'generator-'))
+    expect(settingsService.getSettings().creditState).toMatchObject({
+      remainingCredits: 4400,
+      frozenCredits: 0,
+      usedCredits: 600
+    })
+  })
+
+  it('passes non-empty image prompts from workspace flow into series generation', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedCredits(settingsService, 5000)
+
+    const observedPrompts = []
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateCopywritingResults: async ({ draft }) => {
+        const prefix = draft.prompt.includes('商品标题') ? '标题' : '描述'
+        return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
+      },
+      generateImageResults: async ({ draft }) => {
+        observedPrompts.push(...(draft.promptAssignments || []).map((item) => item.prompt))
         return {
           textResults: [],
           comparisonResults: [],
           groupedResults: [
             {
-              id: `${taskId}-series-design-group-1`,
-              groupType: 'batch',
-              groupTitle: '第 1 组',
+              id: 'workspace-series-group-1',
               outputs: [
                 {
-                  id: `${taskId}-series-design-group-1-1`,
-                  title: 'look-1.jpg',
-                  model: draft.model,
-                  preview: createPreviewDataUrl('series-design-1-1')
-                },
-                {
-                  id: `${taskId}-series-design-group-1-2`,
-                  title: 'look-2.jpg',
-                  model: draft.model,
-                  preview: createPreviewDataUrl('series-design-1-2')
+                  id: 'workspace-series-image-1',
+                  title: '主图 1',
+                  model: 'gpt-image-2',
+                  savedPath: path.resolve(outputRootDirectory, 'workspace-series-image-1.png')
                 }
               ]
             }
           ],
-          summary: {
-            title: '套图设计 1 组',
-            description: '真实图片任务链'
-          }
+          summary: { title: '套图结果' }
         }
-      }
-
-      return {
+      },
+      generateVideoResults: async () => ({
         textResults: [],
         comparisonResults: [],
         groupedResults: [
           {
-            id: `${taskId}-series-generate-group-1`,
-            groupType: 'batch',
-            groupTitle: '第 1 组',
+            id: 'workspace-video-group-1',
             outputs: [
               {
-                id: `${taskId}-series-generate-group-1-1`,
-                title: '第 1 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-1-1')
-              },
-              {
-                id: `${taskId}-series-generate-group-1-2`,
-                title: '第 2 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-1-2')
-              },
-              {
-                id: `${taskId}-series-generate-group-1-3`,
-                title: '第 3 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-1-3')
-              }
-            ]
-          },
-          {
-            id: `${taskId}-series-generate-group-2`,
-            groupType: 'batch',
-            groupTitle: '第 2 组',
-            outputs: [
-              {
-                id: `${taskId}-series-generate-group-2-1`,
-                title: '第 1 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-2-1')
-              },
-              {
-                id: `${taskId}-series-generate-group-2-2`,
-                title: '第 2 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-2-2')
-              },
-              {
-                id: `${taskId}-series-generate-group-2-3`,
-                title: '第 3 张',
-                model: draft.model,
-                preview: createPreviewDataUrl('series-generate-2-3')
+                id: 'workspace-video-1',
+                title: '商品视频',
+                model: 'MiniMax-Hailuo-2.3-Fast',
+                savedPath: path.resolve(outputRootDirectory, 'workspace-video-1.mp4')
               }
             ]
           }
         ],
-        summary: {
-          title: '套图生成 2 组',
-          description: '真实图片任务链'
-        }
-      }
-    })
-    const taskManagerService = {
-      listTasks: vi.fn(() => taskManagerRecords.slice()),
-      saveTask: vi.fn((task) => {
-        taskManagerRecords.unshift(task)
-        for (let index = taskManagerRecords.length - 1; index > 0; index -= 1) {
-          if (taskManagerRecords[index].id === task.id) {
-            taskManagerRecords.splice(index, 1)
-          }
-        }
-        return task
-      })
-    }
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => sourcePaths.map((sourcePath) => {
-        return `${targetDirectory}/${sourcePath.split('/').pop()}`
+        summary: { title: '视频结果' }
       }),
-      writeFile: async () => undefined,
-      generateImageResults,
-      taskManagerService,
       createId: (() => {
-        let counter = 0
-        return () => `studio-${++counter}`
+        let sequence = 0
+        return () => `workspace-series-${++sequence}`
       })(),
-      createTaskNumber: (() => {
-        let counter = 0
-        return () => `QAI-20260425-${String(++counter).padStart(4, '0')}`
-      })(),
-      getNow: () => '2026-04-25T11:30:00.000Z'
+      createTaskNumber: () => 'QAI-20260612-0002',
+      getNow: () => '2026-06-12T14:00:00.000Z'
+    })
+
+    const project = await service.createProject({
+      productName: '手工玫瑰',
+      platform: 'temu',
+      language: 'zh-CN'
     })
 
     await service.saveDraft({
-      menuKey: 'single-image',
+      menuKey: 'workspace',
       patch: {
-        prompt: '提升质感，适合电商主图测试',
-        taskName: 'SingleA',
+        projectId: project.id,
+        projectName: '手工玫瑰项目',
+        productName: '手工玫瑰',
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        generateCount: 1,
         sourceImage: {
-          name: 'bag-main.jpg',
-          path: 'C:/images/bag-main.jpg'
+          name: '1.png',
+          path: path.resolve(process.cwd(), 'tests', '1.png'),
+          storedPath: path.resolve(process.cwd(), 'tests', '1.png')
         },
-        compareModels: ['gpt-image-2', 'nano-banana-pro', 'nano-banana-fast', 'nano-banana-2']
+        imagePrompt: '生成手工玫瑰商品图',
+        videoPrompt: '生成手工玫瑰视频'
       }
     })
 
-    const createdSingleTask = await service.createTask({
-      menuKey: 'single-image'
-    })
-
-    expect(createdSingleTask.title).toBe('单图四模型对比')
-    expect(createdSingleTask.modelSummary).toContain('gpt-image-2')
-    expect(createdSingleTask.inputCount).toBe(1)
-    expect(createdSingleTask.plannedOutputCount).toBe(4)
-    expect(createdSingleTask.taskNumber).toBe('QAI-20260425-0001')
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        prompt: '单张主图高端重制',
-        taskName: 'SingleDesignA',
-        model: 'nano-banana-fast',
-        sourceImage: {
-          name: 'watch-main.jpg',
-          path: 'C:/images/watch-main.jpg'
-        }
-      }
-    })
-
-    const createdSingleDesignTask = await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(createdSingleDesignTask.title).toContain('单图设计')
-    expect(createdSingleDesignTask.inputCount).toBe(1)
-    expect(createdSingleDesignTask.plannedOutputCount).toBe(1)
-
-    await service.saveDraft({
-      menuKey: 'series-design',
-      patch: {
-        globalPrompt: '统一高端电商风格',
-        taskName: 'SeriesA',
-        defaultAssignmentRatio: '3:4',
-        defaultAssignmentModel: 'nano-banana-fast',
-        imageAssignments: [
-          {
-            name: 'look-1.jpg',
-            path: 'C:/images/look-1.jpg',
-            selected: true,
-            prompt: '主图强化材质光泽',
-            imageType: '商品主图',
-            size: '4:3',
-            model: 'nano-banana-fast',
-            tagIds: ['tag-quality-hd', 'tag-background-white']
-          },
-          {
-            name: 'look-2.jpg',
-            path: 'C:/images/look-2.jpg',
-            selected: true,
-            prompt: '详情图增加空间感',
-            imageType: '详情图',
-            size: 'a4-portrait',
-            model: 'gpt-image-2',
-            tagIds: []
-          }
-        ]
-      }
-    })
-
-    const createdSeriesDesignTask = await service.createTask({
-      menuKey: 'series-design'
-    })
-
-    expect(createdSeriesDesignTask.title).toContain('套图定向生成')
-    expect(createdSeriesDesignTask.inputCount).toBe(2)
-    expect(createdSeriesDesignTask.plannedOutputCount).toBe(2)
-
-    const afterSeriesDraftSnapshot = service.getSnapshot()
-    expect(afterSeriesDraftSnapshot.formDrafts['series-design'].defaultAssignmentRatio).toBe('3:4')
-    expect(afterSeriesDraftSnapshot.formDrafts['series-design'].defaultAssignmentModel).toBe('nano-banana-fast')
-    expect(afterSeriesDraftSnapshot.formDrafts['series-design'].imageAssignments[0]).toMatchObject({
-      imageType: '商品主图',
-      size: '4:3',
-      model: 'nano-banana-fast',
-      tagIds: ['tag-quality-hd', 'tag-background-white']
-    })
-
-    await service.saveDraft({
-      menuKey: 'series-generate',
-      patch: {
-        globalPrompt: '统一高端商品详情页风格',
-        taskName: 'SeriesB',
-        generateCount: 3,
-        batchCount: 2,
-        promptAssignments: [
-          { index: 1, prompt: '生成第一张场景主视觉图' },
-          { index: 2, prompt: '生成第二张卖点细节图' },
-          { index: 3, prompt: '生成第三张材质展示图' }
-        ],
-        sourceImage: {
-          name: 'shoe-main.jpg',
-          path: 'C:/images/shoe-main.jpg'
-        }
-      }
-    })
-
-    const createdSeriesGenerateTask = await service.createTask({
-      menuKey: 'series-generate'
-    })
-
-    expect(createdSeriesGenerateTask.title).toContain('套图生成')
-    expect(createdSeriesGenerateTask.batchCount).toBe(2)
-    expect(createdSeriesGenerateTask.plannedOutputCount).toBe(6)
-
+    await service.createTask({ menuKey: 'workspace' })
     await service.waitForIdle()
 
-    const snapshot = service.getSnapshot()
-    expect(snapshot.resultsByMenu).not.toHaveProperty('copywriting')
-    expect(snapshot.exportItemsByMenu).not.toHaveProperty('copywriting')
-    expect(snapshot.resultsByMenu['single-image'].comparisonResults).toHaveLength(4)
-    expect(snapshot.resultsByMenu['single-design'].comparisonResults).toHaveLength(1)
-    expect(snapshot.resultsByMenu['series-design'].groupedResults).toHaveLength(1)
-    expect(snapshot.resultsByMenu['series-design'].groupedResults[0].outputs).toHaveLength(2)
-    expect(snapshot.resultsByMenu['series-generate'].groupedResults).toHaveLength(2)
-    expect(snapshot.resultsByMenu['series-generate'].groupedResults[0].outputs).toHaveLength(3)
-    expect(snapshot.exportItemsByMenu['single-image']).toHaveLength(1)
-    expect(snapshot.exportItemsByMenu['single-image'][0].name).toBe('SingleA0')
-    expect(snapshot.exportItemsByMenu['single-design']).toHaveLength(1)
-    expect(snapshot.exportItemsByMenu['single-design'][0].name).toBe('SingleDesignA0')
-    expect(snapshot.exportItemsByMenu['series-design']).toHaveLength(1)
-    expect(snapshot.exportItemsByMenu['series-design'][0].name).toBe('SeriesA0')
-    expect(snapshot.exportItemsByMenu['series-generate']).toHaveLength(2)
-    expect(snapshot.exportItemsByMenu['series-generate'][0].name).toBe('SeriesB0')
-    expect(snapshot.exportItemsByMenu['series-generate'][1].name).toBe('SeriesB1')
-    expect(snapshot.tasks[0].taskNumber).toBe('QAI-20260425-0004')
-    expect(snapshot.tasks.map((task) => task.category)).toEqual(expect.arrayContaining([
-      '单图测试',
-      '单图设计',
-      '套图设计',
-      '套图生成'
-    ]))
-    expect(snapshot.workspaceDashboard.singleImageStats.items.find((item) => item.label === '模型调用次数')?.value).toBe('1')
-    expect(snapshot.workspaceDashboard.singleDesignStats.items.find((item) => item.label === '模型调用次数')?.value).toBe('1')
-    expect(snapshot.workspaceDashboard.seriesDesignStats.items.find((item) => item.label === '模型调用次数')?.value).toBe('1')
-    expect(snapshot.workspaceDashboard.seriesGenerateStats.items.find((item) => item.label === '模型调用次数')?.value).toBe('1')
-    expect(taskManagerService.saveTask).toHaveBeenCalled()
+    expect(observedPrompts.length).toBeGreaterThan(0)
+    expect(observedPrompts.every((prompt) => String(prompt || '').trim().length > 0)).toBe(true)
   })
 
-  it('exports selected studio result folders into a zip archive', async () => {
+  it('clears runtime drafts and results while preserving external task history', async () => {
     const store = createMemoryStore()
-    const copiedFiles = []
-    const removedDirectories = []
-    const exportedArchives = []
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-1`,
-            model: 'gpt-image-2',
-            title: '单图设计结果',
-            preview: createPreviewDataUrl('single-export')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '导出测试'
-        }
-      }),
-      mkdtemp: async () => 'C:/temp/qiuai-studio-export-1',
-      copyDirectory: async (sourcePath, targetPath) => {
-        copiedFiles.push({ sourcePath, targetPath })
-      },
-      removeDirectory: async (targetPath) => {
-        removedDirectories.push(targetPath)
-      },
-      exportTaskDirectory: async ({ sourceDirectory, targetZipPath }) => {
-        exportedArchives.push({ sourceDirectory, targetZipPath })
-        return { targetZipPath }
-      },
-      createId: () => 'studio-export-1',
-      getNow: () => '2026-04-26T02:00:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        model: 'gpt-image-2',
-        taskName: 'SingleZip',
-        prompt: '生成一张高质量电商主图'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-    await service.waitForIdle()
-
-    const snapshot = service.getSnapshot()
-    const selectedIds = snapshot.exportItemsByMenu['single-design'].map((item) => item.id)
-    const result = await service.exportSelectedResults({
-      menuKey: 'single-design',
-      selectedExportIds: selectedIds,
-      targetZipPath: 'C:/downloads/single-design-results.zip'
-    })
-
-    expect(result).toEqual({
-      menuKey: 'single-design',
-      exportedCount: 1,
-      targetZipPath: 'C:/downloads/single-design-results.zip'
-    })
-    expect(copiedFiles).toHaveLength(1)
-    expect(copiedFiles[0].targetPath.replace(/\\/g, '/')).toContain('SingleZip0')
-    expect(exportedArchives[0]).toEqual({
-      sourceDirectory: 'C:/temp/qiuai-studio-export-1',
-      targetZipPath: 'C:/downloads/single-design-results.zip'
-    })
-    expect(removedDirectories).toEqual(['C:/temp/qiuai-studio-export-1'])
-  })
-
-  it('rejects oversized series-generate tasks before they enter the queue', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const generateImageResults = vi.fn(async () => {
-      throw new Error('should not start oversized task')
-    })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults,
-      createId: () => 'oversized-series-generate',
-      createTaskNumber: () => 'QAI-20260507-9001',
-      getNow: () => '2026-05-07T12:00:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'series-generate',
-      patch: {
-        taskName: 'TooLargeGenerate',
-        globalPrompt: '统一高端商品详情页风格',
-        generateCount: 121,
-        batchCount: 1,
-        sourceImage: {
-          name: 'shoe-main.jpg',
-          path: 'C:/images/shoe-main.jpg'
-        },
-        promptAssignments: Array.from({ length: 121 }, (_unused, index) => ({
-          index: index + 1,
-          prompt: `第 ${index + 1} 张商品图`,
-          imageType: '商品主图'
-        }))
-      }
-    })
-
-    await expect(service.createTask({
-      menuKey: 'series-generate'
-    })).rejects.toThrow('当前任务量过大，请拆分后再提交')
-
-    expect(generateImageResults).not.toHaveBeenCalled()
-    expect(service.getSnapshot().tasks).toEqual([])
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      frozenCredits: 0
-    })
-  })
-
-  it('fails export early when free disk space is below the required archive budget', async () => {
-    const store = createMemoryStore()
-    const copiedFiles = []
-    const removedDirectories = []
-    const exportedArchives = []
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-1`,
-            model: 'gpt-image-2',
-            title: '单图设计结果',
-            preview: createPreviewDataUrl('single-export-insufficient-space')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '导出空间保护测试'
-        }
-      }),
-      mkdtemp: async () => 'C:/temp/qiuai-studio-export-2',
-      copyDirectory: async (sourcePath, targetPath) => {
-        copiedFiles.push({ sourcePath, targetPath })
-      },
-      removeDirectory: async (targetPath) => {
-        removedDirectories.push(targetPath)
-      },
-      exportTaskDirectory: async ({ sourceDirectory, targetZipPath }) => {
-        exportedArchives.push({ sourceDirectory, targetZipPath })
-        return { targetZipPath }
-      },
-      getAvailableDiskSpaceBytes: async () => 512,
-      createId: () => 'studio-export-insufficient-space',
-      getNow: () => '2026-05-07T12:10:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        model: 'gpt-image-2',
-        taskName: 'SingleZipTooLarge',
-        prompt: '生成一张高质量电商主图'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-    await service.waitForIdle()
-
-    const snapshot = service.getSnapshot()
-    const selectedIds = snapshot.exportItemsByMenu['single-design'].map((item) => item.id)
-
-    await expect(service.exportSelectedResults({
-      menuKey: 'single-design',
-      selectedExportIds: selectedIds,
-      targetZipPath: 'C:/downloads/single-design-results-too-large.zip'
-    })).rejects.toThrow('导出空间不足，请清理磁盘后重试')
-
-    expect(copiedFiles).toEqual([])
-    expect(exportedArchives).toEqual([])
-    expect(removedDirectories).toEqual([])
-  })
-
-  it('deletes a stored export folder and removes it from snapshot', async () => {
-    const store = createMemoryStore()
-    const removedDirectories = []
-    const runtimeLogger = {
-      log: vi.fn(async () => undefined)
-    }
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      runtimeLogger,
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-1`,
-            model: 'gpt-image-2',
-            title: '单图设计结果',
-            preview: createPreviewDataUrl('single-delete')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '删除测试'
-        }
-      }),
-      removeDirectory: async (targetPath) => {
-        removedDirectories.push(targetPath)
-      },
-      createId: () => 'studio-delete-1',
-      getNow: () => '2026-04-26T02:30:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        model: 'gpt-image-2',
-        taskName: 'DeleteFolder',
-        prompt: '请生成一张详情图'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-    await service.waitForIdle()
-
-    const beforeDeleteSnapshot = service.getSnapshot()
-    const exportItem = beforeDeleteSnapshot.exportItemsByMenu['single-design'][0]
-
-    const deleted = await service.deleteExportItem({
-      menuKey: 'single-design',
-      exportItemId: exportItem.id
-    })
-
-    const afterDeleteSnapshot = service.getSnapshot()
-
-    expect(deleted).toEqual({
-      menuKey: 'single-design',
-      exportItemId: exportItem.id,
-      deleted: true
-    })
-    expect(removedDirectories).toEqual([exportItem.directoryPath])
-    expect(afterDeleteSnapshot.exportItemsByMenu['single-design']).toEqual([])
-    expect(runtimeLogger.log).toHaveBeenCalled()
-  })
-
-  it('loads historical export folders from local output storage for image modules', async () => {
-    const store = createMemoryStore()
-    const outputRootDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qiuai-output-root-'))
-    const singleImageGroupDirectory = path.join(outputRootDirectory, 'single-image', 'task-image-1', 'HistorySingle0')
-    const seriesDesignGroupDirectory = path.join(outputRootDirectory, 'series-design', 'task-series-1', 'HistorySeries0')
-    const copiedDirectories = []
-    const removedDirectories = []
-    const exportedArchives = []
-
-    try {
-      await fs.mkdir(singleImageGroupDirectory, { recursive: true })
-      await fs.mkdir(seriesDesignGroupDirectory, { recursive: true })
-      await fs.writeFile(path.join(singleImageGroupDirectory, '00-image.png'), 'image-binary', 'utf8')
-      await fs.writeFile(path.join(seriesDesignGroupDirectory, '00-image.png'), 'image-binary', 'utf8')
-
-      const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-      const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-      const settingsService = createSettingsStoreService({ store })
-      const service = createStudioWorkspaceService({
-        store,
-        settingsService,
-        outputRootDirectory,
-        mkdtemp: async () => 'C:/temp/qiuai-history-export',
-        copyDirectory: async (sourcePath, targetPath) => {
-          copiedDirectories.push({ sourcePath, targetPath })
-        },
-        removeDirectory: async (targetPath) => {
-          removedDirectories.push(targetPath)
-          if (targetPath === singleImageGroupDirectory || targetPath === seriesDesignGroupDirectory) {
-            await fs.rm(targetPath, { recursive: true, force: true })
-          }
-        },
-        exportTaskDirectory: async ({ sourceDirectory, targetZipPath }) => {
-          exportedArchives.push({ sourceDirectory, targetZipPath })
-          return { targetZipPath }
-        }
-      })
-
-      const initialSnapshot = service.getSnapshot()
-
-      expect(initialSnapshot.exportItemsByMenu['single-image']).toHaveLength(1)
-      expect(initialSnapshot.exportItemsByMenu['single-image'][0].name).toBe('HistorySingle0')
-      expect(initialSnapshot.exportItemsByMenu['single-image'][0].directoryPath).toBe(singleImageGroupDirectory)
-      expect(initialSnapshot.exportItemsByMenu['series-design']).toHaveLength(1)
-      expect(initialSnapshot.exportItemsByMenu['series-design'][0].name).toBe('HistorySeries0')
-
-      const exportResult = await service.exportSelectedResults({
-        menuKey: 'single-image',
-        selectedExportIds: [initialSnapshot.exportItemsByMenu['single-image'][0].id],
-        targetZipPath: 'C:/downloads/history-single-image.zip'
-      })
-
-      expect(exportResult).toEqual({
-        menuKey: 'single-image',
-        exportedCount: 1,
-        targetZipPath: 'C:/downloads/history-single-image.zip'
-      })
-      expect(copiedDirectories).toEqual([
-        expect.objectContaining({
-          sourcePath: singleImageGroupDirectory
-        })
-      ])
-      expect(exportedArchives).toEqual([
-        {
-          sourceDirectory: 'C:/temp/qiuai-history-export',
-          targetZipPath: 'C:/downloads/history-single-image.zip'
-        }
-      ])
-
-      const deleted = await service.deleteExportItem({
-        menuKey: 'single-image',
-        exportItemId: initialSnapshot.exportItemsByMenu['single-image'][0].id
-      })
-
-      expect(deleted).toEqual({
-        menuKey: 'single-image',
-        exportItemId: initialSnapshot.exportItemsByMenu['single-image'][0].id,
-        deleted: true
-      })
-      expect(removedDirectories).toContain(singleImageGroupDirectory)
-
-      const afterDeleteSnapshot = service.getSnapshot()
-      expect(afterDeleteSnapshot.exportItemsByMenu['single-image']).toEqual([])
-      expect(afterDeleteSnapshot.exportItemsByMenu['series-design']).toHaveLength(1)
-    } finally {
-      await fs.rm(outputRootDirectory, { recursive: true, force: true })
-    }
-  })
-
-  it('stores lightweight result state without persisting data url previews', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-1`,
-            model: 'gpt-image-2',
-            title: '单图设计结果',
-            preview: createPreviewDataUrl('lightweight-preview')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '轻量状态测试'
-        }
-      }),
-      createId: () => 'studio-lightweight-1',
-      getNow: () => '2026-04-29T02:30:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        model: 'gpt-image-2',
-        taskName: 'LightweightA',
-        prompt: '请生成一张高质量商品主图'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-    await service.waitForIdle()
-
-    const persistedState = store.get('studioWorkspace', {})
-    const persistedResult = persistedState.resultsByMenu?.['single-design']?.comparisonResults?.[0]
-    const snapshotResult = service.getSnapshot().resultsByMenu['single-design'].comparisonResults[0]
-
-    expect(persistedResult.savedPath).toContain('LightweightA0')
-    expect(persistedResult.preview || '').toBe('')
-    expect(JSON.stringify(persistedState)).not.toContain('data:image/png;base64')
-    expect(snapshotResult.preview).toMatch(/^file:/)
-  })
-
-  it('caches export directory scans between adjacent snapshot reads', async () => {
-    const store = createMemoryStore()
-    const readdirSync = vi.fn(() => [])
-    const statSync = vi.fn(() => null)
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      readdirSync,
-      statSync,
-      getNowMs: () => 1000
-    })
-
-    service.getSnapshot()
-    service.getSnapshot()
-
-    expect(readdirSync).toHaveBeenCalledTimes(4)
-  })
-
-  it('stores grouped task progress metadata for series tasks', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async () => ({
-        textResults: [],
-        comparisonResults: [],
-        groupedResults: [
-          {
-            id: 'group-1',
-            groupIndex: 0,
-            groupTitle: 'BAG-A0',
-            status: 'succeeded',
-            completedCount: 20,
-            failedCount: 0,
-            outputs: Array.from({ length: 20 }, (_unused, index) => ({
-              id: `output-${index + 1}`,
-              title: `主图${index}`,
-              model: 'gpt-image-2',
-              preview: createPreviewDataUrl(`group-${index + 1}`)
-            }))
-          }
-        ],
-        summary: {
-          title: '套图生成 1 组 x 20 张'
-        }
-      }),
-      createId: () => 'studio-group-meta-1',
-      getNow: () => '2026-04-28T06:00:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'series-generate',
-      patch: {
-        taskName: 'BAG-A',
-        model: 'gpt-image-2',
-        generateCount: 20,
-        batchCount: 1,
-        globalPrompt: '统一风格',
-        sourceImage: {
-          name: 'source.png',
-          path: 'C:/input/source.png'
-        },
-        promptAssignments: Array.from({ length: 20 }, (_unused, index) => ({
-          id: `slot-${index + 1}`,
-          index: index + 1,
-          prompt: `prompt-${index + 1}`,
-          imageType: '商品主图'
-        }))
-      }
-    })
-
-    const createdTask = await service.createTask({
-      menuKey: 'series-generate'
-    })
-    await service.waitForIdle()
-
-    const task = service.getSnapshot().tasks.find((item) => item.id === createdTask.id)
-    expect(task).toBeTruthy()
-    // Intentional lock-test failure until grouped progress metadata is implemented in task snapshots.
-    expect(task.groupImageCount).toBe(20)
-    expect(task.totalSubtaskCount).toBe(20)
-    expect(task.completedSubtaskCount).toBe(20)
-    expect(task.failedSubtaskCount).toBe(0)
-    expect(task.currentGroupIndex).toBe(0)
-    expect(task.currentGroupCompletedCount).toBe(20)
-    expect(task.currentGroupTotalCount).toBe(20)
-  })
-
-  it('builds network monitor card from recent request metrics', async () => {
-    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
 
     store.set(STUDIO_WORKSPACE_KEY, {
-      requestMetrics: [
+      formDrafts: {
+        workspace: {
+          productName: '旧项目',
+          titleQuantity: 9
+        },
+        'series-generate': {
+          taskName: '旧套图',
+          sourceImage: {
+            name: 'legacy.png',
+            path: 'C:/legacy.png'
+          },
+          batchCount: 3,
+          generateCount: 2
+        }
+      },
+      resultsByMenu: {
+        workspace: {
+          textResults: [{ id: 'legacy-text-1', content: '旧标题' }],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: { title: '旧结果' }
+        }
+      },
+      exportItemsByMenu: {
+        workspace: [
+          {
+            id: 'legacy-export-1',
+            name: 'LegacyExport'
+          }
+        ]
+      }
+    })
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      taskManagerService: {
+        listTasks: () => [
+          {
+            id: 'history-task-1',
+            menuKey: 'workspace',
+            status: '已完成',
+            progress: 100,
+            createdAt: '2026-06-12 13:00:00'
+          }
+        ]
+      },
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const cleared = await service.clearRuntimeState()
+    const snapshot = service.getSnapshot()
+
+    expect(cleared.cleared).toBe(true)
+    expect(snapshot.formDrafts.workspace.productName).toBe('')
+    expect(snapshot.formDrafts.workspace.titleQuantity).toBe(3)
+    expect(snapshot.formDrafts['series-generate'].taskName).toBe('')
+    expect(snapshot.formDrafts['series-generate'].sourceImage).toBe(null)
+    expect(snapshot.resultsByMenu.workspace.textResults).toEqual([])
+    expect(snapshot.exportItemsByMenu.workspace).toEqual([])
+    expect(snapshot.tasks).toHaveLength(1)
+    expect(snapshot.tasks[0].id).toBe('history-task-1')
+  })
+
+  it('exposes agent-readiness queue and execution-log snapshots without affecting current workspace flow', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    store.set(STUDIO_WORKSPACE_KEY, {
+      tasks: [
         {
-          id: 'metric-1',
-          createdAt: '2026-04-30T10:10:00.000Z',
-          method: 'POST',
-          requestPath: '/v1/draw/result',
-          elapsedMs: 820,
-          requestStatus: 'success'
+          id: 'task-log-1',
+          taskNumber: 'TASK-001',
+          menuKey: 'workspace',
+          title: '工作台项目任务',
+          status: '已完成',
+          progress: 100,
+          createdAt: '2026-06-15 10:00:00',
+          outputDirectory: 'F:/output/workspace/task-log-1'
         },
         {
-          id: 'metric-2',
-          createdAt: '2026-04-30T10:11:00.000Z',
-          method: 'POST',
-          requestPath: '/v1/draw/completions',
-          elapsedMs: 1260,
-          requestStatus: 'failed'
+          id: 'task-log-2',
+          taskNumber: 'TASK-002',
+          menuKey: 'series-generate',
+          title: '套图任务',
+          status: '等待中',
+          progress: 0,
+          createdAt: '2026-06-15 10:05:00',
+          outputDirectory: 'F:/output/series/task-log-2'
         }
       ]
     })
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService)
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      ...createEmptyOutputScanDependencies()
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
     })
 
     const snapshot = service.getSnapshot()
 
-    expect(snapshot.workspaceDashboard.networkMonitor.title).toBe('网络监控')
-    expect(snapshot.workspaceDashboard.networkMonitor.items).toHaveLength(2)
-    expect(snapshot.workspaceDashboard.networkMonitor.items[0]).toMatchObject({
-      id: 'metric-2',
-      method: 'POST',
-      requestPath: '/v1/draw/completions',
-      elapsedMs: 1260,
-      status: 'failed'
+    expect(snapshot.agentReadiness.queue).toMatchObject({
+      queuedCount: 0,
+      runningCount: 0,
+      isProcessing: false,
+      queuedTaskIds: [],
+      activeTaskIds: []
     })
-    expect(snapshot.workspaceDashboard.networkMonitor.summary).toEqual({
-      averageLatencyMs: 1040,
-      latestLatencyMs: 1260,
-      successRate: '50%'
+    expect(snapshot.agentReadiness.executionLog).toHaveLength(2)
+    expect(snapshot.agentReadiness.executionLog[0]).toMatchObject({
+      taskId: 'task-log-2',
+      taskNumber: 'TASK-002',
+      menuKey: 'series-generate',
+      title: '套图任务',
+      status: '等待中'
     })
+    expect(snapshot.tasks).toHaveLength(2)
   })
 
-  it('freezes credits on task submit and settles them after success', async () => {
+  it('exports a project bundle with text files and generated assets', async () => {
     const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
 
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 5000
-      }
-    }, {
-      getNow: () => '2026-04-29T08:00:00.000Z'
-    })
+    const imageDirectory = await fs.mkdtemp(path.join(outputRootDirectory, 'images-'))
+    const videoDirectory = await fs.mkdtemp(path.join(outputRootDirectory, 'video-'))
+    const imagePath = path.resolve(imageDirectory, 'result-1.png')
+    const videoPath = path.resolve(videoDirectory, 'result-1.mp4')
+    await fs.writeFile(imagePath, 'image-content')
+    await fs.writeFile(videoPath, 'video-content')
 
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId, draft }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-design-1`,
-            model: draft.model,
-            title: '单图设计结果',
-            preview: createPreviewDataUrl('credit-success')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '积分结算测试'
-        }
-      }),
-      createId: () => 'credit-success-task-1',
-      createTaskNumber: () => 'QAI-20260429-0001',
-      getNow: () => '2026-04-29T08:10:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'CreditSuccess',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    const createdTask = await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(createdTask.estimatedCredits).toBe(600)
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 600,
-      usedCredits: 0
-    })
-
-    await service.waitForIdle()
-
-    const settledCreditState = settingsService.getSettings().creditState
-    const snapshot = service.getSnapshot()
-
-    expect(settledCreditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 0,
-      usedCredits: 600
-    })
-    expect(settledCreditState.taskLedger['credit-success-task-1']).toMatchObject({
-      status: 'settled',
-      estimatedCredits: 600
-    })
-    expect(settledCreditState.activityHistory.slice(0, 2).map((item) => item.type)).toEqual([
-      'task_settle',
-      'task_freeze'
-    ])
-    expect(snapshot.workspaceDashboard.creditOverview.title).toBe('积分仪表盘')
-    expect(snapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '剩余积分')?.value).toBe('0')
-    expect(snapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '总积分')?.value).toBe('0')
-    expect(snapshot.workspaceDashboard.creditMessages.title).toBe('本地任务积分记录')
-    expect(snapshot.workspaceDashboard.creditMessages.helperText).toBe('（本栏为本地模拟记账，真实数据以仪表盘为准）')
-    expect(snapshot.workspaceDashboard.creditMessages.items[0]).toMatchObject({
-      type: 'task_settle',
-      taskNumber: 'QAI-20260429-0001'
-    })
-  })
-
-  it('refunds frozen credits when a queued task fails', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 5000
-      }
-    }, {
-      getNow: () => '2026-04-29T08:20:00.000Z'
-    })
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async () => {
-        throw new Error('远程接口异常')
-      },
-      createId: () => 'credit-failed-task-1',
-      createTaskNumber: () => 'QAI-20260429-0002',
-      getNow: () => '2026-04-29T08:30:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'CreditFailed',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 600,
-      usedCredits: 0
-    })
-
-    await service.waitForIdle()
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 5000,
-      frozenCredits: 0,
-      usedCredits: 0
-    })
-    expect(settingsService.getSettings().creditState.taskLedger['credit-failed-task-1']).toMatchObject({
-      status: 'refunded',
-      estimatedCredits: 600
-    })
-    expect(settingsService.getSettings().creditState.activityHistory.slice(0, 2).map((item) => item.type)).toEqual([
-      'task_refund',
-      'task_freeze'
-    ])
-  })
-
-  it('manually stops waiting and running tasks, refunds credits, and releases the queue', async () => {
-    const store = createMemoryStore()
-    let releaseRunningTask
-    const runningTaskPromise = new Promise((resolve) => {
-      releaseRunningTask = resolve
-    })
-    const createdIds = ['manual-stop-running', 'manual-stop-waiting']
-    const createdTaskNumbers = ['QAI-20260501-0001', 'QAI-20260501-0002']
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 5000
-      }
-    }, {
-      getNow: () => '2026-05-01T08:00:00.000Z'
-    })
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: vi.fn(async ({ taskId }) => {
-        if (taskId === 'manual-stop-running') {
-          await runningTaskPromise
-        }
-
-        return {
-          textResults: [],
-          comparisonResults: [
-            {
-              id: `${taskId}-single-design-1`,
-              model: 'gpt-image-2',
-              title: '单图设计结果',
-              preview: createPreviewDataUrl(taskId)
+    store.set(STUDIO_WORKSPACE_KEY, {
+      productProjects: [
+        {
+          id: 'project-export-1',
+          name: '露营灯项目',
+          status: 'ready',
+          platformTarget: ['temu'],
+          baseInfo: {
+            productName: '露营灯',
+            language: 'zh-CN'
+          },
+          assets: {
+            sourceImages: [],
+            generatedImages: [
+              {
+                savedPath: imagePath
+              }
+            ],
+            generatedVideo: {
+              savedPath: videoPath
             }
-          ],
-          groupedResults: [],
-          summary: {
-            title: '单图设计',
-            description: '手动结束任务测试'
+          },
+          content: {
+            selectedTitle: '露营灯标题',
+            selectedDescription: '露营灯描述'
           }
         }
-      }),
-      createId: () => createdIds.shift(),
-      createTaskNumber: () => createdTaskNumbers.shift(),
-      getNow: () => '2026-05-01T08:10:00.000Z'
+      ],
+      activeProductProjectId: 'project-export-1'
     })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'RunningTask',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    const runningTask = await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    await Promise.resolve()
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'WaitingTask',
-        prompt: '生成另一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    const waitingTask = await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 3800,
-      frozenCredits: 1200,
-      usedCredits: 0
-    })
-
-    await service.stopTask({
-      taskId: waitingTask.id
-    })
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 600,
-      usedCredits: 0
-    })
-
-    await service.stopTask({
-      taskId: runningTask.id
-    })
-
-    await service.waitForIdle()
-
-    const snapshot = service.getSnapshot()
-    const stoppedTasks = snapshot.tasks.filter((task) => {
-      return task.id === runningTask.id || task.id === waitingTask.id
-    })
-
-    expect(stoppedTasks).toHaveLength(2)
-    expect(stoppedTasks.every((task) => task.status === '失败')).toBe(true)
-    expect(stoppedTasks.every((task) => task.error === '用户手动结束任务')).toBe(true)
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 5000,
-      frozenCredits: 0,
-      usedCredits: 0
-    })
-    expect(settingsService.getSettings().creditState.taskLedger['manual-stop-running']).toMatchObject({
-      status: 'refunded'
-    })
-    expect(settingsService.getSettings().creditState.taskLedger['manual-stop-waiting']).toMatchObject({
-      status: 'refunded'
-    })
-
-    releaseRunningTask()
-  })
-
-  it('uses realtime api key credits in the dashboard when the main-process query succeeds', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-realtime-balance',
-      password: 'qiuai@123'
-    })
-    await settingsService.saveSettings({
-      creditState: {
-        totalPurchasedCredits: 8000,
-        remainingCredits: 3200,
-        frozenCredits: 400,
-        usedCredits: 600
-      }
-    })
-
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn().mockResolvedValue({
-        remainingCredits: 16888,
-        lastSyncedAt: '2026-05-11T08:00:00.000Z',
-        syncStatus: 'success'
-      })
-    }
-
+    let exportedTitleText = ''
+    let exportedDescriptionText = ''
+    let exportedImages = []
+    let exportedProjectFiles = []
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const snapshot = await service.getDisplaySnapshot()
-
-    expect(apiKeyCreditService.getRealtimeCredits).toHaveBeenCalledTimes(1)
-    expect(snapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '剩余积分')?.value).toBe('16888')
-    expect(snapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '冻结积分')?.value).toBe('400')
-    expect(snapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '总积分')?.value).toBe('0')
-    expect(snapshot.settingsSummary.creditState.remainingCredits).toBe(3200)
-  })
-
-  it('keeps the last successful realtime credits when a later query fails', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-realtime-balance',
-      password: 'qiuai@123'
-    })
-    await settingsService.saveSettings({
-      creditState: {
-        totalPurchasedCredits: 8000,
-        remainingCredits: 3200,
-        frozenCredits: 0,
-        usedCredits: 600
-      }
-    })
-
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn()
-        .mockResolvedValueOnce({
-          remainingCredits: 9527,
-          lastSyncedAt: '2026-05-11T08:00:00.000Z',
-          syncStatus: 'success'
-        })
-        .mockResolvedValueOnce({
-          remainingCredits: 9527,
-          lastSyncedAt: '2026-05-11T08:00:00.000Z',
-          syncStatus: 'stale'
-        })
-    }
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const firstSnapshot = await service.getDisplaySnapshot()
-    const secondSnapshot = await service.getDisplaySnapshot()
-
-    expect(firstSnapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '剩余积分')?.value).toBe('9527')
-    expect(secondSnapshot.workspaceDashboard.creditOverview.items.find((item) => item.label === '剩余积分')?.value).toBe('9527')
-    expect(apiKeyCreditService.getRealtimeCredits).toHaveBeenCalledTimes(2)
-  })
-
-  it('refreshes dashboard total credits from the realtime balance and clamps remaining credits when needed', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-realtime-total',
-      password: 'qiuai@123'
-    })
-    await settingsService.saveSettings({
-      dashboardCreditState: {
-        totalCredits: 9000,
-        remainingCredits: 7000
-      }
-    })
-
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn().mockResolvedValue({
-        remainingCredits: 4800,
-        lastSyncedAt: '2026-05-11T09:00:00.000Z',
-        syncStatus: 'success'
-      })
-    }
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const refreshResult = await service.refreshDashboardCredits({
-      target: 'total'
-    })
-
-    expect(refreshResult).toMatchObject({
-      totalCredits: 4800,
-      remainingCredits: 4800
-    })
-    expect(settingsService.getSettings().dashboardCreditState).toMatchObject({
-      totalCredits: 4800,
-      remainingCredits: 4800
-    })
-  })
-
-  it('refreshes dashboard remaining credits from the realtime balance without changing total credits', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-realtime-remaining',
-      password: 'qiuai@123'
-    })
-    await settingsService.saveSettings({
-      dashboardCreditState: {
-        totalCredits: 12000,
-        remainingCredits: 9000
-      }
-    })
-
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn().mockResolvedValue({
-        remainingCredits: 8200,
-        lastSyncedAt: '2026-05-11T09:10:00.000Z',
-        syncStatus: 'success'
-      })
-    }
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const refreshResult = await service.refreshDashboardCredits({
-      target: 'remaining'
-    })
-
-    expect(refreshResult).toMatchObject({
-      totalCredits: 12000,
-      remainingCredits: 8200
-    })
-    expect(settingsService.getSettings().dashboardCreditState).toMatchObject({
-      totalCredits: 12000,
-      remainingCredits: 8200
-    })
-  })
-
-  it('uses realtime remaining credits for task submission when dashboard credits were refreshed but local ledger is still empty', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-submit-realtime',
-      password: 'qiuai@123'
-    })
-    await settingsService.saveSettings({
-      dashboardCreditState: {
-        totalCredits: 0,
-        remainingCredits: 0
-      }
-    })
-
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn()
-        .mockResolvedValueOnce({
-          remainingCredits: 3600,
-          lastSyncedAt: '2026-05-11T09:20:00.000Z',
-          syncStatus: 'success'
-        })
-        .mockResolvedValueOnce({
-          remainingCredits: 3600,
-          lastSyncedAt: '2026-05-11T09:20:30.000Z',
-          syncStatus: 'success'
-        })
-    }
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: async ({ taskId, draft }) => ({
-        textResults: [],
-        comparisonResults: [
-          {
-            id: `${taskId}-single-design-1`,
-            model: draft.model,
-            title: '实时积分提交结果',
-            preview: createPreviewDataUrl('credit-submit-realtime')
-          }
-        ],
-        groupedResults: [],
-        summary: {
-          title: '单图设计',
-          description: '实时积分提交'
+      outputRootDirectory,
+      exportTaskDirectory: async ({ sourceDirectory, targetZipPath }) => {
+        exportedTitleText = await fs.readFile(path.resolve(sourceDirectory, 'title.txt'), 'utf8')
+        exportedDescriptionText = await fs.readFile(path.resolve(sourceDirectory, 'description.txt'), 'utf8')
+        exportedImages = await fs.readdir(path.resolve(sourceDirectory, 'images'))
+        exportedProjectFiles = await fs.readdir(sourceDirectory)
+        return {
+          targetZipPath
         }
-      }),
-      createId: () => 'credit-submit-realtime-task-1',
-      createTaskNumber: () => 'QAI-20260511-0001',
-      getNow: () => '2026-05-11T09:21:00.000Z'
-    })
-
-    await service.refreshDashboardCredits({
-      target: 'remaining'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'RealtimeCreditSubmit',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
       }
     })
 
-    const createdTask = await service.createTask({
-      menuKey: 'single-design'
+    const result = await service.exportProjectBundle({
+      projectId: 'project-export-1',
+      targetZipPath: path.resolve(outputRootDirectory, 'bundle.zip')
     })
 
-    expect(createdTask.estimatedCredits).toBe(600)
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 3000,
-      frozenCredits: 600,
-      usedCredits: 0
-    })
-    expect(settingsService.getSettings().dashboardCreditState).toMatchObject({
-      totalCredits: 0,
-      remainingCredits: 3600
-    })
-  })
-
-  it('keeps frozen credits deducted across consecutive task submissions when realtime balance stays unchanged', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveAdminApiKey({
-      apiKey: 'sk-submit-realtime-repeat',
-      password: 'qiuai@123'
+    expect(result).toMatchObject({
+      canceled: false,
+      projectId: 'project-export-1',
+      targetZipPath: path.resolve(outputRootDirectory, 'bundle.zip')
     })
 
-    const apiKeyCreditService = {
-      getRealtimeCredits: vi.fn()
-        .mockResolvedValue({
-          remainingCredits: 3600,
-          lastSyncedAt: '2026-05-11T09:30:00.000Z',
-          syncStatus: 'success'
-        })
-    }
-
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      apiKeyCreditService,
-      ...createEmptyOutputScanDependencies(),
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined,
-      generateImageResults: () => new Promise(() => {}),
-      createId: (() => {
-        let sequence = 0
-        return () => {
-          sequence += 1
-          return `credit-submit-repeat-task-${sequence}`
-        }
-      })(),
-      createTaskNumber: (() => {
-        let sequence = 0
-        return () => {
-          sequence += 1
-          return `QAI-20260511-${String(sequence).padStart(4, '0')}`
-        }
-      })(),
-      getNow: () => '2026-05-11T09:31:00.000Z'
-    })
-
-    await service.saveDraft({
-      menuKey: 'single-design',
-      patch: {
-        taskName: 'RealtimeCreditRepeat',
-        prompt: '生成一张高质量商品主图',
-        model: 'gpt-image-2'
-      }
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 3000,
-      frozenCredits: 600,
-      usedCredits: 0
-    })
-
-    await service.createTask({
-      menuKey: 'single-design'
-    })
-
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 2400,
-      frozenCredits: 1200,
-      usedCredits: 0
-    })
+    expect(exportedTitleText).toContain('露营灯标题')
+    expect(exportedDescriptionText).toContain('露营灯描述')
+    expect(exportedImages).toHaveLength(1)
+    expect(exportedProjectFiles.some((item) => item.endsWith('.mp4'))).toBe(true)
   })
 })

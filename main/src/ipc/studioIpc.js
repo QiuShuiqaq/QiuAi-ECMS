@@ -12,6 +12,19 @@ async function openOutputDirectory ({ outputDirectory = '' } = {}) {
   return shell.openPath(outputDirectory)
 }
 
+async function openExternalResource ({ target = '' } = {}) {
+  const normalizedTarget = String(target || '').trim()
+  if (!normalizedTarget) {
+    throw new Error('Resource target is required.')
+  }
+
+  if (/^https?:\/\//i.test(normalizedTarget)) {
+    return shell.openExternal(normalizedTarget)
+  }
+
+  return shell.openPath(normalizedTarget)
+}
+
 function resolveUploadDefaultPath (settingsService, menuKey = '') {
   const configuredPath = settingsService?.getSettings?.().uploadDirectories?.[menuKey] || ''
   if (configuredPath && fs.existsSync(configuredPath)) {
@@ -24,6 +37,60 @@ function resolveUploadDefaultPath (settingsService, menuKey = '') {
 function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceService, activationGuard }) {
   ipcMain.handle(ipcChannels.STUDIO_GET_SNAPSHOT, async () => {
     return studioWorkspaceService.getDisplaySnapshot()
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_GET_RUNTIME_SNAPSHOT, async () => {
+    return studioWorkspaceService.getRuntimeSnapshot()
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_CREATE_PROJECT, async (_event, payload = {}) => {
+    await activationGuard?.assertActivated?.()
+    return studioWorkspaceService.createProject(payload)
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_CREATE_PROJECTS_FROM_ASSETS, async (_event, payload = {}) => {
+    await activationGuard?.assertActivated?.()
+    return studioWorkspaceService.createProjectsFromAssets(payload)
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_UPDATE_PROJECT, async (_event, payload = {}) => {
+    return studioWorkspaceService.updateProject(payload)
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_DELETE_PROJECT, async (_event, payload = {}) => {
+    return studioWorkspaceService.deleteProject(payload)
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_EXPORT_PROJECT_BUNDLE, async (_event, payload = {}) => {
+    const snapshot = studioWorkspaceService.getSnapshot()
+    const project = (snapshot.productProjects || []).find((item) => item.id === payload.projectId)
+
+    if (!project) {
+      throw new Error('未找到可导出的商品项目')
+    }
+
+    const archiveName = `${project.name || 'product-project'}.zip`
+    const result = await dialog.showSaveDialog({
+      defaultPath: path.resolve(process.cwd(), archiveName),
+      filters: [
+        {
+          name: 'Zip Archive',
+          extensions: ['zip']
+        }
+      ]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return {
+        canceled: true,
+        targetZipPath: ''
+      }
+    }
+
+    return studioWorkspaceService.exportProjectBundle({
+      ...payload,
+      targetZipPath: result.filePath
+    })
   })
 
   ipcMain.handle(ipcChannels.STUDIO_REFRESH_DASHBOARD_CREDITS, async (_event, payload = {}) => {
@@ -63,6 +130,10 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
 
   ipcMain.handle(ipcChannels.STUDIO_OPEN_OUTPUT_DIRECTORY, async (_event, payload = {}) => {
     return openOutputDirectory(payload)
+  })
+
+  ipcMain.handle(ipcChannels.STUDIO_OPEN_EXTERNAL_RESOURCE, async (_event, payload = {}) => {
+    return openExternalResource(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_DELETE_EXPORT_ITEM, async (_event, payload = {}) => {

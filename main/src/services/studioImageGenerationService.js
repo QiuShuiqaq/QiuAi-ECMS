@@ -14,39 +14,85 @@ const REMOTE_RESULT_POLL_INTERVAL_MS = 2500
 const REMOTE_RESULT_TOTAL_TIMEOUT_MS = 30 * 60 * 1000
 const REMOTE_RESULT_STALL_TIMEOUT_MS = 10 * 60 * 1000
 const EMPTY_IMAGE_TYPE_TEMPLATE_ID = 'system-empty-image-type'
-const SERIES_GENERATE_IMAGE_TYPE_OPTIONS = ['商品主图', '详情图', '细节图', '尺寸图', '白底图', '颜色图']
+const SERIES_GENERATE_IMAGE_TYPE_OPTIONS = [
+  '商品主图',
+  '白底图',
+  '详情图',
+  '细节图',
+  '尺寸图',
+  '颜色图',
+  '场景图',
+  '模特图',
+  '换角度',
+  '换场景',
+  '换模特',
+  '全替换'
+]
 const SERIES_GENERATE_IMAGE_TYPE_CONFIG = {
   商品主图: {
     outputLabel: '主图',
-    templateId: 'product-main',
+    templateId: 'image-main',
     instruction: '按商品主图生成：输出产品电商效果图，突出主体展示、卖点呈现与主视觉氛围；禁止偏离商品主体。'
+  },
+  白底图: {
+    outputLabel: '白底图',
+    templateId: 'image-white-bg',
+    instruction: '按白底图生成：输出纯白背景电商图，主体完整清晰、边缘干净；禁止加入场景背景和复杂装饰。'
   },
   详情图: {
     outputLabel: '详情图',
-    templateId: 'product-detail',
+    templateId: 'image-detail',
     instruction: '按详情图生成：输出产品详细说明图，强调卖点信息、使用说明、功能结构或场景说明；禁止仅做主视觉海报。'
   },
   细节图: {
     outputLabel: '细节图',
-    templateId: 'product-closeup',
+    templateId: 'image-closeup',
     instruction: '按细节图生成：输出产品局部放大图，重点展示材质、做工、纹理或关键细节；禁止生成整套场景主视觉。'
   },
   尺寸图: {
     outputLabel: '尺寸图',
-    templateId: 'product-size',
+    templateId: 'image-size',
     instruction: '按尺寸图生成：输出带尺寸标注的说明图，清晰表达长宽高或关键规格；禁止省略尺寸信息。'
-  },
-  白底图: {
-    outputLabel: '白底图',
-    templateId: 'product-whitebg',
-    instruction: '按白底图生成：输出纯白背景电商图，主体完整清晰、边缘干净；禁止加入场景背景和复杂装饰。'
   },
   颜色图: {
     outputLabel: '颜色图',
-    templateId: 'product-color',
+    templateId: 'image-color',
     instruction: '按颜色图生成：输出产品颜色变化效果图，保持产品结构一致，仅突出颜色差异；禁止改变主体款式。'
+  },
+  场景图: {
+    outputLabel: '场景图',
+    templateId: 'image-scene',
+    instruction: '按场景图生成：保持产品主体不变，替换或优化背景场景与使用环境，增强代入感和生活化氛围。'
+  },
+  模特图: {
+    outputLabel: '模特图',
+    templateId: 'image-model',
+    instruction: '按模特图生成：适用于原图没有模特的商品，在保持商品主体不变的前提下补入自然真实的模特展示。'
+  },
+  换角度: {
+    outputLabel: '换角度',
+    templateId: 'image-angle',
+    instruction: '按换角度图生成：保持商品主体不变，只调整拍摄机位和展示角度，不改变商品结构和核心特征。'
+  },
+  换场景: {
+    outputLabel: '换场景',
+    templateId: 'image-change-scene',
+    instruction: '按换场景图生成：保持商品主体不变，只替换背景环境、布景或空间氛围。'
+  },
+  换模特: {
+    outputLabel: '换模特',
+    templateId: 'image-change-model',
+    instruction: '按换模特图生成：适用于原图已有模特的商品，在保持商品主体不变的前提下替换成新的模特。'
+  },
+  全替换: {
+    outputLabel: '全替换',
+    templateId: 'image-replace-all',
+    instruction: '按全替换图生成：在保持商品主体不变的前提下，同时替换拍摄角度、背景场景和模特展示。'
   }
 }
+const SERIES_GENERATE_TYPE_BY_TEMPLATE_ID = Object.fromEntries(
+  Object.entries(SERIES_GENERATE_IMAGE_TYPE_CONFIG).map(([imageType, config]) => [config.templateId, imageType])
+)
 const DEFAULT_CONCURRENCY = 2
 const MAX_RETRY_COUNT = 2
 const ASPECT_RATIO_PRESET_MAP = {
@@ -159,6 +205,49 @@ function resolveBatchPromptValue({
 
   const normalizedBatchPrompts = normalizeDifferentialBatchPrompts(batchPrompts, batchCount)
   return normalizedBatchPrompts[batchIndex] || ''
+}
+
+function normalizeDifferenceLevel(differenceLevel = 'off') {
+  return ['off', 'low', 'medium', 'high'].includes(differenceLevel) ? differenceLevel : 'off'
+}
+
+function buildAutoDifferentialBatchPrompts({
+  differenceLevel = 'off',
+  batchCount = 1,
+  imageType = ''
+} = {}) {
+  const normalizedLevel = normalizeDifferenceLevel(differenceLevel)
+  const normalizedBatchCount = Math.max(1, Number(batchCount) || 1)
+  if (normalizedLevel === 'off') {
+    return Array.from({ length: normalizedBatchCount }, () => '')
+  }
+
+  const lowVariants = [
+    '保持产品主体和图片定位不变，做轻微构图差异，调整留白、摆位、镜头裁切和光线细节，避免重复画面。',
+    '保持主体不变，细调构图、前后景层次、道具摆放和光感，做出轻微差异，避免重复。',
+    '保持主体不变，微调角度、阴影、景深和局部细节层次，生成相似但不重复的版本。'
+  ]
+  const mediumVariants = [
+    '保持产品主体和图片定位不变，做明显差异化处理，调整构图、镜头角度、光线氛围和场景细节，但不要改变商品本身。',
+    '保持商品不变，在同一图片定位下更换更明显的构图节奏、背景细节和展示重点，避免与其他结果重复。',
+    '保持主体稳定，做中等强度差异化，调整拍摄距离、光影方向、道具关系和视觉重心。'
+  ]
+  const highVariants = [
+    '保持产品主体和当前图片定位不变，做高强度差异化，明显调整构图、镜头语言、场景细节和氛围表达，但不得改变商品款式与核心特征。',
+    '在不改变商品主体的前提下，为当前图片定位生成差异明显的新版本，重点改变布局、视角、背景细节和视觉节奏，避免重复。',
+    '保持主体不变，生成变化更大的同定位版本，允许更明显的角度、景别、环境和氛围差异，但不能偏离商品展示目标。'
+  ]
+  const variantMap = {
+    low: lowVariants,
+    medium: mediumVariants,
+    high: highVariants
+  }
+  const variantPool = variantMap[normalizedLevel] || lowVariants
+
+  return Array.from({ length: normalizedBatchCount }, (_unused, index) => {
+    const variant = variantPool[index % variantPool.length]
+    return `第 ${index + 1} 套${imageType ? ` ${imageType}` : ''}请与其他结果保持差异化。${variant}`
+  })
 }
 
 function normalizeSingleImageModels(compareModels = []) {
@@ -302,18 +391,25 @@ function normalizeSeriesGeneratePromptAssignments(promptAssignments = [], genera
 
   return Array.from({ length: normalizedGenerateCount }, (_unused, index) => {
     const currentAssignment = sourceAssignments[index] || {}
+    const templateId = String(currentAssignment.templateId || '').trim()
+    const inferredImageType = SERIES_GENERATE_TYPE_BY_TEMPLATE_ID[templateId] || ''
     const normalizedImageType = SERIES_GENERATE_IMAGE_TYPE_OPTIONS.includes(currentAssignment.imageType)
       ? currentAssignment.imageType
-      : ''
+      : inferredImageType
 
     return {
       id: currentAssignment.id || `series-generate-${index + 1}`,
       index: index + 1,
       prompt: String(currentAssignment.prompt || '').trim(),
-      templateId: String(currentAssignment.templateId || ''),
+      templateId: String(currentAssignment.templateId || SERIES_GENERATE_IMAGE_TYPE_CONFIG[normalizedImageType]?.templateId || ''),
       imageType: normalizedImageType,
-      differentialEnabled: currentAssignment.differentialEnabled === true,
-      batchPrompts: normalizeDifferentialBatchPrompts(currentAssignment.batchPrompts, batchCount)
+      differenceLevel: normalizeDifferenceLevel(currentAssignment.differenceLevel),
+      differentialEnabled: normalizeDifferenceLevel(currentAssignment.differenceLevel) !== 'off',
+      batchPrompts: buildAutoDifferentialBatchPrompts({
+        differenceLevel: currentAssignment.differenceLevel,
+        batchCount,
+        imageType: normalizedImageType
+      })
     }
   })
 }
@@ -522,29 +618,17 @@ function validateStudioImageTask({ menuKey, draft }) {
       throw new Error('套图生成需要先上传一张参考图')
     }
 
-    if (!String(draft.globalPrompt || '').trim()) {
-      throw new Error('套图生成需要填写全局风格提示词')
-    }
-
-    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, draft.batchCount)
-    if (promptAssignments.some((item) => {
-      if (item.differentialEnabled === true) {
-        return item.batchPrompts.some((prompt) => !String(prompt || '').trim())
+    if (Array.isArray(draft.promptAssignments) && draft.promptAssignments.length) {
+      const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, draft.batchCount)
+      if (promptAssignments.some((item) => !item.prompt)) {
+        throw new Error('套图生成需要为每一张图片填写提示词')
       }
 
-      return !item.prompt
-    })) {
-      throw new Error('套图生成需要为每一张图片填写单独提示词')
+      return
     }
 
-    if (promptAssignments.some((item) => {
-      if (item.templateId === EMPTY_IMAGE_TYPE_TEMPLATE_ID && !String(item.imageType || '').trim()) {
-        return false
-      }
-
-      return !item.imageType
-    })) {
-      throw new Error('套图生成需要为每一张图片选择图片类型')
+    if (!String(draft.prompt || '').trim()) {
+      throw new Error('套图生成需要填写提示词')
     }
   }
 }
@@ -921,8 +1005,16 @@ function createStudioImageGenerationService({
 
   async function generateSeriesGenerateResults({ draft, taskId, outputDirectory, onProgress }) {
     const batchCount = Math.max(1, Number(draft.batchCount) || 1)
-    const promptAssignments = normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, batchCount)
-    const outputDescriptors = buildSeriesGenerateOutputDescriptors(promptAssignments)
+    const normalizedAssignments = Array.isArray(draft.promptAssignments) && draft.promptAssignments.length
+      ? normalizeSeriesGeneratePromptAssignments(draft.promptAssignments, draft.generateCount, batchCount)
+      : Array.from({ length: Math.max(1, Number(draft.generateCount) || 1) }, (_unused, index) => ({
+          id: `${taskId}-series-generate-${index + 1}`,
+          index: index + 1,
+          prompt: String(draft.prompt || '').trim(),
+          templateId: String(draft.imageTemplateId || ''),
+          imageType: String(draft.imageType || '').trim()
+        }))
+    const outputDescriptors = buildSeriesGenerateOutputDescriptors(normalizedAssignments)
     const generateCount = outputDescriptors.length
     const totalImageCount = batchCount * generateCount
     const progressReporter = createAggregateProgressReporter({
@@ -965,18 +1057,7 @@ function createStudioImageGenerationService({
           return async () => {
             const subtaskIndex = (batchIndex * generateCount) + outputIndex
             try {
-              const batchPrompt = resolveBatchPromptValue({
-                differentialEnabled: promptAssignment.differentialEnabled,
-                batchPrompts: promptAssignment.batchPrompts,
-                fallbackPrompt: promptAssignment.composedPrompt,
-                batchIndex,
-                batchCount
-              })
-              const promptFinal = composeStructuredPrompt({
-                dedicatedPrompt: batchPrompt,
-                globalPrompt: draft.globalPrompt,
-                negativePrompt: draft.negativePrompt
-              })
+              const promptFinal = promptAssignment.composedPrompt
               const completedResult = await executeRemoteImageTask({
                 jobLabel: `series-generate-${batchIndex + 1}-${outputIndex + 1}`,
                 model: draft.model,
@@ -1024,7 +1105,7 @@ function createStudioImageGenerationService({
         id: `${taskId}-series-generate-group-${batchIndex + 1}`,
         groupType: 'batch',
         groupTitle: `第 ${batchIndex + 1} 组`,
-        promptSummary: draft.globalPrompt || '',
+        promptSummary: draft.prompt || outputDescriptors[0]?.composedPrompt || '',
         notes: '',
         status: failedCount > 0 ? (completedCount > 0 ? 'partial' : 'failed') : 'succeeded',
         completedCount,

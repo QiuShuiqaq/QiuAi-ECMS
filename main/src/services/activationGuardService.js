@@ -1,12 +1,18 @@
-function createActivationGuardService({ licenseService }) {
+function createActivationGuardService({ authorizationService, licenseService }) {
+  const statusService = authorizationService || licenseService
+
+  if (!statusService || typeof statusService.getActivationStatus !== 'function') {
+    throw new Error('authorizationService or licenseService is required.')
+  }
+
   async function getActivationStatus() {
-    return licenseService.getActivationStatus()
+    return statusService.getActivationStatus()
   }
 
   async function assertActivated() {
     const activationStatus = await getActivationStatus()
-    if (activationStatus.status !== 'activated') {
-      throw new Error(activationStatus.message || '未检测到授权文件')
+    if (!activationStatus.canUseApp && activationStatus.status !== 'activated') {
+      throw new Error(activationStatus.message || '未检测到有效授权')
     }
 
     return activationStatus

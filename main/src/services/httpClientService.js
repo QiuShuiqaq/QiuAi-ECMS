@@ -91,6 +91,57 @@ function createHttpClientService ({
 
         throw error
       }
+    },
+    async get (requestPath, params) {
+      const startedAt = getNowMs()
+
+      try {
+        const response = await client.get(requestPath, {
+          params
+        })
+        const elapsedMs = Math.max(0, getNowMs() - startedAt)
+
+        await safeRecordMessage(messageRecorder, {
+          kind: 'api',
+          method: 'GET',
+          apiBaseUrl,
+          requestPath,
+          requestPayload: params,
+          responseData: response.data,
+          elapsedMs,
+          requestStatus: 'success'
+        })
+        await safeRecordRequestMetric(requestMetricRecorder, {
+          method: 'GET',
+          requestPath,
+          elapsedMs,
+          requestStatus: 'success'
+        })
+
+        return response
+      } catch (error) {
+        const elapsedMs = Math.max(0, getNowMs() - startedAt)
+
+        await safeRecordMessage(messageRecorder, {
+          kind: 'api',
+          method: 'GET',
+          apiBaseUrl,
+          requestPath,
+          requestPayload: params,
+          responseData: error.response ? error.response.data : null,
+          errorMessage: error.message,
+          elapsedMs,
+          requestStatus: 'failed'
+        })
+        await safeRecordRequestMetric(requestMetricRecorder, {
+          method: 'GET',
+          requestPath,
+          elapsedMs,
+          requestStatus: 'failed'
+        })
+
+        throw error
+      }
     }
   }
 }

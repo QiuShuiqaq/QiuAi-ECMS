@@ -10,8 +10,8 @@ function registerSettingsIpc ({ settingsService }) {
     return settingsService.saveSettings(payload)
   })
 
-  ipcMain.handle(ipcChannels.SETTINGS_SAVE_ADMIN_API_KEY, async (_event, payload = {}) => {
-    return settingsService.saveAdminApiKey(payload)
+  ipcMain.handle(ipcChannels.SETTINGS_SAVE_PROVIDER_API_KEYS, async (_event, payload = {}) => {
+    return settingsService.saveProviderApiKeys(payload)
   })
 }
 
