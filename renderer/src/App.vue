@@ -5,6 +5,7 @@ import ActivationGate from './components/ActivationGate.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import PromptLibraryPanel from './components/PromptLibraryPanel.vue'
 import ProductWorkbench from './components/ProductWorkbench.vue'
+import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
 import DataCenterPage from './components/DataCenterPage.vue'
 import ProductTemplateDemoPage from './components/ProductTemplateDemoPage.vue'
 import ModelConfigPage from './components/ModelConfigPage.vue'
@@ -12,20 +13,25 @@ import GeneratorStudioPage from './components/GeneratorStudioPage.vue'
 import {
   activateRemoteLicense,
   clearStudioRuntimeState,
-  createProjectsFromAssets,
+  createComputePackageOrder,
   createRechargeOrder,
+  createSoftwareOrder,
   createStudioProject,
   createStudioTask,
   deleteStudioProject,
   exportStudioResults,
   exportStudioProjectBundle,
   getActivationStatus,
+  getComputePackageOrder,
   getRechargeOrder,
   getSettings,
+  getSoftwareOrder,
   getStudioRuntimeSnapshot,
   getStudioSnapshot,
   importLicenseFile,
+  listComputePackages,
   listPromptTemplates,
+  listSoftwarePackages,
   openOutputDirectory,
   openExternalResource,
   pickStudioInputAssets,
@@ -40,6 +46,7 @@ const themeOptions = [{ label: '深色', value: 'dark' }]
 
 const menuItems = [
   { key: 'workspace', label: '工作台', section: '项目' },
+  { key: 'purchase-center', label: '购买中心', section: '项目' },
   { key: 'data-center', label: '数据中心', section: '项目' },
   { key: 'product-template', label: '商品模板', section: '项目' },
   { key: 'title-generator', label: '标题生成', section: '生成' },
@@ -94,11 +101,20 @@ const modelConfigFeedback = ref('')
 const rechargeDialogVisible = ref(false)
 const isRechargeSubmitting = ref(false)
 const isRechargeRefreshing = ref(false)
+const isCatalogLoading = ref(false)
+const isSoftwareOrderSubmitting = ref(false)
+const isSoftwareOrderRefreshing = ref(false)
+const isComputePackageOrderSubmitting = ref(false)
+const isComputePackageOrderRefreshing = ref(false)
 const currentRechargeOrder = ref(null)
+const currentSoftwareOrder = ref(null)
+const currentComputePackageOrder = ref(null)
+const softwarePackages = ref([])
+const computePackages = ref([])
 const rechargeForm = reactive({
   walletType: 'image',
   channel: 'alipay',
-  amountCny: '100',
+  amountCny: '0.01',
   couponCode: ''
 })
 const actionNotice = reactive({
@@ -110,6 +126,9 @@ const actionNotice = reactive({
 const runtimePollingIntervalMs = 1500
 let runtimePollingTimer = null
 let runtimePollingInFlight = false
+let rechargeStatusPollingTimer = null
+let softwareOrderPollingTimer = null
+let computePackageOrderPollingTimer = null
 
 const currentDraft = computed(() => {
   return formDrafts.value[activeMenu.value] || {}
@@ -147,6 +166,10 @@ const activationSummary = computed(() => {
 })
 
 const isActivated = computed(() => activationState.value.status === 'activated')
+
+const walletSummary = computed(() => {
+  return activationState.value.walletSummary || null
+})
 
 const rechargeStatusLabel = computed(() => {
   const status = currentRechargeOrder.value?.status || ''
@@ -388,8 +411,29 @@ async function loadSettingsState() {
 async function loadActivatedWorkspace() {
   await Promise.all([
     loadStudioSnapshot(),
-    loadPromptTemplateState()
+    loadPromptTemplateState(),
+    loadPurchaseCenterCatalog()
   ])
+}
+
+async function loadPurchaseCenterCatalog() {
+  if (!isActivated.value) {
+    softwarePackages.value = []
+    computePackages.value = []
+    return
+  }
+
+  isCatalogLoading.value = true
+  try {
+    const [softwareRows, computeRows] = await Promise.all([
+      listSoftwarePackages(),
+      listComputePackages()
+    ])
+    softwarePackages.value = Array.isArray(softwareRows) ? softwareRows : []
+    computePackages.value = Array.isArray(computeRows) ? computeRows : []
+  } finally {
+    isCatalogLoading.value = false
+  }
 }
 
 function handleThemeChange(value) {
@@ -520,12 +564,6 @@ async function handleDraftUpdate({ field, value }) {
   })
 }
 
-async function handleWorkbenchDraftUpdate(payload) {
-  await persistDraft('workspace', {
-    [payload.field]: payload.value
-  })
-}
-
 async function handleCreateProject() {
   try {
     const createdProject = await createStudioProject({
@@ -547,32 +585,6 @@ async function handleCreateProject() {
       type: 'error',
       title: '新建失败',
       message: buildErrorMessage(error, '新建项目失败')
-    })
-  }
-}
-
-async function handleBatchUpload() {
-  try {
-    const result = await pickStudioInputAssets({
-      menuKey: 'workspace',
-      allowMultiple: true
-    })
-
-    if (result.canceled || !result.files?.length) {
-      return
-    }
-
-    await createProjectsFromAssets({
-      files: result.files,
-      platform: 'temu',
-      language: 'zh-CN'
-    })
-    await loadStudioSnapshot()
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '上传失败',
-      message: buildErrorMessage(error, '上传样图失败')
     })
   }
 }
@@ -729,76 +741,6 @@ async function handleRunProject(project) {
       type: 'error',
       title: '提交失败',
       message: buildErrorMessage(error, '项目任务提交失败')
-    })
-  } finally {
-    submitButtonState.value = 'idle'
-  }
-}
-
-async function handleRunBatchProjects() {
-  const pendingProjects = (productProjects.value || []).filter((project) => Boolean(project?.id))
-  if (!pendingProjects.length) {
-    return
-  }
-
-  submitButtonState.value = 'pending'
-  try {
-    for (const project of pendingProjects) {
-      const sourceImage = project.assets?.sourceImages?.[0] || null
-      const generationConfig = project.generationConfig || {}
-      await createStudioTask({
-        menuKey: 'workspace',
-        draft: {
-          ...(formDrafts.value.workspace || {}),
-          projectId: project.id,
-          projectName: project.name || project.baseInfo?.productName || '',
-          productName: project.baseInfo?.productName || project.name || '',
-          taskName: project.name || project.baseInfo?.productName || '',
-          brand: project.baseInfo?.brand || '',
-          category: project.baseInfo?.category || '',
-          highlightsText: (project.baseInfo?.highlights || []).join(', '),
-          platformTargetsText: (project.platformTarget || []).join(', '),
-          language: project.baseInfo?.language || 'zh-CN',
-          keywordsText: [formDrafts.value.workspace?.keywordsText || '', ...(project.baseInfo?.keywords || [])]
-            .filter(Boolean)
-            .join(', '),
-          sourceImage,
-          enabledSteps: generationConfig.enabledSteps || undefined,
-          titleMaxChars: generationConfig.titleMaxChars || formDrafts.value.workspace?.titleMaxChars || 60,
-          descriptionMaxChars: generationConfig.descriptionMaxChars || formDrafts.value.workspace?.descriptionMaxChars || 300,
-          titlePrompt: generationConfig.titlePrompt || formDrafts.value.workspace?.titlePrompt || '',
-          descriptionPrompt: generationConfig.descriptionPrompt || formDrafts.value.workspace?.descriptionPrompt || '',
-          imagePrompt: generationConfig.imagePrompt || '',
-          videoPrompt: generationConfig.videoPrompt || '',
-          imageSize: generationConfig.imageSize || '1:1',
-          size: generationConfig.imageSize || '1:1',
-          videoDuration: generationConfig.videoDuration || '6s',
-          duration: generationConfig.videoDuration || '6s',
-          videoResolution: generationConfig.videoResolution || '768P',
-          resolution: generationConfig.videoResolution || '768P',
-          aspectRatio: generationConfig.aspectRatio || '16:9',
-          videoMotionStrength: generationConfig.videoMotionStrength || 'auto',
-          motionStrength: generationConfig.videoMotionStrength || 'auto',
-          titleTemplateId: generationConfig.titleTemplateId || '',
-          descriptionTemplateId: generationConfig.descriptionTemplateId || '',
-          imageTemplateId: generationConfig.imageTemplateId || 'image-default',
-          videoTemplateId: generationConfig.videoTemplateId || 'video-main',
-          model: generationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast'
-        }
-      })
-    }
-
-    await loadStudioSnapshot()
-    showActionFeedback({
-      type: 'success',
-      title: '已提交',
-      message: '批量任务已加入队列'
-    })
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '提交失败',
-      message: buildErrorMessage(error, '批量任务提交失败')
     })
   } finally {
     submitButtonState.value = 'idle'
@@ -1079,6 +1021,7 @@ async function handleCreateRecharge() {
       amountCny: Number(rechargeForm.amountCny),
       couponCode: rechargeForm.couponCode
     })
+    startRechargeStatusPolling()
 
     showActionFeedback({
       type: 'success',
@@ -1108,7 +1051,10 @@ async function handleRefreshRechargeOrder() {
     })
 
     if (currentRechargeOrder.value.status === 'paid') {
-      await loadStudioSnapshot()
+      await Promise.all([
+        loadStudioSnapshot(),
+        loadActivationState()
+      ])
       showActionFeedback({
         type: 'success',
         title: '到账成功',
@@ -1126,6 +1072,234 @@ async function handleRefreshRechargeOrder() {
   }
 }
 
+async function handleCreateSoftwareOrder(productPackageId) {
+  if (!productPackageId) {
+    return
+  }
+
+  isSoftwareOrderSubmitting.value = true
+  try {
+    currentSoftwareOrder.value = await createSoftwareOrder({
+      productPackageId,
+      channel: 'alipay'
+    })
+    startSoftwareOrderPolling()
+
+    showActionFeedback({
+      type: 'success',
+      title: '授权订单已创建',
+      message: '请继续完成支付'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '创建失败',
+      message: buildErrorMessage(error, '授权订单创建失败')
+    })
+  } finally {
+    isSoftwareOrderSubmitting.value = false
+  }
+}
+
+async function handleRefreshSoftwareOrder() {
+  if (!currentSoftwareOrder.value?.id) {
+    return
+  }
+
+  isSoftwareOrderRefreshing.value = true
+  try {
+    currentSoftwareOrder.value = await getSoftwareOrder({
+      id: currentSoftwareOrder.value.id
+    })
+
+    if (currentSoftwareOrder.value?.status === 'paid') {
+      await Promise.all([
+        loadActivationState(),
+        loadStudioSnapshot(),
+        loadPurchaseCenterCatalog()
+      ])
+      showActionFeedback({
+        type: 'success',
+        title: '授权已到账',
+        message: '已同步最新授权状态'
+      })
+    }
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '查询失败',
+      message: buildErrorMessage(error, '授权订单查询失败')
+    })
+  } finally {
+    isSoftwareOrderRefreshing.value = false
+  }
+}
+
+async function handleOpenSoftwareOrderLink() {
+  const payUrl = currentSoftwareOrder.value?.paymentPayload?.mockPayUrl || ''
+  if (!payUrl) {
+    return
+  }
+
+  await navigator.clipboard.writeText(payUrl)
+  await openExternalResource({ target: payUrl })
+  showActionFeedback({
+    type: 'success',
+    title: '已打开支付',
+    message: '授权订单支付链接已在浏览器打开'
+  })
+}
+
+async function handleCreateComputePackageOrder(computePackageId) {
+  if (!computePackageId) {
+    return
+  }
+
+  isComputePackageOrderSubmitting.value = true
+  try {
+    currentComputePackageOrder.value = await createComputePackageOrder({
+      computePackageId,
+      channel: 'alipay'
+    })
+    startComputePackageOrderPolling()
+
+    showActionFeedback({
+      type: 'success',
+      title: '月套餐订单已创建',
+      message: '请继续完成支付'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '创建失败',
+      message: buildErrorMessage(error, '月套餐订单创建失败')
+    })
+  } finally {
+    isComputePackageOrderSubmitting.value = false
+  }
+}
+
+async function handleRefreshComputePackageOrder() {
+  if (!currentComputePackageOrder.value?.id) {
+    return
+  }
+
+  isComputePackageOrderRefreshing.value = true
+  try {
+    currentComputePackageOrder.value = await getComputePackageOrder({
+      id: currentComputePackageOrder.value.id
+    })
+
+    if (currentComputePackageOrder.value?.status === 'paid') {
+      await Promise.all([
+        loadActivationState(),
+        loadStudioSnapshot(),
+        loadPurchaseCenterCatalog()
+      ])
+      showActionFeedback({
+        type: 'success',
+        title: '月套餐已到账',
+        message: '已同步最新算力额度'
+      })
+    }
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '查询失败',
+      message: buildErrorMessage(error, '月套餐订单查询失败')
+    })
+  } finally {
+    isComputePackageOrderRefreshing.value = false
+  }
+}
+
+async function handleOpenComputePackageOrderLink() {
+  const payUrl = currentComputePackageOrder.value?.paymentPayload?.mockPayUrl || ''
+  if (!payUrl) {
+    return
+  }
+
+  await navigator.clipboard.writeText(payUrl)
+  await openExternalResource({ target: payUrl })
+  showActionFeedback({
+    type: 'success',
+    title: '已打开支付',
+    message: '月套餐订单支付链接已在浏览器打开'
+  })
+}
+
+function stopRechargeStatusPolling() {
+  if (rechargeStatusPollingTimer) {
+    clearInterval(rechargeStatusPollingTimer)
+    rechargeStatusPollingTimer = null
+  }
+}
+
+function stopSoftwareOrderPolling() {
+  if (softwareOrderPollingTimer) {
+    clearInterval(softwareOrderPollingTimer)
+    softwareOrderPollingTimer = null
+  }
+}
+
+function stopComputePackageOrderPolling() {
+  if (computePackageOrderPollingTimer) {
+    clearInterval(computePackageOrderPollingTimer)
+    computePackageOrderPollingTimer = null
+  }
+}
+
+function startRechargeStatusPolling() {
+  stopRechargeStatusPolling()
+
+  rechargeStatusPollingTimer = setInterval(() => {
+    if (!currentRechargeOrder.value?.id || isRechargeRefreshing.value) {
+      return
+    }
+
+    if (['paid', 'failed', 'closed'].includes(currentRechargeOrder.value.status)) {
+      stopRechargeStatusPolling()
+      return
+    }
+
+    void handleRefreshRechargeOrder()
+  }, 5000)
+}
+
+function startSoftwareOrderPolling() {
+  stopSoftwareOrderPolling()
+
+  softwareOrderPollingTimer = setInterval(() => {
+    if (!currentSoftwareOrder.value?.id || isSoftwareOrderRefreshing.value) {
+      return
+    }
+
+    if (['paid', 'failed', 'closed'].includes(currentSoftwareOrder.value.status)) {
+      stopSoftwareOrderPolling()
+      return
+    }
+
+    void handleRefreshSoftwareOrder()
+  }, 5000)
+}
+
+function startComputePackageOrderPolling() {
+  stopComputePackageOrderPolling()
+
+  computePackageOrderPollingTimer = setInterval(() => {
+    if (!currentComputePackageOrder.value?.id || isComputePackageOrderRefreshing.value) {
+      return
+    }
+
+    if (['paid', 'failed', 'closed'].includes(currentComputePackageOrder.value.status)) {
+      stopComputePackageOrderPolling()
+      return
+    }
+
+    void handleRefreshComputePackageOrder()
+  }, 5000)
+}
+
 async function handleOpenRechargeLink() {
   const payUrl = currentRechargeOrder.value?.paymentPayload?.mockPayUrl || ''
   if (!payUrl) {
@@ -1133,7 +1307,7 @@ async function handleOpenRechargeLink() {
   }
 
   await navigator.clipboard.writeText(payUrl)
-  window.open(payUrl, '_blank', 'noopener')
+  await openExternalResource({ target: payUrl })
   showActionFeedback({
     type: 'success',
     title: '已打开',
@@ -1166,6 +1340,9 @@ watch(
 
 onUnmounted(() => {
   stopRuntimePolling()
+  stopRechargeStatusPolling()
+  stopSoftwareOrderPolling()
+  stopComputePackageOrderPolling()
 })
 </script>
 
@@ -1235,6 +1412,33 @@ onUnmounted(() => {
         <DataCenterPage
           v-else-if="activeMenu === 'data-center'"
           :workspace-dashboard="workspaceDashboard"
+        />
+
+        <PurchaseCenterPage
+          v-else-if="activeMenu === 'purchase-center'"
+          :activation-state="activationState"
+          :wallet-summary="walletSummary"
+          :software-packages="softwarePackages"
+          :compute-packages="computePackages"
+          :current-software-order="currentSoftwareOrder"
+          :current-compute-package-order="currentComputePackageOrder"
+          :current-recharge-order="currentRechargeOrder"
+          :is-catalog-loading="isCatalogLoading"
+          :is-software-order-submitting="isSoftwareOrderSubmitting"
+          :is-software-order-refreshing="isSoftwareOrderRefreshing"
+          :is-compute-package-order-submitting="isComputePackageOrderSubmitting"
+          :is-compute-package-order-refreshing="isComputePackageOrderRefreshing"
+          :is-recharge-refreshing="isRechargeRefreshing"
+          @refresh-catalog="loadPurchaseCenterCatalog"
+          @create-software-order="handleCreateSoftwareOrder"
+          @refresh-software-order="handleRefreshSoftwareOrder"
+          @open-software-order="handleOpenSoftwareOrderLink"
+          @create-compute-package-order="handleCreateComputePackageOrder"
+          @refresh-compute-package-order="handleRefreshComputePackageOrder"
+          @open-compute-package-order="handleOpenComputePackageOrderLink"
+          @open-recharge="openRechargeDialog"
+          @refresh-recharge-order="handleRefreshRechargeOrder"
+          @open-recharge-order="handleOpenRechargeLink"
         />
 
         <ProductTemplateDemoPage
@@ -1414,7 +1618,7 @@ onUnmounted(() => {
 
           <label class="recharge-modal__field">
             <span>金额</span>
-            <input v-model="rechargeForm.amountCny" type="number" min="1" step="1">
+            <input v-model="rechargeForm.amountCny" type="number" min="0.01" step="0.01">
           </label>
 
           <label class="recharge-modal__field">

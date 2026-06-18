@@ -194,11 +194,6 @@ function getRunVideo(project, latestRun) {
   return latestRun?.outputs?.video || project?.assets?.generatedVideo || null
 }
 
-function resolveRunTimestamp(run) {
-  if (!run?.createdAt) return ''
-  return String(run.createdAt).replace('T', ' ').slice(0, 16)
-}
-
 function resolveTextPreview(value, fallback) {
   const text = String(value || '').trim()
   return text || fallback

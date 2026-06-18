@@ -53,21 +53,8 @@ const imageModelOptions = [
   { label: 'nano-banana-2', value: 'nano-banana-2' }
 ]
 
-const textModelOptions = [
-  { label: 'deepseek-v4-flash', value: 'deepseek-v4-flash' },
-  { label: 'deepseek-v4-pro', value: 'deepseek-v4-pro' }
-]
-
 const videoModelOptions = [
   { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
-]
-
-const videoAspectRatioOptions = [
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
-  { label: '1:1', value: '1:1' },
-  { label: '4:5', value: '4:5' },
-  { label: '3:4', value: '3:4' }
 ]
 
 const modelPricingCatalog = [
@@ -150,14 +137,6 @@ const workspaceDashboardSections = [
 
 function getModelOptionsByMenu() {
   return imageModelOptions
-}
-
-function getTextModelOptionsByMenu(menuKey = '') {
-  if (menuKey === 'description-generator') {
-    return textModelOptions
-  }
-
-  return textModelOptions
 }
 
 function getVideoModelOptionsByMenu() {
@@ -938,27 +917,6 @@ function attachProjectRunToProject(project = {}, runId = '', updatedAt = '') {
         ]
       : currentRunIds,
     updatedAt: updatedAt || project.updatedAt || ''
-  })
-}
-
-function updateProjectRunStepState(projectRun = {}, stepKey = '', patch = {}) {
-  if (!stepKey) {
-    return normalizeProjectRun(projectRun)
-  }
-
-  const normalizedProjectRun = normalizeProjectRun(projectRun)
-  const defaultStepStates = createDefaultProjectRunStepStates()
-  const currentStepState = normalizedProjectRun.stepStates[stepKey] || defaultStepStates[stepKey]
-
-  return normalizeProjectRun({
-    ...normalizedProjectRun,
-    stepStates: {
-      ...normalizedProjectRun.stepStates,
-      [stepKey]: {
-        ...currentStepState,
-        ...(patch || {})
-      }
-    }
   })
 }
 

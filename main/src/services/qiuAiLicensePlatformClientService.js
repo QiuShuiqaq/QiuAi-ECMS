@@ -77,6 +77,50 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function listSoftwarePackages({ sessionToken = '' } = {}) {
+    return request('get', '/api/packages', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function createSoftwareOrder(payload = {}) {
+    return request('post', '/api/orders', {
+      data: payload
+    })
+  }
+
+  async function getSoftwareOrder({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/orders/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function listComputePackages({ sessionToken = '' } = {}) {
+    return request('get', '/api/compute-packages', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function createComputePackageOrder(payload = {}) {
+    return request('post', '/api/compute-package-orders', {
+      data: payload
+    })
+  }
+
+  async function getComputePackageOrder({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/compute-package-orders/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
   async function createRechargeOrder(payload = {}) {
     return request('post', '/api/recharge/orders', {
       data: payload
@@ -93,10 +137,16 @@ function createQiuAiLicensePlatformClientService({
 
   return {
     activateLicense,
+    createComputePackageOrder,
     createRechargeOrder,
+    createSoftwareOrder,
     getAuthorizationStatus,
+    getComputePackageOrder,
     getRechargeOrder,
-    getWalletSummary
+    getSoftwareOrder,
+    getWalletSummary,
+    listComputePackages,
+    listSoftwarePackages
   }
 }
 

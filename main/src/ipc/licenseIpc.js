@@ -58,7 +58,7 @@ function registerLicenseIpc({
         }
       }
 
-      ;[filePath] = result.filePaths
+      [filePath] = result.filePaths
     }
 
     return {
@@ -88,6 +88,52 @@ function registerLicenseIpc({
     })
 
     return authorizationService.getActivationStatus()
+  })
+
+  ipcMain.handle(ipcChannels.LICENSE_LIST_PACKAGES, async () => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.listSoftwarePackages({
+      sessionToken
+    })
+  })
+
+  ipcMain.handle(ipcChannels.LICENSE_CREATE_ORDER, async (_event, payload = {}) => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.createSoftwareOrder({
+      ...payload,
+      sessionToken
+    })
+  })
+
+  ipcMain.handle(ipcChannels.LICENSE_GET_ORDER, async (_event, payload = {}) => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.getSoftwareOrder({
+      ...payload,
+      sessionToken
+    })
+  })
+
+  ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_LIST, async () => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.listComputePackages({
+      sessionToken
+    })
+  })
+
+  ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_CREATE_ORDER, async (_event, payload = {}) => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.createComputePackageOrder({
+      ...payload,
+      sessionToken
+    })
+  })
+
+  ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_GET_ORDER, async (_event, payload = {}) => {
+    const sessionToken = await getSessionToken(settingsService)
+    return remoteLicensePlatformClient.getComputePackageOrder({
+      ...payload,
+      sessionToken
+    })
   })
 
   ipcMain.handle(ipcChannels.RECHARGE_CREATE_ORDER, async (_event, payload = {}) => {

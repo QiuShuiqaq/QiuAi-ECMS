@@ -41,13 +41,6 @@ const imageModelOptions = [
   { label: 'nano-banana-2', value: 'nano-banana-2' }
 ]
 
-const differenceLevelOptions = [
-  { label: '关闭', value: 'off' },
-  { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
-  { label: '高', value: 'high' }
-]
-
 const templateTypeMap = {
   'image-main': '商品主图',
   'image-white-bg': '白底图',
@@ -607,19 +600,20 @@ function formatTaskLabel(task) {
           <div class="generator-preview-stage">
             <div v-if="summaryDescription" class="generator-preview__text">{{ summaryDescription }}</div>
 
-            <button
-              v-if="mode !== 'image'"
-              v-for="item in textResultCards"
-              :key="item.id"
-              class="generator-preview__text generator-preview__text--button"
-              type="button"
-              @click="emit('copy-text', item.content)"
-            >
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.content }}</span>
-            </button>
+            <template v-if="mode !== 'image'">
+              <button
+                v-for="item in textResultCards"
+                :key="item.id"
+                class="generator-preview__text generator-preview__text--button"
+                type="button"
+                @click="emit('copy-text', item.content)"
+              >
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.content }}</span>
+              </button>
+            </template>
 
-            <template v-if="mode === 'image'">
+            <template v-else>
               <article
                 v-for="group in seriesResultGroups"
                 :key="group.id"
@@ -649,14 +643,15 @@ function formatTaskLabel(task) {
               </article>
             </template>
 
-            <img
-              v-else
-              v-for="item in previewImageResults"
-              :key="item.id"
-              class="generator-preview__image"
-              :src="item.preview || item.savedPath || item.path"
-              alt=""
-            >
+            <template v-if="mode !== 'image'">
+              <img
+                v-for="item in previewImageResults"
+                :key="item.id"
+                class="generator-preview__image"
+                :src="item.preview || item.savedPath || item.path"
+                alt=""
+              >
+            </template>
 
             <div v-if="!hasAnyResults" class="product-result-empty">
               <span>暂无结果</span>

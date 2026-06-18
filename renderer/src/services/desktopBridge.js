@@ -776,6 +776,54 @@ export function activateRemoteLicense (payload) {
   return invoke(getChannel('LICENSE_REMOTE_ACTIVATE'), payload)
 }
 
+export function listSoftwarePackages () {
+  if (!hasBridge()) {
+    return Promise.resolve([])
+  }
+
+  return invoke(getChannel('LICENSE_LIST_PACKAGES'))
+}
+
+export function createSoftwareOrder (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(null)
+  }
+
+  return invoke(getChannel('LICENSE_CREATE_ORDER'), payload)
+}
+
+export function getSoftwareOrder (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(null)
+  }
+
+  return invoke(getChannel('LICENSE_GET_ORDER'), payload)
+}
+
+export function listComputePackages () {
+  if (!hasBridge()) {
+    return Promise.resolve([])
+  }
+
+  return invoke(getChannel('COMPUTE_PACKAGE_LIST'))
+}
+
+export function createComputePackageOrder (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(null)
+  }
+
+  return invoke(getChannel('COMPUTE_PACKAGE_CREATE_ORDER'), payload)
+}
+
+export function getComputePackageOrder (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(null)
+  }
+
+  return invoke(getChannel('COMPUTE_PACKAGE_GET_ORDER'), payload)
+}
+
 export function createRechargeOrder (payload) {
   if (!hasBridge()) {
     return Promise.resolve({

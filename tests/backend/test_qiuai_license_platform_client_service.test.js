@@ -14,7 +14,7 @@ describe('qiuAiLicensePlatformClientService', () => {
     })
 
     const service = createQiuAiLicensePlatformClientService({
-      baseUrl: 'http://127.0.0.1:3721/',
+      baseUrl: 'https://qiuaihub.com/',
       requestClient: {
         request
       }
@@ -27,7 +27,7 @@ describe('qiuAiLicensePlatformClientService', () => {
 
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: 'get',
-      url: 'http://127.0.0.1:3721/api/activation/status'
+      url: 'https://qiuaihub.com/api/activation/status'
     }))
     expect(result.status).toBe('activated')
   })
