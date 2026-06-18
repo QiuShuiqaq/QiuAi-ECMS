@@ -53,6 +53,10 @@ const props = defineProps({
   isRechargeRefreshing: {
     type: Boolean,
     default: false
+  },
+  embedded: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -72,35 +76,17 @@ const emit = defineEmits([
 const walletCards = computed(() => {
   const summary = props.walletSummary || {}
   return [
-    {
-      key: 'text',
-      label: '文本余额',
-      value: Number(summary.textBalanceCny || 0)
-    },
-    {
-      key: 'image',
-      label: '图片余额',
-      value: Number(summary.imageBalanceCny || 0)
-    },
-    {
-      key: 'video',
-      label: '视频余额',
-      value: Number(summary.videoBalanceCny || 0)
-    }
+    { key: 'text', label: '文本余额', value: Number(summary.textBalanceCny || 0) },
+    { key: 'image', label: '图片余额', value: Number(summary.imageBalanceCny || 0) },
+    { key: 'video', label: '视频余额', value: Number(summary.videoBalanceCny || 0) }
   ]
 })
 
 const licenseStatusLabel = computed(() => {
   const status = String(props.activationState?.status || '')
-  if (status === 'activated') {
-    return '已激活'
-  }
-  if (status === 'expired') {
-    return '已过期'
-  }
-  if (status === 'device_mismatch') {
-    return '设备不匹配'
-  }
+  if (status === 'activated') return '已激活'
+  if (status === 'expired') return '已过期'
+  if (status === 'device_mismatch') return '设备不匹配'
   return '待激活'
 })
 
@@ -110,71 +96,42 @@ function formatAmount(value) {
 }
 
 function formatDateTime(value) {
-  if (!value) {
-    return '--'
-  }
-
+  if (!value) return '--'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return '--'
-  }
-
-  return date.toLocaleString('zh-CN', {
-    hour12: false
-  })
+  if (Number.isNaN(date.getTime())) return '--'
+  return date.toLocaleString('zh-CN', { hour12: false })
 }
 
 function resolveOrderStatusLabel(status) {
-  if (status === 'paid') {
-    return '已支付'
-  }
-  if (status === 'failed') {
-    return '支付失败'
-  }
-  if (status === 'closed') {
-    return '已关闭'
-  }
+  if (status === 'paid') return '已支付'
+  if (status === 'failed') return '支付失败'
+  if (status === 'closed') return '已关闭'
   return '待支付'
 }
 
 function resolvePackageFeatures(pkg = {}) {
   const features = []
 
-  if (pkg.durationDays) {
-    features.push(`时长 ${pkg.durationDays} 天`)
-  }
-
-  if (pkg.deviceLimit) {
-    features.push(`设备数 ${pkg.deviceLimit}`)
-  }
-
+  if (pkg.durationDays) features.push(`时长 ${pkg.durationDays} 天`)
+  if (pkg.deviceLimit) features.push(`设备数 ${pkg.deviceLimit}`)
   if (Array.isArray(pkg.entitlementSummary) && pkg.entitlementSummary.length) {
     features.push(...pkg.entitlementSummary)
   }
-
-  if (pkg.includedImageQuota) {
-    features.push(`图片额度 ${pkg.includedImageQuota}`)
-  }
-
-  if (pkg.includedVideoQuota) {
-    features.push(`视频额度 ${pkg.includedVideoQuota}`)
-  }
-
-  if (pkg.overageEnabled) {
-    features.push('支持超额续费')
-  }
+  if (pkg.includedImageQuota) features.push(`图片额度 ${pkg.includedImageQuota}`)
+  if (pkg.includedVideoQuota) features.push(`视频额度 ${pkg.includedVideoQuota}`)
+  if (pkg.overageEnabled) features.push('支持超额续费')
 
   return features
 }
 </script>
 
 <template>
-  <section class="purchase-center">
+  <section class="purchase-center" :class="{ 'purchase-center--embedded': embedded }">
     <header class="purchase-center__hero">
       <div class="purchase-center__hero-main">
-        <span class="purchase-center__eyebrow">商业中心</span>
-        <h1>授权、月套餐与充值</h1>
-        <p>在软件内完成授权套餐购买、月套餐购买和算力充值，支付后自动回查订单状态。</p>
+        <span class="purchase-center__eyebrow">充值中心</span>
+        <h1>授权、月套餐与余额充值</h1>
+        <p>统一处理授权购买、月套餐购买和算力直充。支付后会自动回查订单状态并刷新授权与余额。</p>
       </div>
 
       <div class="purchase-center__hero-side">
@@ -200,60 +157,30 @@ function resolvePackageFeatures(pkg = {}) {
     <section class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
-          <span class="purchase-center__section-kicker">软件授权</span>
-          <h2>授权套餐</h2>
+          <span class="purchase-center__section-kicker">余额充值</span>
+          <h2>算力直充</h2>
         </div>
-        <button class="secondary-action" type="button" :disabled="isCatalogLoading" @click="emit('refresh-catalog')">
-          {{ isCatalogLoading ? '刷新中' : '刷新套餐' }}
-        </button>
       </div>
 
-      <div class="purchase-center__package-list">
-        <article v-for="pkg in softwarePackages" :key="pkg.id" class="purchase-center__package-card">
-          <div class="purchase-center__package-main">
-            <div class="purchase-center__package-heading">
-              <strong>{{ pkg.name }}</strong>
-              <span>{{ pkg.productName }}</span>
-            </div>
-            <p>{{ pkg.description || '暂无说明' }}</p>
-            <div class="purchase-center__feature-row">
-              <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
-            </div>
+      <div class="purchase-center__recharge-card">
+        <div class="purchase-center__recharge-main">
+          <strong>图片 / 视频余额直充</strong>
+          <p>适合已有授权用户直接补充算力，是最高频的付费入口。</p>
+          <div v-if="currentRechargeOrder" class="purchase-center__recharge-order">
+            <span>最近订单：{{ currentRechargeOrder.merchantOrderNo }}</span>
+            <span>状态：{{ resolveOrderStatusLabel(currentRechargeOrder.status) }}</span>
+            <span>金额：{{ formatAmount(currentRechargeOrder.payAmountCny) }} CNY</span>
           </div>
-
-          <div class="purchase-center__package-side">
-            <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
-            <small>{{ pkg.currency || 'CNY' }}</small>
-            <button
-              class="primary-action"
-              type="button"
-              :disabled="isSoftwareOrderSubmitting"
-              @click="emit('create-software-order', pkg.id)"
-            >
-              {{ isSoftwareOrderSubmitting ? '创建中' : '购买授权' }}
-            </button>
-          </div>
-        </article>
-
-        <article v-if="!softwarePackages.length" class="purchase-center__empty">
-          <strong>暂无可售授权套餐</strong>
-          <span>如果这里为空，说明平台端还未配置或还未同步出公开套餐接口。</span>
-        </article>
-      </div>
-
-      <div v-if="currentSoftwareOrder" class="purchase-center__order-panel">
-        <div class="purchase-center__order-info">
-          <strong>最新授权订单</strong>
-          <span>订单号：{{ currentSoftwareOrder.merchantOrderNo }}</span>
-          <span>状态：{{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
-          <span>金额：{{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
         </div>
 
         <div class="purchase-center__order-actions">
-          <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">
-            {{ isSoftwareOrderRefreshing ? '查询中' : '查询订单' }}
+          <button class="primary-action" type="button" @click="emit('open-recharge')">
+            新建充值订单
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">
+          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder || isRechargeRefreshing" @click="emit('refresh-recharge-order')">
+            {{ isRechargeRefreshing ? '查询中' : '查询订单' }}
+          </button>
+          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl" @click="emit('open-recharge-order')">
             打开支付
           </button>
         </div>
@@ -266,6 +193,9 @@ function resolvePackageFeatures(pkg = {}) {
           <span class="purchase-center__section-kicker">月度算力</span>
           <h2>月套餐</h2>
         </div>
+        <button class="secondary-action" type="button" :disabled="isCatalogLoading" @click="emit('refresh-catalog')">
+          {{ isCatalogLoading ? '刷新中' : '刷新套餐' }}
+        </button>
       </div>
 
       <div class="purchase-center__package-list">
@@ -323,30 +253,57 @@ function resolvePackageFeatures(pkg = {}) {
     <section class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
-          <span class="purchase-center__section-kicker">直接充值</span>
-          <h2>算力充值</h2>
+          <span class="purchase-center__section-kicker">软件授权</span>
+          <h2>授权套餐</h2>
         </div>
       </div>
 
-      <div class="purchase-center__recharge-card">
-        <div class="purchase-center__recharge-main">
-          <strong>图片 / 视频余额直充</strong>
-          <p>适合已有授权用户直接补充算力。支持在桌面端创建订单并跳转支付。</p>
-          <div v-if="currentRechargeOrder" class="purchase-center__recharge-order">
-            <span>最近订单：{{ currentRechargeOrder.merchantOrderNo }}</span>
-            <span>状态：{{ resolveOrderStatusLabel(currentRechargeOrder.status) }}</span>
-            <span>金额：{{ formatAmount(currentRechargeOrder.payAmountCny) }} CNY</span>
+      <div class="purchase-center__package-list">
+        <article v-for="pkg in softwarePackages" :key="pkg.id" class="purchase-center__package-card">
+          <div class="purchase-center__package-main">
+            <div class="purchase-center__package-heading">
+              <strong>{{ pkg.name }}</strong>
+              <span>{{ pkg.productName }}</span>
+            </div>
+            <p>{{ pkg.description || '暂无说明' }}</p>
+            <div class="purchase-center__feature-row">
+              <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
+            </div>
           </div>
+
+          <div class="purchase-center__package-side">
+            <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
+            <small>{{ pkg.currency || 'CNY' }}</small>
+            <button
+              class="primary-action"
+              type="button"
+              :disabled="isSoftwareOrderSubmitting"
+              @click="emit('create-software-order', pkg.id)"
+            >
+              {{ isSoftwareOrderSubmitting ? '创建中' : '购买授权' }}
+            </button>
+          </div>
+        </article>
+
+        <article v-if="!softwarePackages.length" class="purchase-center__empty">
+          <strong>暂无可售授权套餐</strong>
+          <span>如果这里为空，说明平台端还未配置或还未同步出公开套餐接口。</span>
+        </article>
+      </div>
+
+      <div v-if="currentSoftwareOrder" class="purchase-center__order-panel">
+        <div class="purchase-center__order-info">
+          <strong>最新授权订单</strong>
+          <span>订单号：{{ currentSoftwareOrder.merchantOrderNo }}</span>
+          <span>状态：{{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
+          <span>金额：{{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
         </div>
 
         <div class="purchase-center__order-actions">
-          <button class="primary-action" type="button" @click="emit('open-recharge')">
-            新建充值订单
+          <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">
+            {{ isSoftwareOrderRefreshing ? '查询中' : '查询订单' }}
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder || isRechargeRefreshing" @click="emit('refresh-recharge-order')">
-            {{ isRechargeRefreshing ? '查询中' : '查询订单' }}
-          </button>
-          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl" @click="emit('open-recharge-order')">
+          <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">
             打开支付
           </button>
         </div>
@@ -359,8 +316,12 @@ function resolvePackageFeatures(pkg = {}) {
 .purchase-center {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   color: rgba(240, 244, 255, 0.94);
+}
+
+.purchase-center--embedded {
+  gap: 16px;
 }
 
 .purchase-center__hero {
@@ -368,12 +329,11 @@ function resolvePackageFeatures(pkg = {}) {
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
   gap: 20px;
   padding: 24px;
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top left, rgba(89, 160, 255, 0.16), transparent 34%),
     linear-gradient(145deg, rgba(15, 19, 31, 0.96), rgba(7, 10, 18, 0.9));
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.26);
 }
 
 .purchase-center__hero-main h1,
@@ -413,12 +373,11 @@ function resolvePackageFeatures(pkg = {}) {
 .purchase-center__empty {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(14, 18, 30, 0.88);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
 }
 
 .purchase-center__license-card {
   padding: 18px 20px;
-  border-radius: 22px;
+  border-radius: 18px;
 }
 
 .purchase-center__license-card strong {
@@ -444,7 +403,7 @@ function resolvePackageFeatures(pkg = {}) {
 
 .purchase-center__wallet-card {
   padding: 16px;
-  border-radius: 20px;
+  border-radius: 18px;
 }
 
 .purchase-center__wallet-card strong {
@@ -460,8 +419,8 @@ function resolvePackageFeatures(pkg = {}) {
 }
 
 .purchase-center__section {
-  padding: 22px;
-  border-radius: 28px;
+  padding: 20px;
+  border-radius: 22px;
 }
 
 .purchase-center__section-header {
@@ -469,7 +428,7 @@ function resolvePackageFeatures(pkg = {}) {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .purchase-center__package-list {
@@ -484,7 +443,7 @@ function resolvePackageFeatures(pkg = {}) {
   gap: 18px;
   align-items: center;
   padding: 18px 20px;
-  border-radius: 22px;
+  border-radius: 18px;
   background: rgba(10, 14, 24, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -548,9 +507,9 @@ function resolvePackageFeatures(pkg = {}) {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin-top: 18px;
+  margin-top: 16px;
   padding: 18px 20px;
-  border-radius: 22px;
+  border-radius: 18px;
 }
 
 .purchase-center__order-info,
@@ -588,7 +547,7 @@ function resolvePackageFeatures(pkg = {}) {
   flex-direction: column;
   gap: 8px;
   padding: 22px;
-  border-radius: 22px;
+  border-radius: 18px;
 }
 
 @media (max-width: 1080px) {

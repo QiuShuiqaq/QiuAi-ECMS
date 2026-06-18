@@ -46,7 +46,6 @@ const themeOptions = [{ label: '深色', value: 'dark' }]
 
 const menuItems = [
   { key: 'workspace', label: '工作台', section: '项目' },
-  { key: 'purchase-center', label: '购买中心', section: '项目' },
   { key: 'data-center', label: '数据中心', section: '项目' },
   { key: 'product-template', label: '商品模板', section: '项目' },
   { key: 'title-generator', label: '标题生成', section: '生成' },
@@ -1012,6 +1011,13 @@ function closeRechargeDialog() {
   currentRechargeOrder.value = null
 }
 
+function handleScrollToRechargeForm() {
+  const panel = document.getElementById('recharge-form-panel')
+  if (panel) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
 async function handleCreateRecharge() {
   isRechargeSubmitting.value = true
   try {
@@ -1414,33 +1420,6 @@ onUnmounted(() => {
           :workspace-dashboard="workspaceDashboard"
         />
 
-        <PurchaseCenterPage
-          v-else-if="activeMenu === 'purchase-center'"
-          :activation-state="activationState"
-          :wallet-summary="walletSummary"
-          :software-packages="softwarePackages"
-          :compute-packages="computePackages"
-          :current-software-order="currentSoftwareOrder"
-          :current-compute-package-order="currentComputePackageOrder"
-          :current-recharge-order="currentRechargeOrder"
-          :is-catalog-loading="isCatalogLoading"
-          :is-software-order-submitting="isSoftwareOrderSubmitting"
-          :is-software-order-refreshing="isSoftwareOrderRefreshing"
-          :is-compute-package-order-submitting="isComputePackageOrderSubmitting"
-          :is-compute-package-order-refreshing="isComputePackageOrderRefreshing"
-          :is-recharge-refreshing="isRechargeRefreshing"
-          @refresh-catalog="loadPurchaseCenterCatalog"
-          @create-software-order="handleCreateSoftwareOrder"
-          @refresh-software-order="handleRefreshSoftwareOrder"
-          @open-software-order="handleOpenSoftwareOrderLink"
-          @create-compute-package-order="handleCreateComputePackageOrder"
-          @refresh-compute-package-order="handleRefreshComputePackageOrder"
-          @open-compute-package-order="handleOpenComputePackageOrderLink"
-          @open-recharge="openRechargeDialog"
-          @refresh-recharge-order="handleRefreshRechargeOrder"
-          @open-recharge-order="handleOpenRechargeLink"
-        />
-
         <ProductTemplateDemoPage
           v-else-if="activeMenu === 'product-template'"
         />
@@ -1590,8 +1569,8 @@ onUnmounted(() => {
       <div class="recharge-modal__card">
         <header class="recharge-modal__header">
           <div>
-            <strong>充值</strong>
-            <span>{{ currentRechargeOrder ? rechargeStatusLabel : '创建订单后可查询状态' }}</span>
+            <strong>充值中心</strong>
+            <span>{{ currentRechargeOrder ? rechargeStatusLabel : '统一处理充值、月套餐和授权套餐' }}</span>
           </div>
 
           <button class="secondary-action" type="button" @click="closeRechargeDialog">
@@ -1599,79 +1578,115 @@ onUnmounted(() => {
           </button>
         </header>
 
-        <div class="recharge-modal__form">
-          <label class="recharge-modal__field">
-            <span>账户</span>
-            <select v-model="rechargeForm.walletType">
-              <option value="image">图片余额</option>
-              <option value="video">视频余额</option>
-            </select>
-          </label>
+        <PurchaseCenterPage
+          embedded
+          :activation-state="activationState"
+          :wallet-summary="walletSummary"
+          :software-packages="softwarePackages"
+          :compute-packages="computePackages"
+          :current-software-order="currentSoftwareOrder"
+          :current-compute-package-order="currentComputePackageOrder"
+          :current-recharge-order="currentRechargeOrder"
+          :is-catalog-loading="isCatalogLoading"
+          :is-software-order-submitting="isSoftwareOrderSubmitting"
+          :is-software-order-refreshing="isSoftwareOrderRefreshing"
+          :is-compute-package-order-submitting="isComputePackageOrderSubmitting"
+          :is-compute-package-order-refreshing="isComputePackageOrderRefreshing"
+          :is-recharge-refreshing="isRechargeRefreshing"
+          @refresh-catalog="loadPurchaseCenterCatalog"
+          @create-software-order="handleCreateSoftwareOrder"
+          @refresh-software-order="handleRefreshSoftwareOrder"
+          @open-software-order="handleOpenSoftwareOrderLink"
+          @create-compute-package-order="handleCreateComputePackageOrder"
+          @refresh-compute-package-order="handleRefreshComputePackageOrder"
+          @open-compute-package-order="handleOpenComputePackageOrderLink"
+          @open-recharge="handleScrollToRechargeForm"
+          @refresh-recharge-order="handleRefreshRechargeOrder"
+          @open-recharge-order="handleOpenRechargeLink"
+        />
 
-          <label class="recharge-modal__field">
-            <span>方式</span>
-            <select v-model="rechargeForm.channel">
-              <option value="alipay">支付宝</option>
-              <option value="wechat">微信支付</option>
-            </select>
-          </label>
+        <section id="recharge-form-panel" class="recharge-modal__panel">
+          <header class="recharge-modal__panel-header">
+            <div>
+              <strong>余额充值下单</strong>
+              <span>这里保留直接充值表单，保证现有支付流不变。</span>
+            </div>
+          </header>
 
-          <label class="recharge-modal__field">
-            <span>金额</span>
-            <input v-model="rechargeForm.amountCny" type="number" min="0.01" step="0.01">
-          </label>
+          <div class="recharge-modal__form">
+            <label class="recharge-modal__field">
+              <span>账户</span>
+              <select v-model="rechargeForm.walletType">
+                <option value="image">图片余额</option>
+                <option value="video">视频余额</option>
+              </select>
+            </label>
 
-          <label class="recharge-modal__field">
-            <span>优惠码</span>
-            <input v-model="rechargeForm.couponCode" type="text" placeholder="没有可留空">
-          </label>
-        </div>
+            <label class="recharge-modal__field">
+              <span>方式</span>
+              <select v-model="rechargeForm.channel">
+                <option value="alipay">支付宝</option>
+                <option value="wechat">微信支付</option>
+              </select>
+            </label>
 
-        <div class="recharge-modal__actions">
-          <button class="primary-action" type="button" :disabled="isRechargeSubmitting" @click="handleCreateRecharge">
-            {{ isRechargeSubmitting ? '创建中' : '创建订单' }}
-          </button>
+            <label class="recharge-modal__field">
+              <span>金额</span>
+              <input v-model="rechargeForm.amountCny" type="number" min="0.01" step="0.01">
+            </label>
 
-          <button
-            class="secondary-action"
-            type="button"
-            :disabled="!currentRechargeOrder || isRechargeRefreshing"
-            @click="handleRefreshRechargeOrder"
-          >
-            {{ isRechargeRefreshing ? '查询中' : '查询状态' }}
-          </button>
-
-          <button
-            class="secondary-action"
-            type="button"
-            :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl"
-            @click="handleOpenRechargeLink"
-          >
-            打开支付
-          </button>
-        </div>
-
-        <div v-if="currentRechargeOrder" class="recharge-modal__result">
-          <div class="recharge-modal__result-row">
-            <span>订单号</span>
-            <strong>{{ currentRechargeOrder.merchantOrderNo }}</strong>
+            <label class="recharge-modal__field">
+              <span>优惠码</span>
+              <input v-model="rechargeForm.couponCode" type="text" placeholder="没有可留空">
+            </label>
           </div>
 
-          <div class="recharge-modal__result-row">
-            <span>支付金额</span>
-            <strong>{{ currentRechargeOrder.payAmountCny }} CNY</strong>
+          <div class="recharge-modal__actions">
+            <button class="primary-action" type="button" :disabled="isRechargeSubmitting" @click="handleCreateRecharge">
+              {{ isRechargeSubmitting ? '创建中' : '创建订单' }}
+            </button>
+
+            <button
+              class="secondary-action"
+              type="button"
+              :disabled="!currentRechargeOrder || isRechargeRefreshing"
+              @click="handleRefreshRechargeOrder"
+            >
+              {{ isRechargeRefreshing ? '查询中' : '查询状态' }}
+            </button>
+
+            <button
+              class="secondary-action"
+              type="button"
+              :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl"
+              @click="handleOpenRechargeLink"
+            >
+              打开支付
+            </button>
           </div>
 
-          <div class="recharge-modal__result-row">
-            <span>赠送金额</span>
-            <strong>{{ currentRechargeOrder.bonusAmountCny }} CNY</strong>
-          </div>
+          <div v-if="currentRechargeOrder" class="recharge-modal__result">
+            <div class="recharge-modal__result-row">
+              <span>订单号</span>
+              <strong>{{ currentRechargeOrder.merchantOrderNo }}</strong>
+            </div>
 
-          <div class="recharge-modal__result-row">
-            <span>状态</span>
-            <strong>{{ rechargeStatusLabel }}</strong>
+            <div class="recharge-modal__result-row">
+              <span>支付金额</span>
+              <strong>{{ currentRechargeOrder.payAmountCny }} CNY</strong>
+            </div>
+
+            <div class="recharge-modal__result-row">
+              <span>赠送金额</span>
+              <strong>{{ currentRechargeOrder.bonusAmountCny }} CNY</strong>
+            </div>
+
+            <div class="recharge-modal__result-row">
+              <span>状态</span>
+              <strong>{{ rechargeStatusLabel }}</strong>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   </main>
