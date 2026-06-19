@@ -18,6 +18,7 @@ const {
   getFeatureDirectoryKey
 } = require('./dataPathsService')
 const { persistSourceFiles } = require('./inputAssetStorageService')
+const { ensureDraftWithinCapability } = require('./packageCapabilityService')
 
 const STUDIO_WORKSPACE_KEY = 'studioWorkspace'
 
@@ -2964,17 +2965,6 @@ function estimateExportRequiredBytes(selectedItems = []) {
   return Math.max(EXPORT_MIN_REQUIRED_BYTES, itemCount * EXPORT_MIN_REQUIRED_BYTES * EXPORT_FREE_SPACE_MULTIPLIER)
 }
 
-function buildStoppedTaskSummary(task = {}, errorMessage = '用户手动结束任务') {
-  return {
-    ...task,
-    status: '失败',
-    progress: task.status === '等待中'
-      ? 0
-      : Math.max(0, Math.min(100, Number(task.progress) || 0)),
-    error: errorMessage
-  }
-}
-
 function buildPendingConfirmationTaskSummary(
   task = {},
   errorMessage = '任务状态待确认：软件重启前任务可能仍在远端处理中，请手动结束或重新提交'
@@ -3124,6 +3114,7 @@ function refundCreditsForTask({ creditState, taskId, updatedAt }) {
 function createStudioWorkspaceService({
   store,
   settingsService,
+  authorizationService,
   apiKeyCreditService,
   deepseekBalanceService,
   promptTemplateService,
@@ -3745,57 +3736,6 @@ function createStudioWorkspaceService({
     }
   }
 
-  async function stopTask({ taskId = '' } = {}) {
-    const normalizedTaskId = String(taskId || '').trim()
-
-    if (!normalizedTaskId) {
-      throw new Error('任务 ID 不存在')
-    }
-
-    const targetTask = getStoredTasks().find((task) => task.id === normalizedTaskId)
-
-    if (!targetTask) {
-      throw new Error('未找到可结束的任务')
-    }
-
-    if (!['等待中', '进行中', '待确认'].includes(targetTask.status)) {
-      throw new Error('只有等待中、进行中或待确认的任务可以结束')
-    }
-
-    for (let index = queuedTaskExecutions.length - 1; index >= 0; index -= 1) {
-      if (queuedTaskExecutions[index]?.taskId === normalizedTaskId) {
-        queuedTaskExecutions.splice(index, 1)
-      }
-    }
-
-    activeTaskControllers.get(normalizedTaskId)?.stop('用户手动结束任务')
-
-    const stoppedTask = buildStoppedTaskSummary(targetTask, '用户手动结束任务')
-
-    await persistTaskAndState({
-      task: stoppedTask
-    })
-
-    const refundedCreditState = refundCreditsForTask({
-      creditState: settingsService.getSettings().creditState,
-      taskId: normalizedTaskId,
-      updatedAt: getNow()
-    })
-    await settingsService.saveSettings({
-      creditState: refundedCreditState
-    })
-
-    await safeRuntimeLog(runtimeLogger, {
-      level: 'warn',
-      event: 'studio-task-stopped',
-      taskId: normalizedTaskId,
-      menuKey: targetTask.menuKey,
-      outputDirectory: targetTask.outputDirectory
-    })
-
-    return stoppedTask
-  }
-
   function getStoredState() {
     return mergeStudioState(store.get(STUDIO_WORKSPACE_KEY, {}))
   }
@@ -4350,6 +4290,19 @@ function createStudioWorkspaceService({
       nextActiveProjectRunId = createdProjectRun.id
     }
 
+    const activationStatus = authorizationService && typeof authorizationService.getActivationStatus === 'function'
+      ? await authorizationService.getActivationStatus().catch(() => null)
+      : null
+
+    ensureDraftWithinCapability({
+      menuKey,
+      draft,
+      activationStatus,
+      runtimeSnapshot: {
+        agentReadiness: buildAgentReadinessSnapshot(getStoredTasks(state))
+      }
+    })
+
     validateTaskScale(menuKey, draft)
     const estimatedCredits = estimateTaskCredits(menuKey, draft)
     const queuedTask = buildQueuedTaskSummary({
@@ -4677,7 +4630,6 @@ function createStudioWorkspaceService({
     refreshDashboardCredits,
     saveDraft,
     createTask,
-    stopTask,
     clearRuntimeState,
     deleteExportItem,
     exportSelectedResults,

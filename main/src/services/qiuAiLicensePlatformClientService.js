@@ -54,6 +54,31 @@ function createQiuAiLicensePlatformClientService({
     }
   }
 
+  async function requestBinary(path, { params } = {}) {
+    try {
+      const response = await requestClient.request({
+        method: 'get',
+        url: `${normalizedBaseUrl}${path}`,
+        params,
+        timeout: timeoutMs,
+        responseType: 'arraybuffer'
+      })
+
+      return Buffer.isBuffer(response.data) ? response.data : Buffer.from(response.data)
+    } catch (error) {
+      const statusCode = error?.response?.status || 0
+      const responseData = error?.response?.data || null
+      throw createServiceError(
+        responseData?.error?.code || 'REMOTE_REQUEST_FAILED',
+        responseData?.error?.message || error.message || 'remote request failed',
+        {
+          statusCode,
+          responseData
+        }
+      )
+    }
+  }
+
   async function getAuthorizationStatus({ sessionToken = '', deviceFingerprint = '' } = {}) {
     return request('get', '/api/activation/status', {
       params: {
@@ -127,6 +152,28 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function createGenerationJob(payload = {}) {
+    return request('post', '/api/generation/jobs', {
+      data: payload
+    })
+  }
+
+  async function getGenerationJob({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/generation/jobs/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function downloadGenerationArtifact({ id = '', sessionToken = '' } = {}) {
+    return requestBinary(`/api/generation/artifacts/${trimString(id)}/download`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
   async function getRechargeOrder({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/recharge/orders/${trimString(id)}`, {
       params: {
@@ -138,10 +185,13 @@ function createQiuAiLicensePlatformClientService({
   return {
     activateLicense,
     createComputePackageOrder,
+    createGenerationJob,
     createRechargeOrder,
     createSoftwareOrder,
+    downloadGenerationArtifact,
     getAuthorizationStatus,
     getComputePackageOrder,
+    getGenerationJob,
     getRechargeOrder,
     getSoftwareOrder,
     getWalletSummary,

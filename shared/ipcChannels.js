@@ -38,7 +38,6 @@ module.exports = {
   STUDIO_REFRESH_DASHBOARD_CREDITS: 'studio:refresh-dashboard-credits',
   STUDIO_SAVE_DRAFT: 'studio:save-draft',
   STUDIO_CREATE_TASK: 'studio:create-task',
-  STUDIO_STOP_TASK: 'studio:stop-task',
   STUDIO_PICK_INPUT_ASSETS: 'studio:pick-input-assets',
   STUDIO_OPEN_OUTPUT_DIRECTORY: 'studio:open-output-directory',
   STUDIO_OPEN_EXTERNAL_RESOURCE: 'studio:open-external-resource',

@@ -17,6 +17,10 @@ const { createDeepseekBalanceService } = require('../services/deepseekBalanceSer
 const { createPromptTemplateStoreService } = require('../services/promptTemplateStoreService')
 const { createLocalTaskStoreService } = require('../services/localTaskStoreService')
 const { createStudioWorkspaceService } = require('../services/studioWorkspaceService')
+const { createStudioImageGenerationService } = require('../services/studioImageGenerationService')
+const { createStudioVideoGenerationService } = require('../services/studioVideoGenerationService')
+const { createCopywritingGenerationService } = require('../services/copywritingGenerationService')
+const { createCloudGenerationService } = require('../services/cloudGenerationService')
 const { createStudioTaskManagerService } = require('../services/studioTaskManagerService')
 const { createTaskModeService } = require('../services/taskModeService')
 const { createTaskRunnerService } = require('../services/taskRunnerService')
@@ -24,6 +28,7 @@ const { exportTaskDirectory } = require('../services/taskExportService')
 const { createDataTraceService } = require('../services/dataTraceService')
 const { attachConsoleCapture } = require('../services/consoleCaptureService')
 const { ensureDataLayout } = require('../services/dataPathsService')
+const { getMimeTypeFromPath } = require('../services/localInputAssetService')
 
 function registerIpc() {
   ensureDataLayout().catch(() => {})
@@ -66,15 +71,44 @@ function registerIpc() {
   const promptTemplateService = createPromptTemplateStoreService({ store: promptStore })
   const localTaskStoreService = createLocalTaskStoreService({ store: taskStore })
   const studioTaskManagerService = createStudioTaskManagerService()
+  const localStudioImageGenerationService = createStudioImageGenerationService({
+    settingsService,
+    promptTemplateService,
+    messageRecorder: dataTraceService,
+    runtimeLogger: dataTraceService,
+    requestMetricRecorder: async () => {}
+  })
+  const localStudioVideoGenerationService = createStudioVideoGenerationService({
+    settingsService,
+    messageRecorder: dataTraceService,
+    runtimeLogger: dataTraceService,
+    requestMetricRecorder: async () => {}
+  })
+  const localCopywritingGenerationService = createCopywritingGenerationService({
+    settingsService,
+    messageRecorder: dataTraceService
+  })
+  const cloudGenerationService = createCloudGenerationService({
+    settingsService,
+    remoteLicensePlatformClient,
+    getMimeTypeFromPath,
+    localGenerateImageResults: localStudioImageGenerationService.generateImageResults,
+    localGenerateVideoResults: localStudioVideoGenerationService.generateVideoResults,
+    localGenerateCopywritingResults: localCopywritingGenerationService.generateCopywritingResults
+  })
   const studioWorkspaceService = createStudioWorkspaceService({
     store: studioStore,
     settingsService,
+    authorizationService,
     apiKeyCreditService,
     deepseekBalanceService,
     promptTemplateService,
     remoteLicensePlatformClient,
     messageRecorder: dataTraceService,
     runtimeLogger: dataTraceService,
+    generateImageResults: cloudGenerationService.generateImageResults,
+    generateCopywritingResults: cloudGenerationService.generateCopywritingResults,
+    generateVideoResults: cloudGenerationService.generateVideoResults,
     taskManagerService: studioTaskManagerService
   })
   const taskModeService = createTaskModeService()

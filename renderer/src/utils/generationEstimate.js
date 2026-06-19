@@ -1,7 +1,7 @@
 export const CURRENT_MODEL_NAME = 'gpt-image-2'
 export const CURRENT_MODEL_CREDITS_PER_IMAGE = 600
-export const CURRENT_MODEL_PRICE_MIN = 0.03
-export const CURRENT_MODEL_PRICE_MAX = 0.06
+export const CURRENT_MODEL_PRICE_MIN = 0.18
+export const CURRENT_MODEL_PRICE_MAX = 0.18
 export const DEFAULT_DETAIL_PRESET_COUNT = 4
 
 function normalizeImageCount ({ mode, styleSourceFiles = [], detailPresetCount = DEFAULT_DETAIL_PRESET_COUNT }) {

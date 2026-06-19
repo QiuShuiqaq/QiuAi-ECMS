@@ -117,9 +117,12 @@ function resolvePackageFeatures(pkg = {}) {
   if (Array.isArray(pkg.entitlementSummary) && pkg.entitlementSummary.length) {
     features.push(...pkg.entitlementSummary)
   }
-  if (pkg.includedImageQuota) features.push(`图片额度 ${pkg.includedImageQuota}`)
-  if (pkg.includedVideoQuota) features.push(`视频额度 ${pkg.includedVideoQuota}`)
+  if (Number(pkg.includedTextBalanceCny || 0) > 0) features.push(`文本余额 ${formatAmount(pkg.includedTextBalanceCny)} CNY`)
+  if (Number(pkg.includedImageBalanceCny || 0) > 0) features.push(`图片余额 ${formatAmount(pkg.includedImageBalanceCny)} CNY`)
+  if (Number(pkg.includedVideoBalanceCny || 0) > 0) features.push(`视频余额 ${formatAmount(pkg.includedVideoBalanceCny)} CNY`)
   if (pkg.overageEnabled) features.push('支持超额续费')
+  if (pkg.tier === 'MEMBER') features.push('会员算力包')
+  if (pkg.tier === 'STANDARD') features.push('普通算力包')
 
   return features
 }
@@ -217,11 +220,14 @@ function resolvePackageFeatures(pkg = {}) {
             <button
               class="primary-action"
               type="button"
-              :disabled="isComputePackageOrderSubmitting"
+              :disabled="isComputePackageOrderSubmitting || pkg.canPurchase === false"
               @click="emit('create-compute-package-order', pkg.id)"
             >
-              {{ isComputePackageOrderSubmitting ? '创建中' : '购买月套餐' }}
+              {{ pkg.canPurchase === false ? '当前版本不可购买' : (isComputePackageOrderSubmitting ? '创建中' : '购买算力包') }}
             </button>
+            <small v-if="pkg.canPurchase === false" class="purchase-center__blocked-tip">
+              {{ pkg.purchaseBlockedReason || '当前授权版本不可购买该算力包' }}
+            </small>
           </div>
         </article>
 

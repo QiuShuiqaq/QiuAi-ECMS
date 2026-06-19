@@ -170,6 +170,12 @@ const walletSummary = computed(() => {
   return activationState.value.walletSummary || null
 })
 
+const activeCapability = computed(() => {
+  return activationState.value.activePackage?.capabilityConfig || null
+})
+
+const visibleComputePackages = computed(() => computePackages.value)
+
 const rechargeStatusLabel = computed(() => {
   const status = currentRechargeOrder.value?.status || ''
   if (status === 'paid') {
@@ -227,7 +233,7 @@ const pricingCards = computed(() => {
       unit: 'CNY',
       accent: 'image',
       items: [
-        { label: '单次生成', value: '0.12 / 次' }
+        { label: '单次生成', value: '0.18 / 次' }
       ]
     },
     {
@@ -247,9 +253,9 @@ const pricingCards = computed(() => {
       unit: 'CNY',
       accent: 'video',
       items: [
-        { label: '图生视频 768P 6s', value: '2.70 CNY' },
-        { label: '图生视频 768P 10s', value: '4.50 CNY' },
-        { label: '图生视频 1080P 6s', value: '4.62 CNY' }
+        { label: '图生视频 768P 6s', value: '4.05 CNY' },
+        { label: '图生视频 768P 10s', value: '6.75 CNY' },
+        { label: '图生视频 1080P 6s', value: '6.93 CNY' }
       ]
     }
   ]
@@ -657,6 +663,30 @@ async function handleSubmitTask(menuKey = activeMenu.value) {
         message: '套图生成和视频生成都需要先上传样图'
       })
       return
+    }
+
+    if (menuKey === 'series-generate') {
+      const generateCount = Math.max(1, Number(draft.generateCount) || 1)
+      const batchCount = Math.max(1, Number(draft.batchCount) || 1)
+      const capability = activeCapability.value
+
+      if (capability && capability.batchTaskEnabled === false && batchCount > 1) {
+        showActionFeedback({
+          type: 'error',
+          title: '当前版本不支持',
+          message: '标准版不支持批量套图任务'
+        })
+        return
+      }
+
+      if (capability && generateCount > Number(capability.seriesImageLimitPerTask || 5)) {
+        showActionFeedback({
+          type: 'error',
+          title: '超过版本上限',
+          message: `当前版本单次套图最多 ${capability.seriesImageLimitPerTask} 张`
+        })
+        return
+      }
     }
 
     await createStudioTask({
@@ -1163,6 +1193,16 @@ async function handleCreateComputePackageOrder(computePackageId) {
 
   isComputePackageOrderSubmitting.value = true
   try {
+    const targetPackage = computePackages.value.find((item) => item.id === computePackageId)
+    if (targetPackage?.canPurchase === false) {
+      showActionFeedback({
+        type: 'error',
+        title: '无法购买',
+        message: targetPackage.purchaseBlockedReason || '当前授权版本不可购买该算力包'
+      })
+      return
+    }
+
     currentComputePackageOrder.value = await createComputePackageOrder({
       computePackageId,
       channel: 'alipay'
@@ -1583,7 +1623,7 @@ onUnmounted(() => {
           :activation-state="activationState"
           :wallet-summary="walletSummary"
           :software-packages="softwarePackages"
-          :compute-packages="computePackages"
+          :compute-packages="visibleComputePackages"
           :current-software-order="currentSoftwareOrder"
           :current-compute-package-order="currentComputePackageOrder"
           :current-recharge-order="currentRechargeOrder"
