@@ -54,6 +54,7 @@ function createAuthorizationState(overrides = {}) {
     sessionToken: '',
     walletSummary: null,
     activePackage: null,
+    remoteServiceCapacity: null,
     message: '',
     nextAction: 'activate-license',
     legacyImportSupported: true,
@@ -109,6 +110,7 @@ function mapRemoteActivationState(remoteStatus = {}) {
 function createAuthorizationService({
   legacyLicenseService,
   remoteLicensePlatformClient,
+  settingsService,
   getRemoteConfig = () => ({ enabled: false, baseUrl: '', sessionToken: '' }),
   getDeviceCode = async () => ''
 }) {
@@ -135,7 +137,31 @@ function createAuthorizationService({
         deviceFingerprint: await getDeviceCode()
       })
 
-      return mapRemoteActivationState(remoteStatus)
+      let remoteServiceCapacity = null
+      if (typeof remoteLicensePlatformClient.getServiceCapacityProfile === 'function') {
+        try {
+          remoteServiceCapacity = await remoteLicensePlatformClient.getServiceCapacityProfile({
+            sessionToken
+          })
+        } catch {
+          remoteServiceCapacity = null
+        }
+      }
+
+      if (settingsService && typeof settingsService.saveSettings === 'function') {
+        await settingsService.saveSettings({
+          authPlatform: {
+            ...remoteConfig,
+            remoteServiceCapacity,
+            lastSyncedAt: new Date().toISOString()
+          }
+        }).catch(() => {})
+      }
+
+      return {
+        ...mapRemoteActivationState(remoteStatus),
+        remoteServiceCapacity
+      }
     } catch (error) {
       return createAuthorizationState({
         status: 'not_logged_in',
@@ -147,7 +173,8 @@ function createAuthorizationService({
         nextAction: 'activate-license',
         legacyImportSupported: true,
         legacyStatus: '',
-        remoteStatus: 'request_failed'
+        remoteStatus: 'request_failed',
+        remoteServiceCapacity: getRemoteConfig()?.remoteServiceCapacity || null
       })
     }
   }

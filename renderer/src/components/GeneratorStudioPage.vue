@@ -9,7 +9,8 @@ const props = defineProps({
   tasks: { type: Array, default: () => [] },
   agentReadiness: { type: Object, default: () => ({ queue: {}, executionLog: [] }) },
   mode: { type: String, required: true },
-  promptTemplates: { type: Array, default: () => [] }
+  promptTemplates: { type: Array, default: () => [] },
+  remoteServiceCapacity: { type: Object, default: null }
 })
 
 const emit = defineEmits([
@@ -209,6 +210,23 @@ const hasAnyResults = computed(() => {
   return Boolean(textResultCards.value.length || previewImageResults.value.length || resultOutputCards.value.length)
 })
 
+const remoteServiceHint = computed(() => {
+  const profile = props.remoteServiceCapacity && typeof props.remoteServiceCapacity === 'object'
+    ? props.remoteServiceCapacity
+    : null
+  if (!profile) {
+    return null
+  }
+
+  return {
+    serviceTier: profile.serviceTier || 'SHARED',
+    imageConcurrency: Math.max(1, Number(profile.effectiveImageConcurrency) || 1),
+    videoConcurrency: Math.max(0, Number(profile.effectiveVideoConcurrency) || 0),
+    textConcurrency: Math.max(1, Number(profile.effectiveTextConcurrency) || 1),
+    textPriorityClass: profile.textPriorityClass || 'STANDARD'
+  }
+})
+
 const summaryDescription = computed(() => props.resultPayload.summary?.description || '')
 
 const normalizedTasks = computed(() => {
@@ -363,6 +381,12 @@ function formatTaskLabel(task) {
       </header>
 
       <div class="generator-form">
+        <div v-if="remoteServiceHint" class="generator-form__card generator-form__card--service">
+          <strong>远程服务档位 {{ remoteServiceHint.serviceTier }}</strong>
+          <span>图片并发 {{ remoteServiceHint.imageConcurrency }} / 文本并发 {{ remoteServiceHint.textConcurrency }} / 视频并发 {{ remoteServiceHint.videoConcurrency }}</span>
+          <span>文本优先级 {{ remoteServiceHint.textPriorityClass }}</span>
+        </div>
+
         <div class="generator-form__group">
           <div class="generator-form__row">
             <span class="generator-form__label">任务名称</span>

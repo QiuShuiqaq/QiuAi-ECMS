@@ -3841,6 +3841,7 @@ function createStudioWorkspaceService({
       agentReadiness: buildAgentReadinessSnapshot(tasks),
       workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
       settingsSummary: buildSettingsSummary(settings),
+      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null,
       hostInfo: buildHostInfo()
     }
   }
@@ -4044,6 +4045,7 @@ function createStudioWorkspaceService({
       agentReadiness: buildAgentReadinessSnapshot(tasks),
       workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
       settingsSummary: buildSettingsSummary(settings),
+      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null,
       hostInfo: buildHostInfo()
     }
   }
@@ -4051,6 +4053,7 @@ function createStudioWorkspaceService({
   function getRuntimeSnapshot() {
     const {
       state,
+      settings,
       tasks,
       exportItemsByMenu
     } = buildBaseSnapshot()
@@ -4064,7 +4067,8 @@ function createStudioWorkspaceService({
       resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
       exportItemsByMenu,
       tasks,
-      agentReadiness: buildAgentReadinessSnapshot(tasks)
+      agentReadiness: buildAgentReadinessSnapshot(tasks),
+      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null
     }
   }
 

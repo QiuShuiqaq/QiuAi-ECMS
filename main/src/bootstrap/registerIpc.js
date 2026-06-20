@@ -62,6 +62,7 @@ function registerIpc() {
   const authorizationService = createAuthorizationService({
     legacyLicenseService: licenseService,
     remoteLicensePlatformClient,
+    settingsService,
     getRemoteConfig: () => settingsService.getSettings().authPlatform,
     getDeviceCode: () => deviceFingerprintService.getDeviceCode()
   })

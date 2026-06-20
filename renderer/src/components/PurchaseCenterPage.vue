@@ -76,18 +76,18 @@ const emit = defineEmits([
 const walletCards = computed(() => {
   const summary = props.walletSummary || {}
   return [
-    { key: 'text', label: '文本余额', value: Number(summary.textBalanceCny || 0) },
-    { key: 'image', label: '图片余额', value: Number(summary.imageBalanceCny || 0) },
-    { key: 'video', label: '视频余额', value: Number(summary.videoBalanceCny || 0) }
+    { key: 'text', label: 'Text Balance', value: Number(summary.textBalanceCny || 0) },
+    { key: 'image', label: 'Image Balance', value: Number(summary.imageBalanceCny || 0) },
+    { key: 'video', label: 'Video Balance', value: Number(summary.videoBalanceCny || 0) }
   ]
 })
 
 const licenseStatusLabel = computed(() => {
   const status = String(props.activationState?.status || '')
-  if (status === 'activated') return '已激活'
-  if (status === 'expired') return '已过期'
-  if (status === 'device_mismatch') return '设备不匹配'
-  return '待激活'
+  if (status === 'activated') return 'Activated'
+  if (status === 'expired') return 'Expired'
+  if (status === 'device_mismatch') return 'Device mismatch'
+  return 'Pending activation'
 })
 
 function formatAmount(value) {
@@ -103,26 +103,45 @@ function formatDateTime(value) {
 }
 
 function resolveOrderStatusLabel(status) {
-  if (status === 'paid') return '已支付'
-  if (status === 'failed') return '支付失败'
-  if (status === 'closed') return '已关闭'
-  return '待支付'
+  if (status === 'paid') return 'Paid'
+  if (status === 'failed') return 'Failed'
+  if (status === 'closed') return 'Closed'
+  return 'Pending'
+}
+
+function resolveTextPriorityLabel(value) {
+  return String(value || '').trim().toUpperCase() === 'HIGH' ? 'High' : 'Standard'
 }
 
 function resolvePackageFeatures(pkg = {}) {
   const features = []
+  const primaryServicePlan = pkg.primaryServicePlan || null
 
-  if (pkg.durationDays) features.push(`时长 ${pkg.durationDays} 天`)
-  if (pkg.deviceLimit) features.push(`设备数 ${pkg.deviceLimit}`)
+  if (pkg.durationDays) features.push(`Duration ${pkg.durationDays} days`)
+  if (pkg.deviceLimit) features.push(`Devices ${pkg.deviceLimit}`)
   if (Array.isArray(pkg.entitlementSummary) && pkg.entitlementSummary.length) {
     features.push(...pkg.entitlementSummary)
   }
-  if (Number(pkg.includedTextBalanceCny || 0) > 0) features.push(`文本余额 ${formatAmount(pkg.includedTextBalanceCny)} CNY`)
-  if (Number(pkg.includedImageBalanceCny || 0) > 0) features.push(`图片余额 ${formatAmount(pkg.includedImageBalanceCny)} CNY`)
-  if (Number(pkg.includedVideoBalanceCny || 0) > 0) features.push(`视频余额 ${formatAmount(pkg.includedVideoBalanceCny)} CNY`)
-  if (pkg.overageEnabled) features.push('支持超额续费')
-  if (pkg.tier === 'MEMBER') features.push('会员算力包')
-  if (pkg.tier === 'STANDARD') features.push('普通算力包')
+  if (Number(pkg.includedTextBalanceCny || 0) > 0) features.push(`Text balance ${formatAmount(pkg.includedTextBalanceCny)} CNY`)
+  if (Number(pkg.includedImageBalanceCny || 0) > 0) features.push(`Image balance ${formatAmount(pkg.includedImageBalanceCny)} CNY`)
+  if (Number(pkg.includedVideoBalanceCny || 0) > 0) features.push(`Video balance ${formatAmount(pkg.includedVideoBalanceCny)} CNY`)
+  if (pkg.overageEnabled) features.push('Overage recharge enabled')
+  if (pkg.tier === 'MEMBER') features.push('Member compute package')
+  if (pkg.tier === 'STANDARD') features.push('Standard compute package')
+  if (primaryServicePlan?.tier) features.push(`Service tier ${primaryServicePlan.tier}`)
+  if (primaryServicePlan?.imageConcurrencyLimit > 0) {
+    features.push(`Image concurrency ${primaryServicePlan.imageConcurrencyLimit}`)
+  }
+  if (typeof primaryServicePlan?.videoConcurrencyLimit === 'number') {
+    features.push(`Video concurrency ${primaryServicePlan.videoConcurrencyLimit}`)
+  }
+  if (primaryServicePlan?.textPriorityClass) {
+    features.push(`Text priority ${resolveTextPriorityLabel(primaryServicePlan.textPriorityClass)}`)
+  }
+  if (primaryServicePlan?.canBurst) features.push('Burst enabled')
+  if (Array.isArray(pkg.linkedServicePlans) && pkg.linkedServicePlans.length > 1) {
+    features.push(`Linked service plans ${pkg.linkedServicePlans.length}`)
+  }
 
   return features
 }
@@ -132,18 +151,21 @@ function resolvePackageFeatures(pkg = {}) {
   <section class="purchase-center" :class="{ 'purchase-center--embedded': embedded }">
     <header class="purchase-center__hero">
       <div class="purchase-center__hero-main">
-        <span class="purchase-center__eyebrow">充值中心</span>
-        <h1>授权、月套餐与余额充值</h1>
-        <p>统一处理授权购买、月套餐购买和算力直充。支付后会自动回查订单状态并刷新授权与余额。</p>
+        <span class="purchase-center__eyebrow">Purchase Center</span>
+        <h1>Licenses, compute plans, and direct recharge</h1>
+        <p>
+          Manage software licenses, monthly compute packages, and direct balance recharge in one place.
+          After payment, the client can refresh the latest order and entitlement state here.
+        </p>
       </div>
 
       <div class="purchase-center__hero-side">
         <div class="purchase-center__license-card">
-          <span>当前授权</span>
-          <strong>{{ activationState.customerName || '未命名客户' }}</strong>
+          <span>Current license</span>
+          <strong>{{ activationState.customerName || 'Unnamed customer' }}</strong>
           <div class="purchase-center__license-meta">
             <span>{{ licenseStatusLabel }}</span>
-            <span>到期：{{ activationState.expiresAt ? formatDateTime(activationState.expiresAt) : '永久或未设置' }}</span>
+            <span>Expires: {{ activationState.expiresAt ? formatDateTime(activationState.expiresAt) : 'Permanent or not set' }}</span>
           </div>
         </div>
 
@@ -160,31 +182,41 @@ function resolvePackageFeatures(pkg = {}) {
     <section class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
-          <span class="purchase-center__section-kicker">余额充值</span>
-          <h2>算力直充</h2>
+          <span class="purchase-center__section-kicker">Recharge</span>
+          <h2>Direct balance top-up</h2>
         </div>
       </div>
 
       <div class="purchase-center__recharge-card">
         <div class="purchase-center__recharge-main">
-          <strong>图片 / 视频余额直充</strong>
-          <p>适合已有授权用户直接补充算力，是最高频的付费入口。</p>
+          <strong>Image / video direct recharge</strong>
+          <p>Best for users who already have a valid license and only need more generation balance.</p>
           <div v-if="currentRechargeOrder" class="purchase-center__recharge-order">
-            <span>最近订单：{{ currentRechargeOrder.merchantOrderNo }}</span>
-            <span>状态：{{ resolveOrderStatusLabel(currentRechargeOrder.status) }}</span>
-            <span>金额：{{ formatAmount(currentRechargeOrder.payAmountCny) }} CNY</span>
+            <span>Latest order: {{ currentRechargeOrder.merchantOrderNo }}</span>
+            <span>Status: {{ resolveOrderStatusLabel(currentRechargeOrder.status) }}</span>
+            <span>Amount: {{ formatAmount(currentRechargeOrder.payAmountCny) }} CNY</span>
           </div>
         </div>
 
         <div class="purchase-center__order-actions">
           <button class="primary-action" type="button" @click="emit('open-recharge')">
-            新建充值订单
+            Create recharge order
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder || isRechargeRefreshing" @click="emit('refresh-recharge-order')">
-            {{ isRechargeRefreshing ? '查询中' : '查询订单' }}
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="!currentRechargeOrder || isRechargeRefreshing"
+            @click="emit('refresh-recharge-order')"
+          >
+            {{ isRechargeRefreshing ? 'Refreshing' : 'Refresh order' }}
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl" @click="emit('open-recharge-order')">
-            打开支付
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl"
+            @click="emit('open-recharge-order')"
+          >
+            Open payment
           </button>
         </div>
       </div>
@@ -193,11 +225,11 @@ function resolvePackageFeatures(pkg = {}) {
     <section class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
-          <span class="purchase-center__section-kicker">月度算力</span>
-          <h2>月套餐</h2>
+          <span class="purchase-center__section-kicker">Compute Plans</span>
+          <h2>Monthly compute packages</h2>
         </div>
         <button class="secondary-action" type="button" :disabled="isCatalogLoading" @click="emit('refresh-catalog')">
-          {{ isCatalogLoading ? '刷新中' : '刷新套餐' }}
+          {{ isCatalogLoading ? 'Refreshing' : 'Refresh catalog' }}
         </button>
       </div>
 
@@ -208,7 +240,7 @@ function resolvePackageFeatures(pkg = {}) {
               <strong>{{ pkg.name }}</strong>
               <span>{{ pkg.productName }}</span>
             </div>
-            <p>{{ pkg.description || '暂无说明' }}</p>
+            <p>{{ pkg.description || 'No description' }}</p>
             <div class="purchase-center__feature-row">
               <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
             </div>
@@ -223,34 +255,44 @@ function resolvePackageFeatures(pkg = {}) {
               :disabled="isComputePackageOrderSubmitting || pkg.canPurchase === false"
               @click="emit('create-compute-package-order', pkg.id)"
             >
-              {{ pkg.canPurchase === false ? '当前版本不可购买' : (isComputePackageOrderSubmitting ? '创建中' : '购买算力包') }}
+              {{ pkg.canPurchase === false ? 'Not available for current license' : (isComputePackageOrderSubmitting ? 'Creating' : 'Buy compute package') }}
             </button>
             <small v-if="pkg.canPurchase === false" class="purchase-center__blocked-tip">
-              {{ pkg.purchaseBlockedReason || '当前授权版本不可购买该算力包' }}
+              {{ pkg.purchaseBlockedReason || 'Current license edition cannot buy this compute package' }}
             </small>
           </div>
         </article>
 
         <article v-if="!computePackages.length" class="purchase-center__empty">
-          <strong>暂无可售月套餐</strong>
-          <span>平台端未配置月套餐时，这里会保持为空。</span>
+          <strong>No monthly compute packages available</strong>
+          <span>When the platform exposes compute packages, they will appear here.</span>
         </article>
       </div>
 
       <div v-if="currentComputePackageOrder" class="purchase-center__order-panel">
         <div class="purchase-center__order-info">
-          <strong>最新月套餐订单</strong>
-          <span>订单号：{{ currentComputePackageOrder.merchantOrderNo }}</span>
-          <span>状态：{{ resolveOrderStatusLabel(currentComputePackageOrder.status) }}</span>
-          <span>金额：{{ formatAmount(currentComputePackageOrder.amountCny) }} CNY</span>
+          <strong>Latest compute package order</strong>
+          <span>Order No: {{ currentComputePackageOrder.merchantOrderNo }}</span>
+          <span>Status: {{ resolveOrderStatusLabel(currentComputePackageOrder.status) }}</span>
+          <span>Amount: {{ formatAmount(currentComputePackageOrder.amountCny) }} CNY</span>
         </div>
 
         <div class="purchase-center__order-actions">
-          <button class="secondary-action" type="button" :disabled="isComputePackageOrderRefreshing" @click="emit('refresh-compute-package-order')">
-            {{ isComputePackageOrderRefreshing ? '查询中' : '查询订单' }}
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="isComputePackageOrderRefreshing"
+            @click="emit('refresh-compute-package-order')"
+          >
+            {{ isComputePackageOrderRefreshing ? 'Refreshing' : 'Refresh order' }}
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentComputePackageOrder.paymentPayload?.mockPayUrl" @click="emit('open-compute-package-order')">
-            打开支付
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="!currentComputePackageOrder.paymentPayload?.mockPayUrl"
+            @click="emit('open-compute-package-order')"
+          >
+            Open payment
           </button>
         </div>
       </div>
@@ -259,8 +301,8 @@ function resolvePackageFeatures(pkg = {}) {
     <section class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
-          <span class="purchase-center__section-kicker">软件授权</span>
-          <h2>授权套餐</h2>
+          <span class="purchase-center__section-kicker">Software License</span>
+          <h2>License packages</h2>
         </div>
       </div>
 
@@ -271,7 +313,7 @@ function resolvePackageFeatures(pkg = {}) {
               <strong>{{ pkg.name }}</strong>
               <span>{{ pkg.productName }}</span>
             </div>
-            <p>{{ pkg.description || '暂无说明' }}</p>
+            <p>{{ pkg.description || 'No description' }}</p>
             <div class="purchase-center__feature-row">
               <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
             </div>
@@ -286,31 +328,41 @@ function resolvePackageFeatures(pkg = {}) {
               :disabled="isSoftwareOrderSubmitting"
               @click="emit('create-software-order', pkg.id)"
             >
-              {{ isSoftwareOrderSubmitting ? '创建中' : '购买授权' }}
+              {{ isSoftwareOrderSubmitting ? 'Creating' : 'Buy license' }}
             </button>
           </div>
         </article>
 
         <article v-if="!softwarePackages.length" class="purchase-center__empty">
-          <strong>暂无可售授权套餐</strong>
-          <span>如果这里为空，说明平台端还未配置或还未同步出公开套餐接口。</span>
+          <strong>No software license packages available</strong>
+          <span>When the platform publishes license packages, they will appear here.</span>
         </article>
       </div>
 
       <div v-if="currentSoftwareOrder" class="purchase-center__order-panel">
         <div class="purchase-center__order-info">
-          <strong>最新授权订单</strong>
-          <span>订单号：{{ currentSoftwareOrder.merchantOrderNo }}</span>
-          <span>状态：{{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
-          <span>金额：{{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
+          <strong>Latest software order</strong>
+          <span>Order No: {{ currentSoftwareOrder.merchantOrderNo }}</span>
+          <span>Status: {{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
+          <span>Amount: {{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
         </div>
 
         <div class="purchase-center__order-actions">
-          <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">
-            {{ isSoftwareOrderRefreshing ? '查询中' : '查询订单' }}
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="isSoftwareOrderRefreshing"
+            @click="emit('refresh-software-order')"
+          >
+            {{ isSoftwareOrderRefreshing ? 'Refreshing' : 'Refresh order' }}
           </button>
-          <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">
-            打开支付
+          <button
+            class="secondary-action"
+            type="button"
+            :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl"
+            @click="emit('open-software-order')"
+          >
+            Open payment
           </button>
         </div>
       </div>

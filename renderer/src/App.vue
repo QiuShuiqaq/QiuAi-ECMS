@@ -81,6 +81,7 @@ const workspaceDashboard = ref({
   creditOverview: { ledgers: [] },
   creditMessages: { ledgers: [] }
 })
+const studioRemoteServiceCapacity = ref(null)
 const promptTemplates = ref([])
 const activationState = ref({
   status: 'not_logged_in',
@@ -170,8 +171,21 @@ const walletSummary = computed(() => {
   return activationState.value.walletSummary || null
 })
 
+const remoteServiceCapacity = computed(() => {
+  return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
+})
+
 const activeCapability = computed(() => {
   return activationState.value.activePackage?.capabilityConfig || null
+})
+
+const effectiveGenerationLimits = computed(() => {
+  return {
+    imageConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveImageConcurrency) || 1),
+    videoConcurrency: Math.max(0, Number(remoteServiceCapacity.value?.effectiveVideoConcurrency) || 0),
+    textConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveTextConcurrency) || 1),
+    serviceTier: String(remoteServiceCapacity.value?.serviceTier || 'SHARED')
+  }
 })
 
 const visibleComputePackages = computed(() => computePackages.value)
@@ -324,6 +338,7 @@ function applyStudioRuntimeSnapshot(snapshot = {}) {
   activeProductProjectId.value = snapshot.activeProductProjectId || ''
   studioTasks.value = snapshot.tasks || []
   studioAgentReadiness.value = snapshot.agentReadiness || studioAgentReadiness.value
+  studioRemoteServiceCapacity.value = snapshot.remoteServiceCapacity || studioRemoteServiceCapacity.value
 }
 
 function isStudioTaskActive(task = {}) {
@@ -669,12 +684,22 @@ async function handleSubmitTask(menuKey = activeMenu.value) {
       const generateCount = Math.max(1, Number(draft.generateCount) || 1)
       const batchCount = Math.max(1, Number(draft.batchCount) || 1)
       const capability = activeCapability.value
+      const imageConcurrencyLimit = effectiveGenerationLimits.value.imageConcurrency
 
       if (capability && capability.batchTaskEnabled === false && batchCount > 1) {
         showActionFeedback({
           type: 'error',
           title: '当前版本不支持',
           message: '标准版不支持批量套图任务'
+        })
+        return
+      }
+
+      if (batchCount > imageConcurrencyLimit) {
+        showActionFeedback({
+          type: 'error',
+          title: '瓒呰繃鏈嶅姟骞跺彂涓婇檺',
+          message: `褰撳墠鏈嶅姟妗ｄ綅 ${effectiveGenerationLimits.value.serviceTier} 鏈€澶氬厑璁?${imageConcurrencyLimit} 涓浘鍍忓苟鍙戞壒娆?`
         })
         return
       }
@@ -687,6 +712,15 @@ async function handleSubmitTask(menuKey = activeMenu.value) {
         })
         return
       }
+    }
+
+    if (menuKey === 'video-generate' && effectiveGenerationLimits.value.videoConcurrency < 1) {
+      showActionFeedback({
+        type: 'error',
+        title: '褰撳墠鏈嶅姟鏆備笉鏀寔',
+        message: '褰撳墠璐︽埛杩樻病鏈夎棰戠敓鎴愬苟鍙戞潈闄?'
+      })
+      return
     }
 
     await createStudioTask({
@@ -1474,6 +1508,7 @@ onUnmounted(() => {
           :tasks="studioTasks"
           :agent-readiness="studioAgentReadiness"
           :prompt-templates="promptTemplates"
+          :remote-service-capacity="remoteServiceCapacity"
           @update-draft="handleDraftUpdate"
           @submit-task="handleSubmitTask('title-generator')"
           @pick-image="handlePickGeneratorImage"
@@ -1492,6 +1527,7 @@ onUnmounted(() => {
           :tasks="studioTasks"
           :agent-readiness="studioAgentReadiness"
           :prompt-templates="promptTemplates"
+          :remote-service-capacity="remoteServiceCapacity"
           @update-draft="handleDraftUpdate"
           @submit-task="handleSubmitTask('description-generator')"
           @pick-image="handlePickGeneratorImage"
@@ -1510,6 +1546,7 @@ onUnmounted(() => {
           :tasks="studioTasks"
           :agent-readiness="studioAgentReadiness"
           :prompt-templates="promptTemplates"
+          :remote-service-capacity="remoteServiceCapacity"
           @update-draft="handleDraftUpdate"
           @submit-task="handleSubmitTask('series-generate')"
           @pick-image="handlePickGeneratorImage"
@@ -1528,6 +1565,7 @@ onUnmounted(() => {
           :tasks="studioTasks"
           :agent-readiness="studioAgentReadiness"
           :prompt-templates="promptTemplates"
+          :remote-service-capacity="remoteServiceCapacity"
           @update-draft="handleDraftUpdate"
           @submit-task="handleSubmitTask('video-generate')"
           @pick-image="handlePickGeneratorImage"

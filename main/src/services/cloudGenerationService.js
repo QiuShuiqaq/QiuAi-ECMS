@@ -23,6 +23,72 @@ function clampNumber(value, minimum, maximum, fallback) {
   return Math.max(minimum, Math.min(maximum, numericValue))
 }
 
+function isTerminalJobStatus(status = '') {
+  return TERMINAL_JOB_STATUSES.has(String(status || ''))
+}
+
+function resolveRequestedConcurrency({ assetType = '', draft = {}, serviceCapacityProfile = null }) {
+  const normalizedAssetType = trimString(assetType).toUpperCase()
+  const profile = serviceCapacityProfile && typeof serviceCapacityProfile === 'object'
+    ? serviceCapacityProfile
+    : {}
+
+  if (normalizedAssetType === 'VIDEO') {
+    const serverLimit = Math.max(0, Number(profile.effectiveVideoConcurrency) || 0)
+    return Math.max(1, Math.min(1, serverLimit || 1))
+  }
+
+  if (normalizedAssetType === 'TEXT') {
+    const serverLimit = Math.max(1, Number(profile.effectiveTextConcurrency) || 1)
+    return serverLimit
+  }
+
+  const batchCount = Math.max(1, Number(draft.batchCount) || 1)
+  const serverLimit = Math.max(1, Number(profile.effectiveImageConcurrency) || 1)
+  return Math.max(1, Math.min(batchCount, serverLimit))
+}
+
+async function fetchServiceCapacityProfile(remoteLicensePlatformClient, sessionToken = '') {
+  if (!remoteLicensePlatformClient || typeof remoteLicensePlatformClient.getServiceCapacityProfile !== 'function') {
+    return null
+  }
+
+  try {
+    return await remoteLicensePlatformClient.getServiceCapacityProfile({
+      sessionToken
+    })
+  } catch {
+    return null
+  }
+}
+
+function resolvePollingIntervalMs(job = {}, fallbackIntervalMs = 10000) {
+  const advice = job && typeof job.pollingAdvice === 'object'
+    ? job.pollingAdvice
+    : null
+  const recommendedIntervalMs = Number(advice?.recommendedIntervalMs)
+  const minIntervalMs = Number(advice?.minIntervalMs)
+
+  if (Number.isFinite(recommendedIntervalMs) && recommendedIntervalMs > 0) {
+    const safeMinimum = Number.isFinite(minIntervalMs) && minIntervalMs > 0 ? minIntervalMs : 1000
+    return Math.max(safeMinimum, recommendedIntervalMs)
+  }
+
+  if (isTerminalJobStatus(job?.status)) {
+    return 0
+  }
+
+  const assetType = trimString(job?.items?.[0]?.assetType || '').toUpperCase()
+  if (job?.status === 'PENDING') {
+    return assetType === 'VIDEO' ? 12000 : 10000
+  }
+
+  if (assetType === 'VIDEO') return 10000
+  if (assetType === 'TEXT') return 4000
+  if (assetType === 'IMAGE') return 5000
+  return fallbackIntervalMs
+}
+
 function normalizePromptAssignments(promptAssignments = [], generateCount = 1) {
   const normalizedCount = Math.max(1, Number(generateCount) || 1)
   const sourceAssignments = Array.isArray(promptAssignments) ? promptAssignments : []
@@ -134,8 +200,9 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
   const sourceImagePath = draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
 
   return {
+    sessionToken,
     sourceImagePath,
-    buildJobPayload: async ({ readFile, getMimeTypeFromPath }) => {
+    buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
       const sourceImageDataUrl = await fileToDataUrl(sourceImagePath, {
         readFile,
         getMimeTypeFromPath
@@ -151,6 +218,11 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           batchCount,
           generateCount: outputDescriptors.length
         },
+        requestedConcurrency: resolveRequestedConcurrency({
+          assetType: 'IMAGE',
+          draft,
+          serviceCapacityProfile
+        }),
         items: Array.from({ length: batchCount }).flatMap((_unused, batchIndex) => {
           return outputDescriptors.map((descriptor) => ({
             groupIndex: batchIndex + 1,
@@ -236,8 +308,9 @@ function buildVideoPayload({ draft, sessionToken }) {
   const sourceImagePath = draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
 
   return {
+    sessionToken,
     sourceImagePath,
-    buildJobPayload: async ({ readFile, getMimeTypeFromPath }) => {
+    buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
       const sourceImageDataUrl = await fileToDataUrl(sourceImagePath, {
         readFile,
         getMimeTypeFromPath
@@ -252,6 +325,11 @@ function buildVideoPayload({ draft, sessionToken }) {
           duration: trimString(draft.duration || '6s'),
           resolution: trimString(draft.resolution || '768P')
         },
+        requestedConcurrency: resolveRequestedConcurrency({
+          assetType: 'VIDEO',
+          draft,
+          serviceCapacityProfile
+        }),
         items: [
           {
             groupIndex: 1,
@@ -341,7 +419,8 @@ function buildTextPayload({ draft, sessionToken }) {
   const model = trimString(draft.model || 'deepseek-chat')
 
   return {
-    buildJobPayload: async () => {
+    sessionToken,
+    buildJobPayload: async ({ serviceCapacityProfile }) => {
       return {
         sessionToken,
         jobType: 'TEXT',
@@ -350,6 +429,11 @@ function buildTextPayload({ draft, sessionToken }) {
           model,
           quantity
         },
+        requestedConcurrency: resolveRequestedConcurrency({
+          assetType: 'TEXT',
+          draft,
+          serviceCapacityProfile
+        }),
         items: [
           {
             groupIndex: 1,
@@ -409,9 +493,14 @@ async function runRemoteJob({
   pollTimeoutMs
 }) {
   const startedAt = Date.now()
+  const serviceCapacityProfile = await fetchServiceCapacityProfile(
+    remoteLicensePlatformClient,
+    payloadBuilder?.sessionToken || ''
+  )
   const jobPayload = await payloadBuilder.buildJobPayload({
     readFile,
-    getMimeTypeFromPath
+    getMimeTypeFromPath,
+    serviceCapacityProfile
   })
   const createdJob = await remoteLicensePlatformClient.createGenerationJob(jobPayload)
   let latestJob = createdJob
@@ -426,10 +515,11 @@ async function runRemoteJob({
       throw new Error('Remote generation timed out. Please retry later.')
     }
 
-    await sleep(pollIntervalMs)
+    await sleep(resolvePollingIntervalMs(latestJob, pollIntervalMs))
     latestJob = await remoteLicensePlatformClient.getGenerationJob({
       id: createdJob.id,
-      sessionToken: jobPayload.sessionToken
+      sessionToken: jobPayload.sessionToken,
+      mode: 'compact'
     })
 
     await onProgress?.({
@@ -437,6 +527,12 @@ async function runRemoteJob({
       status: ['FAILED', 'CANCELLED'].includes(String(latestJob.status || '')) ? 'failed' : 'running'
     })
   }
+
+  latestJob = await remoteLicensePlatformClient.getGenerationJob({
+    id: createdJob.id,
+    sessionToken: jobPayload.sessionToken,
+    mode: 'full'
+  })
 
   if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
     throw new Error(trimString(latestJob.failureReason || '') || 'Remote generation failed.')
@@ -478,7 +574,13 @@ async function runRemoteTextJob({
   pollTimeoutMs
 }) {
   const startedAt = Date.now()
-  const jobPayload = await payloadBuilder.buildJobPayload({})
+  const serviceCapacityProfile = await fetchServiceCapacityProfile(
+    remoteLicensePlatformClient,
+    payloadBuilder?.sessionToken || ''
+  )
+  const jobPayload = await payloadBuilder.buildJobPayload({
+    serviceCapacityProfile
+  })
   const createdJob = await remoteLicensePlatformClient.createGenerationJob(jobPayload)
   let latestJob = createdJob
 
@@ -487,12 +589,19 @@ async function runRemoteTextJob({
       throw new Error('Remote text generation timed out. Please retry later.')
     }
 
-    await sleep(pollIntervalMs)
+    await sleep(resolvePollingIntervalMs(latestJob, pollIntervalMs))
     latestJob = await remoteLicensePlatformClient.getGenerationJob({
       id: createdJob.id,
-      sessionToken: jobPayload.sessionToken
+      sessionToken: jobPayload.sessionToken,
+      mode: 'compact'
     })
   }
+
+  latestJob = await remoteLicensePlatformClient.getGenerationJob({
+    id: createdJob.id,
+    sessionToken: jobPayload.sessionToken,
+    mode: 'full'
+  })
 
   if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
     throw new Error(trimString(latestJob.failureReason || '') || 'Remote text generation failed.')

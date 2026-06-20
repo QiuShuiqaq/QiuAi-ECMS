@@ -96,6 +96,14 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function getServiceCapacityProfile({ sessionToken = '' } = {}) {
+    return request('get', '/api/service-capacity/profile', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
   async function activateLicense(payload = {}) {
     return request('post', '/api/activation/activate', {
       data: payload
@@ -158,10 +166,11 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function getGenerationJob({ id = '', sessionToken = '' } = {}) {
+  async function getGenerationJob({ id = '', sessionToken = '', mode = 'full' } = {}) {
     return request('get', `/api/generation/jobs/${trimString(id)}`, {
       params: {
-        sessionToken: trimString(sessionToken)
+        sessionToken: trimString(sessionToken),
+        mode: trimString(mode || 'full') || 'full'
       }
     })
   }
@@ -193,6 +202,7 @@ function createQiuAiLicensePlatformClientService({
     getComputePackageOrder,
     getGenerationJob,
     getRechargeOrder,
+    getServiceCapacityProfile,
     getSoftwareOrder,
     getWalletSummary,
     listComputePackages,

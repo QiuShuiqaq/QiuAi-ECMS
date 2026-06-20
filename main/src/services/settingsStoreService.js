@@ -43,7 +43,8 @@ const defaultAuthPlatform = {
   sessionToken: '',
   lastUserId: '',
   lastLicenseId: '',
-  lastSyncedAt: ''
+  lastSyncedAt: '',
+  remoteServiceCapacity: null
 }
 
 const defaultSettings = {
@@ -280,7 +281,10 @@ function normalizeAuthPlatform(rawAuthPlatform = {}) {
     sessionToken: typeof source.sessionToken === 'string' ? source.sessionToken.trim() : '',
     lastUserId: typeof source.lastUserId === 'string' ? source.lastUserId.trim() : '',
     lastLicenseId: typeof source.lastLicenseId === 'string' ? source.lastLicenseId.trim() : '',
-    lastSyncedAt: typeof source.lastSyncedAt === 'string' ? source.lastSyncedAt : ''
+    lastSyncedAt: typeof source.lastSyncedAt === 'string' ? source.lastSyncedAt : '',
+    remoteServiceCapacity: source.remoteServiceCapacity && typeof source.remoteServiceCapacity === 'object'
+      ? source.remoteServiceCapacity
+      : null
   }
 }
 
