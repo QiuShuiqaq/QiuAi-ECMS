@@ -8,9 +8,8 @@ describe('component sources', () => {
     const componentPaths = [
       'renderer/src/components/ProductWorkbench.vue',
       'renderer/src/components/DataCenterPage.vue',
-      'renderer/src/components/ProductTemplateDemoPage.vue',
       'renderer/src/components/GeneratorStudioPage.vue',
-      'renderer/src/components/ModelConfigPage.vue',
+      'renderer/src/components/PurchaseCenterPage.vue',
       'renderer/src/components/PromptLibraryPanel.vue'
     ]
 
@@ -26,23 +25,27 @@ describe('component sources', () => {
 
     expect(topbarSource).not.toContain('brand-click')
     expect(topbarSource).toContain('cleanup-click')
-    expect(topbarSource).toContain('theme-change')
+    expect(topbarSource).not.toContain('theme-change')
     expect(topbarSource).toContain('contact-preview-modal')
     expect(topbarSource).toContain('topbar-clean-button')
     expect(topbarSource).toContain('brandLabel')
+    expect(topbarSource).not.toContain('themeOptions')
+    expect(topbarSource).not.toContain('activeTheme')
+    expect(topbarSource).not.toContain('topbar-theme')
 
     expect(activationSource).toContain('copy-device-code')
-    expect(activationSource).toContain('import-license')
-    expect(activationSource).toContain('refresh-license')
     expect(activationSource).toContain('activationState.deviceCode')
+    expect(activationSource).not.toContain('import-license')
+    expect(activationSource).not.toContain('refresh-license')
   })
 
-  it('uses product-card workbench layout and simplified data-center/template pages', () => {
+  it('uses product-card workbench layout and simplified account-usage page', () => {
     const workbenchSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/ProductWorkbench.vue'), 'utf8')
     const dataCenterSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/DataCenterPage.vue'), 'utf8')
-    const templateSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/ProductTemplateDemoPage.vue'), 'utf8')
+    const generatorViewSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/utils/generatorViews.js'), 'utf8')
 
     expect(workbenchSource).toContain('workbench-plus-button')
+    expect(workbenchSource).toContain("import { generatorShortcutOptions } from '../utils/generatorViews'")
     expect(workbenchSource).toContain('project-draft-grid')
     expect(workbenchSource).toContain('project-draft-card__title')
     expect(workbenchSource).toContain('project-draft-card__meta')
@@ -51,8 +54,17 @@ describe('component sources', () => {
     expect(workbenchSource).toContain('product-result-card__copy')
     expect(workbenchSource).toContain('project-draft-card__delete')
     expect(workbenchSource).toContain('product-result-card__detail')
+    expect(workbenchSource).toContain('selection-panel__filters')
+    expect(workbenchSource).toContain('selection-card__actions')
     expect(workbenchSource).toContain("@click=\"emit('export-project', item.project.id)\"")
+    expect(workbenchSource).not.toContain('promptTemplates: { type: Array')
     expect(workbenchSource).not.toContain('effect-display')
+    expect(workbenchSource).not.toContain('workbench-agent-shell')
+    expect(workbenchSource).not.toContain('workbench-agent-card')
+    expect(generatorViewSource).toContain('export const generatorShortcutOptions = Object.entries(generatorViewMap).map')
+    expect(generatorViewSource).not.toContain('title-generator')
+    expect(generatorViewSource).not.toContain('description-generator')
+    expect(generatorViewSource).toContain('shortcutLabel')
 
     expect(dataCenterSource).toContain('data-center-gauge-row')
     expect(dataCenterSource).toContain('credit-gauge-card')
@@ -60,13 +72,11 @@ describe('component sources', () => {
     expect(dataCenterSource).toContain("key: 'text'")
     expect(dataCenterSource).toContain("key: 'image'")
     expect(dataCenterSource).toContain("key: 'video'")
-
-    expect(templateSource).toContain('product-template-demo')
   })
 
-  it('uses the unified generator studio and simplified model config structure required by the new workflow', () => {
+  it('uses the unified generator studio and keeps purchase center plus prompt library available', () => {
     const generatorSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/GeneratorStudioPage.vue'), 'utf8')
-    const modelConfigSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/ModelConfigPage.vue'), 'utf8')
+    const purchaseCenterSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/PurchaseCenterPage.vue'), 'utf8')
     const promptLibrarySource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/PromptLibraryPanel.vue'), 'utf8')
 
     expect(generatorSource).toContain('generator-column__header')
@@ -76,20 +86,20 @@ describe('component sources', () => {
     expect(generatorSource).toContain("emit('pick-image')")
     expect(generatorSource).toContain('generator-form__series')
     expect(generatorSource).toContain('seriesPromptAssignments')
-    expect(generatorSource).toContain('differenceLevelOptions')
+    expect(generatorSource).toContain('differenceLevel')
     expect(generatorSource).not.toContain('generator-project-context')
-    expect(generatorSource).toContain('titleTemplateId')
-    expect(generatorSource).toContain('descriptionTemplateId')
-    expect(generatorSource).toContain('imageTemplateId')
     expect(generatorSource).toContain('videoTemplateId')
+    expect(generatorSource).toContain('imageTemplateDefaultOrder')
+    expect(generatorSource).toContain('handleSeriesAssignmentTemplateChange')
+    expect(generatorSource).not.toContain('titleTemplateId')
+    expect(generatorSource).not.toContain('descriptionTemplateId')
 
-    expect(modelConfigSource).toContain('model-config-stack')
-    expect(modelConfigSource).toContain('model-config-field')
-    expect(modelConfigSource).toContain('model-config-input')
-    expect(modelConfigSource).toContain('textApiKey')
-    expect(modelConfigSource).toContain('imageApiKey')
-    expect(modelConfigSource).toContain('videoApiKey')
-    expect(modelConfigSource).toContain("emit('save')")
+    expect(purchaseCenterSource).toContain('purchase-center__hero')
+    expect(purchaseCenterSource).toContain('purchase-center__wallet-grid')
+    expect(purchaseCenterSource).toContain("emit('refresh-catalog')")
+    expect(purchaseCenterSource).toContain("emit('update-recharge-form'")
+    expect(purchaseCenterSource).toContain("emit('create-recharge')")
+    expect(purchaseCenterSource).toContain('purchase-center__recharge-form')
 
     expect(promptLibrarySource).toContain('CATEGORY_ORDER')
     expect(promptLibrarySource).toContain('templatesByCategory')
@@ -101,5 +111,6 @@ describe('component sources', () => {
     expect(promptLibrarySource).toContain('描述')
     expect(promptLibrarySource).toContain('图片')
     expect(promptLibrarySource).toContain('视频')
+    expect(promptLibrarySource).not.toContain("category === '文本'")
   })
 })

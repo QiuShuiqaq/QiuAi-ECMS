@@ -32,20 +32,21 @@ function resolveRequestedConcurrency({ assetType = '', draft = {}, serviceCapaci
   const profile = serviceCapacityProfile && typeof serviceCapacityProfile === 'object'
     ? serviceCapacityProfile
     : {}
+  const maxAllowedConcurrency = 64
 
   if (normalizedAssetType === 'VIDEO') {
     const serverLimit = Math.max(0, Number(profile.effectiveVideoConcurrency) || 0)
-    return Math.max(1, Math.min(1, serverLimit || 1))
+    return Math.max(1, Math.min(1, serverLimit || 1, maxAllowedConcurrency))
   }
 
   if (normalizedAssetType === 'TEXT') {
     const serverLimit = Math.max(1, Number(profile.effectiveTextConcurrency) || 1)
-    return serverLimit
+    return Math.max(1, Math.min(serverLimit, maxAllowedConcurrency))
   }
 
   const batchCount = Math.max(1, Number(draft.batchCount) || 1)
   const serverLimit = Math.max(1, Number(profile.effectiveImageConcurrency) || 1)
-  return Math.max(1, Math.min(batchCount, serverLimit))
+  return Math.max(1, Math.min(batchCount, serverLimit, maxAllowedConcurrency))
 }
 
 async function fetchServiceCapacityProfile(remoteLicensePlatformClient, sessionToken = '') {
@@ -80,12 +81,12 @@ function resolvePollingIntervalMs(job = {}, fallbackIntervalMs = 10000) {
 
   const assetType = trimString(job?.items?.[0]?.assetType || '').toUpperCase()
   if (job?.status === 'PENDING') {
-    return assetType === 'VIDEO' ? 12000 : 10000
+    return assetType === 'VIDEO' ? 15000 : 10000
   }
 
-  if (assetType === 'VIDEO') return 10000
-  if (assetType === 'TEXT') return 4000
-  if (assetType === 'IMAGE') return 5000
+  if (assetType === 'VIDEO') return 15000
+  if (assetType === 'TEXT') return 10000
+  if (assetType === 'IMAGE') return 10000
   return fallbackIntervalMs
 }
 
@@ -390,7 +391,7 @@ function buildVideoPayload({ draft, sessionToken }) {
 }
 
 function buildTextSystemPrompt() {
-  return 'You are an expert ecommerce copywriting assistant. Return only final user-facing text. No explanations, headings, quotes, numbering, or markdown.'
+  return 'You are an expert ecommerce text-generation assistant. Return only final user-facing text. No explanations, headings, quotes, numbering, or markdown.'
 }
 
 function buildTextUserPrompt(draft = {}) {
@@ -424,7 +425,7 @@ function buildTextPayload({ draft, sessionToken }) {
       return {
         sessionToken,
         jobType: 'TEXT',
-        menuKey: 'copywriting',
+        menuKey: 'workspace',
         draftSnapshot: {
           model,
           quantity
@@ -542,7 +543,8 @@ async function runRemoteJob({
   for (const artifact of Array.isArray(latestJob.artifacts) ? latestJob.artifacts : []) {
     const artifactBuffer = await remoteLicensePlatformClient.downloadGenerationArtifact({
       id: artifact.id,
-      sessionToken: jobPayload.sessionToken
+      sessionToken: jobPayload.sessionToken,
+      downloadUrl: trimString(artifact.downloadUrl || '')
     })
     const savedPath = await saveArtifactToDirectory({
       artifact,
@@ -617,92 +619,64 @@ function createCloudGenerationService({
   remoteLicensePlatformClient,
   readFile = fs.readFile,
   getMimeTypeFromPath,
-  localGenerateImageResults,
-  localGenerateVideoResults,
-  localGenerateCopywritingResults,
-  pollIntervalMs = 3000,
+  pollIntervalMs = 10000,
   pollTimeoutMs = 30 * 60 * 1000
 }) {
   async function generateImageResults({ menuKey, draft, taskId, outputDirectory, onProgress }) {
-    try {
-      const { sessionToken } = ensureRemoteReady(settingsService)
-
-      if (menuKey !== 'series-generate') {
-        return localGenerateImageResults({ menuKey, draft, taskId, outputDirectory, onProgress })
-      }
-
-      return runRemoteJob({
-        payloadBuilder: buildSeriesGeneratePayload({ draft, sessionToken }),
-        outputDirectory,
-        onProgress,
-        remoteLicensePlatformClient,
-        readFile,
-        getMimeTypeFromPath,
-        pollIntervalMs,
-        pollTimeoutMs
-      })
-    } catch (error) {
-      if (error?.code === 'REMOTE_GENERATION_NOT_READY') {
-        return localGenerateImageResults({ menuKey, draft, taskId, outputDirectory, onProgress })
-      }
-
+    if (menuKey !== 'series-generate') {
+      const error = new Error('Unsupported image task menu key. Use the current series generation flow instead.')
+      error.code = 'UNSUPPORTED_IMAGE_MENU_KEY'
       throw error
     }
+
+    const { sessionToken } = ensureRemoteReady(settingsService)
+
+    return runRemoteJob({
+      payloadBuilder: buildSeriesGeneratePayload({ draft, sessionToken }),
+      outputDirectory,
+      onProgress,
+      remoteLicensePlatformClient,
+      readFile,
+      getMimeTypeFromPath,
+      pollIntervalMs,
+      pollTimeoutMs
+    })
   }
 
   async function generateVideoResults({ draft, taskId, outputDirectory, onProgress }) {
-    try {
-      const { sessionToken } = ensureRemoteReady(settingsService)
+    const { sessionToken } = ensureRemoteReady(settingsService)
 
-      return runRemoteJob({
-        payloadBuilder: buildVideoPayload({ draft, sessionToken }),
-        outputDirectory,
-        onProgress,
-        remoteLicensePlatformClient,
-        readFile,
-        getMimeTypeFromPath,
-        pollIntervalMs,
-        pollTimeoutMs
-      })
-    } catch (error) {
-      if (error?.code === 'REMOTE_GENERATION_NOT_READY') {
-        return localGenerateVideoResults({ draft, taskId, outputDirectory, onProgress })
-      }
-
-      throw error
-    }
+    return runRemoteJob({
+      payloadBuilder: buildVideoPayload({ draft, sessionToken }),
+      outputDirectory,
+      onProgress,
+      remoteLicensePlatformClient,
+      readFile,
+      getMimeTypeFromPath,
+      pollIntervalMs,
+      pollTimeoutMs
+    })
   }
 
-  async function generateCopywritingResults({ draft, taskId }) {
-    try {
-      if (draft?.copyMode === 'image-reference') {
-        return localGenerateCopywritingResults({ draft, taskId })
-      }
+  async function generateTextResults({ draft, taskId }) {
+    const { sessionToken } = ensureRemoteReady(settingsService)
 
-      const { sessionToken } = ensureRemoteReady(settingsService)
-
-      return runRemoteTextJob({
-        payloadBuilder: buildTextPayload({ draft, sessionToken }),
-        remoteLicensePlatformClient,
-        pollIntervalMs,
-        pollTimeoutMs
-      })
-    } catch (error) {
-      if (error?.code === 'REMOTE_GENERATION_NOT_READY') {
-        return localGenerateCopywritingResults({ draft, taskId })
-      }
-
-      throw error
-    }
+    return runRemoteTextJob({
+      payloadBuilder: buildTextPayload({ draft, sessionToken }),
+      remoteLicensePlatformClient,
+      pollIntervalMs,
+      pollTimeoutMs
+    })
   }
 
   return {
     generateImageResults,
     generateVideoResults,
-    generateCopywritingResults
+    generateTextResults
   }
 }
 
 module.exports = {
-  createCloudGenerationService
+  createCloudGenerationService,
+  resolvePollingIntervalMs
 }

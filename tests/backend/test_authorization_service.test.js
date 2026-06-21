@@ -2,32 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { createAuthorizationService } from '../../main/src/services/authorizationService'
 
 describe('authorization service', () => {
-  it('maps a valid legacy license into the new activation shape', async () => {
-    const service = createAuthorizationService({
-      legacyLicenseService: {
-        getActivationStatus: vi.fn().mockResolvedValue({
-          status: 'activated',
-          customerName: 'Alice',
-          deviceCode: 'QAI-DEVICE',
-          activatedAt: '2026-06-15T10:00:00.000Z',
-          message: ''
-        }),
-        getDeviceCodePayload: vi.fn(),
-        importLicenseFromFile: vi.fn()
-      }
-    })
-
-    const result = await service.getActivationStatus()
-
-    expect(result.status).toBe('activated')
-    expect(result.canUseApp).toBe(true)
-    expect(result.mode).toBe('legacy-license')
-    expect(result.authType).toBe('offline-license')
-    expect(result.customerName).toBe('Alice')
-    expect(result.legacyStatus).toBe('activated')
-    expect(result.nextAction).toBe('enter-app')
-  })
-
   it('prefers remote server authorization when a session token is available', async () => {
     const remoteClient = {
       getAuthorizationStatus: vi.fn().mockResolvedValue({
@@ -52,13 +26,6 @@ describe('authorization service', () => {
     }
 
     const service = createAuthorizationService({
-      legacyLicenseService: {
-        getActivationStatus: vi.fn().mockResolvedValue({
-          status: 'not_found'
-        }),
-        getDeviceCodePayload: vi.fn(),
-        importLicenseFromFile: vi.fn()
-      },
       remoteLicensePlatformClient: remoteClient,
       getRemoteConfig: () => ({
         enabled: true,
@@ -78,26 +45,53 @@ describe('authorization service', () => {
     })
   })
 
-  it('maps a device mismatch into a support-oriented activation state', async () => {
+  it('returns not_logged_in with device code when no remote session is available', async () => {
     const service = createAuthorizationService({
-      legacyLicenseService: {
-        getActivationStatus: vi.fn().mockResolvedValue({
-          status: 'mismatch',
-          customerName: 'Alice',
-          deviceCode: 'QAI-OTHER',
-          activatedAt: '2026-06-15T10:00:00.000Z',
-          message: '当前设备与授权不匹配'
-        }),
-        getDeviceCodePayload: vi.fn(),
-        importLicenseFromFile: vi.fn()
-      }
+      remoteLicensePlatformClient: {
+        getAuthorizationStatus: vi.fn()
+      },
+      getRemoteConfig: () => ({
+        enabled: true,
+        sessionToken: ''
+      }),
+      getDeviceCode: vi.fn().mockResolvedValue('QAI-DEVICE')
     })
 
     const result = await service.getActivationStatus()
 
-    expect(result.status).toBe('device_mismatch')
+    expect(result.status).toBe('not_logged_in')
     expect(result.canUseApp).toBe(false)
-    expect(result.nextAction).toBe('contact-support')
-    expect(result.legacyStatus).toBe('mismatch')
+    expect(result.mode).toBe('server-license')
+    expect(result.authType).toBe('session-token')
+    expect(result.deviceCode).toBe('QAI-DEVICE')
+    expect(result.nextAction).toBe('activate-license')
+  })
+
+  it('maps remote request failures into a retryable activation state', async () => {
+    const remoteClient = {
+      getAuthorizationStatus: vi.fn().mockRejectedValue(new Error('network down'))
+    }
+
+    const service = createAuthorizationService({
+      remoteLicensePlatformClient: remoteClient,
+      getRemoteConfig: () => ({
+        enabled: true,
+        sessionToken: 'session-1',
+        remoteServiceCapacity: {
+          effectiveImageConcurrency: 4
+        }
+      }),
+      getDeviceCode: vi.fn().mockResolvedValue('QAI-DEVICE')
+    })
+
+    const result = await service.getActivationStatus()
+
+    expect(result.status).toBe('not_logged_in')
+    expect(result.remoteStatus).toBe('request_failed')
+    expect(result.deviceCode).toBe('QAI-DEVICE')
+    expect(result.message).toContain('network down')
+    expect(result.remoteServiceCapacity).toMatchObject({
+      effectiveImageConcurrency: 4
+    })
   })
 })

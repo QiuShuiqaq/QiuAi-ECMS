@@ -31,15 +31,14 @@ const imageSizeOptions = [
   { label: '9:16', value: '9:16' }
 ]
 
-const textModelOptions = [
-  { label: 'deepseek-v4-flash', value: 'deepseek-v4-flash' },
-  { label: 'deepseek-v4-pro', value: 'deepseek-v4-pro' }
-]
-
 const imageModelOptions = [
   { label: 'gpt-image-2', value: 'gpt-image-2' },
   { label: 'nano-banana-fast', value: 'nano-banana-fast' },
   { label: 'nano-banana-2', value: 'nano-banana-2' }
+]
+
+const videoModelOptions = [
+  { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
 ]
 
 const templateTypeMap = {
@@ -72,10 +71,6 @@ const imageTemplateDefaultOrder = [
   'image-replace-all'
 ]
 
-const videoModelOptions = [
-  { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
-]
-
 const videoAspectRatioOptions = [
   { label: '16:9', value: '16:9' },
   { label: '9:16', value: '9:16' },
@@ -95,61 +90,18 @@ const videoMotionOptions = [
   { label: '柔和', value: 'soft' }
 ]
 
-const fieldTitleMap = {
-  title: '标题',
-  description: '描述',
-  image: '套图',
-  video: '视频'
-}
-
-const templateCategories = computed(() => {
-  if (props.mode === 'title') return ['标题', '文本']
-  if (props.mode === 'description') return ['描述', '文本']
-  if (props.mode === 'image') return ['图片']
-  return ['视频']
-})
-
 const filteredTemplates = computed(() => {
-  return (props.promptTemplates || []).filter((item) => templateCategories.value.includes(item.category))
+  const category = props.mode === 'image' ? '图片' : '视频'
+  return (props.promptTemplates || []).filter((item) => item.category === category)
 })
-
-const promptFieldName = computed(() => {
-  if (props.mode === 'title') return 'titlePrompt'
-  if (props.mode === 'description') return 'descriptionPrompt'
-  return 'prompt'
-})
-
-const templateFieldName = computed(() => {
-  if (props.mode === 'title') return 'titleTemplateId'
-  if (props.mode === 'description') return 'descriptionTemplateId'
-  if (props.mode === 'video') return 'videoTemplateId'
-  return 'imageTemplateId'
-})
-
-const currentPromptValue = computed(() => props.draft[promptFieldName.value] || '')
-const currentTemplateValue = computed(() => props.draft[templateFieldName.value] || '')
 
 const modelOptions = computed(() => {
-  if (props.mode === 'title' || props.mode === 'description') return textModelOptions
-  if (props.mode === 'video') return videoModelOptions
-  return imageModelOptions
+  return props.mode === 'video' ? videoModelOptions : imageModelOptions
 })
 
 const currentModelValue = computed(() => props.draft.model || modelOptions.value[0]?.value || '')
-
-const batchFieldName = computed(() => {
-  if (props.mode === 'title') return 'titleQuantity'
-  if (props.mode === 'description') return 'descriptionQuantity'
-  if (props.mode === 'video') return 'videoQuantity'
-  return 'batchCount'
-})
-
-const batchFieldDefaultValue = computed(() => {
-  if (props.mode === 'title') return 3
-  if (props.mode === 'description') return 2
-  return 1
-})
-
+const currentVideoTemplateValue = computed(() => props.draft.videoTemplateId || '')
+const currentVideoPromptValue = computed(() => props.draft.prompt || '')
 const sourceImagePreview = computed(() => props.draft.sourceImage?.preview || '')
 
 const videoResolutionOptions = computed(() => {
@@ -164,25 +116,17 @@ const videoResolutionOptions = computed(() => {
 })
 
 const seriesPromptAssignments = computed(() => {
-  if (props.mode !== 'image') return []
+  if (props.mode !== 'image') {
+    return []
+  }
+
   return Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments : []
 })
 
-const textResultCards = computed(() => {
-  return (props.resultPayload.textResults || []).map((item, index) => ({
-    id: item.id || `${props.mode}-text-${index + 1}`,
-    title: item.title || `${fieldTitleMap[props.mode] || '文本'} ${index + 1}`,
-    content: item.content || ''
-  }))
-})
-
-const previewImageResults = computed(() => [
-  ...(props.resultPayload.comparisonResults || []),
-  ...(props.resultPayload.groupedResults || []).flatMap((group) => group.outputs || [])
-])
-
 const seriesResultGroups = computed(() => {
-  if (props.mode !== 'image') return []
+  if (props.mode !== 'image') {
+    return []
+  }
 
   return (props.resultPayload.groupedResults || []).map((group, groupIndex) => ({
     id: group.id || `series-group-${groupIndex + 1}`,
@@ -192,6 +136,24 @@ const seriesResultGroups = computed(() => {
     failedCount: Number(group.failedCount || 0),
     outputs: Array.isArray(group.outputs) ? group.outputs : []
   }))
+})
+
+const videoResultItems = computed(() => {
+  if (props.mode !== 'video') {
+    return []
+  }
+
+  return (props.resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .filter((item) => {
+      const savedPath = String(item.savedPath || item.path || item.preview || '').trim()
+      return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
+    })
+    .map((item, index) => ({
+      id: item.id || `video-result-${index + 1}`,
+      title: item.title || `视频结果 ${index + 1}`,
+      path: item.savedPath || item.path || item.preview || ''
+    }))
 })
 
 const resultOutputCards = computed(() => {
@@ -207,13 +169,19 @@ const resultOutputCards = computed(() => {
 })
 
 const hasAnyResults = computed(() => {
-  return Boolean(textResultCards.value.length || previewImageResults.value.length || resultOutputCards.value.length)
+  return Boolean(
+    seriesResultGroups.value.length ||
+    videoResultItems.value.length ||
+    resultOutputCards.value.length ||
+    props.resultPayload.summary?.description
+  )
 })
 
 const remoteServiceHint = computed(() => {
   const profile = props.remoteServiceCapacity && typeof props.remoteServiceCapacity === 'object'
     ? props.remoteServiceCapacity
     : null
+
   if (!profile) {
     return null
   }
@@ -271,15 +239,15 @@ function updateField(field, value) {
   emit('update-draft', { field, value })
 }
 
-function handleTemplateChange(event) {
-  const templateId = event.target.value
-  const template = filteredTemplates.value.find((item) => item.id === templateId)
-  updateField(templateFieldName.value, templateId)
-  updateField(promptFieldName.value, template?.prompt || '')
-}
-
 function handleModelChange(event) {
   updateField('model', event.target.value)
+}
+
+function handleVideoTemplateChange(event) {
+  const templateId = event.target.value
+  const template = filteredTemplates.value.find((item) => item.id === templateId)
+  updateField('videoTemplateId', templateId)
+  updateField('prompt', template?.prompt || '')
 }
 
 function handleVideoDurationChange(value) {
@@ -290,8 +258,8 @@ function handleVideoDurationChange(value) {
 }
 
 function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
-  if (templateTypeMap[templateId]) {
-    return templateTypeMap[templateId]
+  if (imageTemplateTypeMap[templateId]) {
+    return imageTemplateTypeMap[templateId]
   }
 
   return templateTypeMap[imageTemplateDefaultOrder[fallbackIndex]] || '详情图'
@@ -327,12 +295,16 @@ function handleSeriesGenerateCountInput(value) {
 
 function updateSeriesAssignment(index, patch = {}) {
   const nextAssignments = seriesPromptAssignments.value.map((item, itemIndex) => {
-    if (itemIndex !== index) return item
+    if (itemIndex !== index) {
+      return item
+    }
+
     return {
       ...item,
       ...patch
     }
   })
+
   updateField('promptAssignments', nextAssignments)
 }
 
@@ -409,27 +381,11 @@ function formatTaskLabel(task) {
           </div>
         </div>
 
-        <div v-if="mode === 'title' || mode === 'description'" class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">平台</span>
-            <input :value="draft.platformTargetsText || ''" type="text" placeholder="平台" @input="updateField('platformTargetsText', $event.target.value)">
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">语言</span>
-            <input :value="draft.language || ''" type="text" placeholder="语言" @input="updateField('language', $event.target.value)">
-          </div>
-        </div>
-
         <div class="generator-form__row">
           <span class="generator-form__label">模型</span>
           <select :value="currentModelValue" @change="handleModelChange">
             <option v-for="option in modelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
-        </div>
-
-        <div v-if="mode === 'title' || mode === 'description' || mode === 'video'" class="generator-form__row">
-          <span class="generator-form__label">批次</span>
-          <input :value="draft[batchFieldName] || batchFieldDefaultValue" type="number" min="1" placeholder="批次" @input="updateField(batchFieldName, $event.target.value)">
         </div>
 
         <div v-if="mode === 'image'" class="generator-form__group">
@@ -449,17 +405,11 @@ function formatTaskLabel(task) {
           </div>
         </div>
 
-        <div v-if="mode === 'title'" class="generator-form__row">
-          <span class="generator-form__label">最大字数</span>
-          <input :value="draft.titleMaxChars || ''" type="number" min="1" placeholder="最大字数" @input="updateField('titleMaxChars', $event.target.value)">
-        </div>
-
-        <div v-if="mode === 'description'" class="generator-form__row">
-          <span class="generator-form__label">最大字数</span>
-          <input :value="draft.descriptionMaxChars || ''" type="number" min="1" placeholder="最大字数" @input="updateField('descriptionMaxChars', $event.target.value)">
-        </div>
-
         <div v-if="mode === 'video'" class="generator-form__group">
+          <div class="generator-form__row">
+            <span class="generator-form__label">批次</span>
+            <input :value="draft.videoQuantity || 1" type="number" min="1" placeholder="批次" @input="updateField('videoQuantity', $event.target.value)">
+          </div>
           <div class="generator-form__row">
             <span class="generator-form__label">时长</span>
             <select :value="draft.duration || '6s'" @change="handleVideoDurationChange($event.target.value)">
@@ -484,21 +434,17 @@ function formatTaskLabel(task) {
               <option v-for="option in videoMotionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </div>
-        </div>
-
-        <template v-if="mode !== 'image'">
           <div class="generator-form__row">
             <span class="generator-form__label">模板</span>
-            <select :value="currentTemplateValue" @change="handleTemplateChange">
+            <select :value="currentVideoTemplateValue" @change="handleVideoTemplateChange">
               <option value="">选择模板</option>
               <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
             </select>
           </div>
-
           <div class="generator-form__card">
-            <textarea :value="currentPromptValue" rows="10" :placeholder="`${fieldTitleMap[mode]}提示词`" @input="updateField(promptFieldName, $event.target.value)"></textarea>
+            <textarea :value="currentVideoPromptValue" rows="10" placeholder="视频提示词" @input="updateField('prompt', $event.target.value)"></textarea>
           </div>
-        </template>
+        </div>
 
         <div v-if="mode === 'image'" class="generator-form__series">
           <article v-for="(assignment, index) in seriesPromptAssignments" :key="assignment.id || index" class="generator-form__series-card">
@@ -624,20 +570,7 @@ function formatTaskLabel(task) {
           <div class="generator-preview-stage">
             <div v-if="summaryDescription" class="generator-preview__text">{{ summaryDescription }}</div>
 
-            <template v-if="mode !== 'image'">
-              <button
-                v-for="item in textResultCards"
-                :key="item.id"
-                class="generator-preview__text generator-preview__text--button"
-                type="button"
-                @click="emit('copy-text', item.content)"
-              >
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.content }}</span>
-              </button>
-            </template>
-
-            <template v-else>
+            <template v-if="mode === 'image'">
               <article
                 v-for="group in seriesResultGroups"
                 :key="group.id"
@@ -667,14 +600,15 @@ function formatTaskLabel(task) {
               </article>
             </template>
 
-            <template v-if="mode !== 'image'">
-              <img
-                v-for="item in previewImageResults"
+            <template v-else>
+              <article
+                v-for="item in videoResultItems"
                 :key="item.id"
-                class="generator-preview__image"
-                :src="item.preview || item.savedPath || item.path"
-                alt=""
+                class="generator-preview__video-card"
               >
+                <strong>{{ item.title }}</strong>
+                <video class="generator-preview__video" :src="item.path" controls preload="metadata"></video>
+              </article>
             </template>
 
             <div v-if="!hasAnyResults" class="product-result-empty">

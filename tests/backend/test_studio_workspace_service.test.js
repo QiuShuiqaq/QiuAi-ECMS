@@ -66,38 +66,33 @@ describe('studioWorkspaceService', () => {
     const snapshot = service.getSnapshot()
 
     expect(snapshot.themeMode).toBe('dark')
-    expect(snapshot.themeOptions.map((item) => item.value)).toEqual(['dark'])
     expect(snapshot.menuItems.map((item) => item.key)).toEqual([
       'workspace',
-      'data-center',
-      'product-template',
-      'title-generator',
-      'description-generator',
-      'series-generate',
-      'video-generate',
-      'model-pricing',
-      'prompt-library',
-      'model-config'
-    ])
-    expect(snapshot.imageModelOptions.map((item) => item.value)).toEqual([
-      'gpt-image-2',
-      'nano-banana-fast',
-      'nano-banana-2'
-    ])
-    expect(snapshot.modelPricingCatalog.map((item) => item.name)).toEqual([
-      'nano-banana-fast',
-      'gpt-image-2',
-      'nano-banana-2'
+      'purchase-center',
+      'account-usage',
+      'prompt-library'
     ])
     expect(snapshot.formDrafts.workspace).toMatchObject({
       platformTargetsText: 'temu, ozon',
       language: 'zh-CN',
+      sourceImage: null,
+      imageModel: 'gpt-image-2',
+      videoModel: 'MiniMax-Hailuo-2.3-Fast',
+      imageTemplateId: 'image-default',
+      videoTemplateId: 'video-main',
+      titleMaxChars: 60,
+      descriptionMaxChars: 300,
       titleQuantity: 3,
       descriptionQuantity: 2,
+      generateCount: 4,
+      size: '1:1',
+      duration: '6s',
+      resolution: '768P',
+      motionStrength: 'auto',
       model: 'deepseek-v4-flash'
     })
-    expect(snapshot.formDrafts['title-generator'].model).toBe('deepseek-v4-flash')
-    expect(snapshot.formDrafts['description-generator'].model).toBe('deepseek-v4-pro')
+    expect(snapshot.formDrafts['title-generator']).toBeUndefined()
+    expect(snapshot.formDrafts['description-generator']).toBeUndefined()
     expect(snapshot.formDrafts['series-generate']).toMatchObject({
       model: 'gpt-image-2',
       generateCount: 4,
@@ -117,12 +112,21 @@ describe('studioWorkspaceService', () => {
       resolution: '768P',
       model: 'MiniMax-Hailuo-2.3-Fast'
     })
-    expect(snapshot.formDrafts['model-config']).toMatchObject({
-      titleModel: 'deepseek-v4-flash',
-      descriptionModel: 'deepseek-v4-pro',
-      imageModel: 'nano-banana-fast',
-      videoModel: 'MiniMax-Hailuo-2.3-Fast'
-    })
+    expect(Object.keys(snapshot.resultsByMenu)).toEqual([
+      'workspace',
+      'series-generate',
+      'video-generate'
+    ])
+    expect(Object.keys(snapshot.exportItemsByMenu)).toEqual([
+      'workspace',
+      'series-generate',
+      'video-generate'
+    ])
+    expect(Object.keys(snapshot.formDrafts)).toEqual([
+      'workspace',
+      'series-generate',
+      'video-generate'
+    ])
     expect(snapshot.productProjects).toEqual([])
     expect(snapshot.activeProductProjectId).toBe('')
     expect(snapshot.projectRuns).toEqual([])
@@ -142,7 +146,7 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.workspaceDashboard.creditMessages.ledgers.map((item) => item.key)).toEqual(['text', 'image', 'video'])
   })
 
-  it('syncs image and video balances from the remote license platform wallet summary', async () => {
+  it('fails explicitly when task execution reaches a missing generation dependency instead of silently constructing a local fallback', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
 
@@ -150,110 +154,59 @@ describe('studioWorkspaceService', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await settingsService.saveSettings({
-      authPlatform: {
-        enabled: true,
-        baseUrl: 'https://qiuaihub.com',
-        sessionToken: 'session-1'
-      }
-    })
+    await seedCredits(settingsService, 5000)
 
     const service = createStudioWorkspaceService({
       store,
       settingsService,
-      remoteLicensePlatformClient: {
-        getWalletSummary: async () => ({
-          imageBalanceCny: 123.45,
-          videoBalanceCny: 67.89,
-          updatedAt: '2026-06-15T12:00:00.000Z'
-        })
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
       },
-      outputRootDirectory,
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
-      writeFile: async () => undefined
-    })
-
-    const refreshed = await service.refreshDashboardCredits({
-      target: 'all'
-    })
-
-    expect(refreshed.image.balanceCny).toBe(123.45)
-    expect(refreshed.video.balanceCny).toBe(67.89)
-    expect(refreshed.image.syncStatus).toBe('success')
-    expect(refreshed.video.syncStatus).toBe('success')
-  })
-
-  it('creates product cards from batch assets for the new workbench flow', async () => {
-    const store = createMemoryStore()
-    const outputRootDirectory = await createTempOutputRoot()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
-
-    const settingsService = createSettingsStoreService({ store })
-    const service = createStudioWorkspaceService({
-      store,
-      settingsService,
-      outputRootDirectory,
-      ensureDirectory: async () => undefined,
-      persistSourceFiles: async () => [],
       writeFile: async () => undefined,
       createId: (() => {
         let sequence = 0
-        return () => `asset-${++sequence}`
+        return () => `missing-dependency-${++sequence}`
       })(),
-      getNow: () => '2026-06-12T11:00:00.000Z'
+      createTaskNumber: () => 'QAI-20260621-0001',
+      getNow: () => '2026-06-21T20:00:00.000Z'
     })
 
-    const result = await service.createProjectsFromAssets({
-      files: [
-        {
-          name: 'bag-main.jpg',
-          path: 'C:/images/bag-main.jpg',
-          preview: 'preview-a'
+    await service.saveDraft({
+      menuKey: 'series-generate',
+      patch: {
+        taskName: '缺失依赖测试',
+        sourceImage: {
+          name: 'lamp.jpg',
+          path: 'C:/images/lamp.jpg',
+          preview: 'preview-lamp'
         },
-        {
-          name: 'cup-side.png',
-          path: 'C:/images/cup-side.png',
-          preview: 'preview-b'
-        }
-      ],
-      platform: 'temu',
-      language: 'en-US'
-    })
-
-    expect(result.createdProjects).toHaveLength(2)
-    expect(result.activeProductProjectId).toBe(result.createdProjects[0].id)
-
-    const snapshot = service.getSnapshot()
-    expect(snapshot.productProjects).toHaveLength(2)
-    expect(snapshot.productProjects[0]).toMatchObject({
-      name: 'bag-main',
-      platformTarget: ['temu'],
-      baseInfo: {
-        productName: 'bag-main',
-        language: 'en-US'
-      },
-      generationConfig: {
-        enabledSteps: {
-          title: true,
-          description: true,
-          image: true,
-          video: true
-        },
-        imageTemplateId: 'image-default',
-        videoTemplateId: 'video-main'
+        model: 'gpt-image-2',
+        generateCount: 1,
+        batchCount: 1,
+        promptAssignments: [
+          {
+            id: 'series-1',
+            imageType: '商品主图',
+            templateId: 'image-main',
+            prompt: '生成商品主图'
+          }
+        ]
       }
     })
-    expect(snapshot.productProjects[0].assets.sourceImages[0]).toMatchObject({
-      name: 'bag-main.jpg',
-      path: 'C:/images/bag-main.jpg',
-      preview: 'preview-a'
+
+    const task = await service.createTask({ menuKey: 'series-generate' })
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const failedTask = snapshot.tasks.find((item) => item.id === task.id)
+
+    expect(failedTask).toMatchObject({
+      id: task.id,
+      status: '失败'
     })
-    expect(snapshot.productProjects[0].latestRunId).toBe('')
-    expect(snapshot.productProjects[0].runIds).toEqual([])
-    expect(snapshot.productProjects[1].name).toBe('cup-side')
+    expect(failedTask.error).toContain('image generation dependency is required')
   })
 
   it('normalizes legacy stored projects with the new generation config and run record fields', async () => {
@@ -340,7 +293,7 @@ describe('studioWorkspaceService', () => {
       ensureDirectory: async () => undefined,
       persistSourceFiles: async () => [],
       writeFile: async () => undefined,
-      generateCopywritingResults: async ({ taskId, draft }) => {
+      generateTextResults: async ({ taskId, draft }) => {
         if (String(taskId).includes('-title')) {
           return Array.from({ length: draft.quantity }, (_unused, index) => ({
             id: `${taskId}-${index + 1}`,
@@ -421,7 +374,7 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.exportItemsByMenu.workspace).toHaveLength(1)
   })
 
-  it('writes title, description and image generator results back to the linked product project', async () => {
+  it('writes workspace text results and image generator results back to the linked product project', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
 
@@ -440,7 +393,7 @@ describe('studioWorkspaceService', () => {
         return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
       },
       writeFile: async () => undefined,
-      generateCopywritingResults: async ({ draft }) => {
+      generateTextResults: async ({ draft }) => {
         const prefix = draft.prompt.includes('商品标题') ? '标题' : '描述'
         return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
       },
@@ -482,25 +435,37 @@ describe('studioWorkspaceService', () => {
     })
 
     await service.saveDraft({
-      menuKey: 'title-generator',
+      menuKey: 'workspace',
       patch: {
         projectId: project.id,
         productName: '露营灯',
-        titleQuantity: 1
+        titleQuantity: 1,
+        enabledSteps: {
+          title: true,
+          description: false,
+          image: false,
+          video: false
+        }
       }
     })
-    await service.createTask({ menuKey: 'title-generator' })
+    await service.createTask({ menuKey: 'workspace' })
     await service.waitForIdle()
 
     await service.saveDraft({
-      menuKey: 'description-generator',
+      menuKey: 'workspace',
       patch: {
         projectId: project.id,
         productName: '露营灯',
-        descriptionQuantity: 1
+        descriptionQuantity: 1,
+        enabledSteps: {
+          title: false,
+          description: true,
+          image: false,
+          video: false
+        }
       }
     })
-    await service.createTask({ menuKey: 'description-generator' })
+    await service.createTask({ menuKey: 'workspace' })
     await service.waitForIdle()
 
     await service.saveDraft({
@@ -572,7 +537,7 @@ describe('studioWorkspaceService', () => {
         return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
       },
       writeFile: async () => undefined,
-      generateCopywritingResults: async ({ draft }) => {
+      generateTextResults: async ({ draft }) => {
         const prefix = draft.prompt.includes('商品标题') ? '标题' : '描述'
         return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
       },
@@ -655,6 +620,111 @@ describe('studioWorkspaceService', () => {
     expect(observedPrompts.every((prompt) => String(prompt || '').trim().length > 0)).toBe(true)
   })
 
+  it('keeps workspace drafts on canonical runtime fields and ignores removed legacy aliases', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const draft = await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        sourceImage: {
+          name: 'canonical.png',
+          path: 'C:/canonical.png'
+        },
+        imagePrompt: 'canonical image prompt',
+        size: '3:4',
+        duration: '10s',
+        resolution: '1080P',
+        motionStrength: 'high'
+      }
+    })
+
+    expect(draft.sourceImage).toMatchObject({
+      name: 'canonical.png',
+      path: 'C:/canonical.png'
+    })
+    expect(draft.imagePrompt).toBe('canonical image prompt')
+    expect(draft.size).toBe('3:4')
+    expect(draft.duration).toBe('10s')
+    expect(draft.resolution).toBe('1080P')
+    expect(draft.motionStrength).toBe('high')
+
+    const legacyAliasDraft = await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        referenceImage: {
+          name: 'legacy.png',
+          path: 'C:/legacy.png'
+        },
+        globalPrompt: 'legacy image prompt',
+        imageSize: '1:1',
+        videoDuration: '6s',
+        videoResolution: '768P',
+        videoMotionStrength: 'auto',
+        prompt: 'legacy video prompt'
+      }
+    })
+
+    expect(legacyAliasDraft.sourceImage).toMatchObject({
+      name: 'canonical.png',
+      path: 'C:/canonical.png'
+    })
+    expect(legacyAliasDraft.imagePrompt).toBe('canonical image prompt')
+    expect(legacyAliasDraft.videoPrompt).toBe('')
+    expect(legacyAliasDraft.size).toBe('3:4')
+    expect(legacyAliasDraft.duration).toBe('10s')
+    expect(legacyAliasDraft.resolution).toBe('1080P')
+    expect(legacyAliasDraft.motionStrength).toBe('high')
+  })
+
+  it('ignores draft writes for non-runtime menu pages', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const result = await service.saveDraft({
+      menuKey: 'purchase-center',
+      patch: {
+        unexpected: 'value'
+      }
+    })
+
+    const snapshot = service.getSnapshot()
+
+    expect(result).toEqual({})
+    expect(snapshot.formDrafts['purchase-center']).toBeUndefined()
+    expect(Object.keys(snapshot.formDrafts)).toEqual([
+      'workspace',
+      'series-generate',
+      'video-generate'
+    ])
+  })
+
   it('clears runtime drafts and results while preserving external task history', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
@@ -725,6 +795,7 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.formDrafts.workspace.titleQuantity).toBe(3)
     expect(snapshot.formDrafts['series-generate'].taskName).toBe('')
     expect(snapshot.formDrafts['series-generate'].sourceImage).toBe(null)
+    expect(snapshot.formDrafts['purchase-center']).toBeUndefined()
     expect(snapshot.resultsByMenu.workspace.textResults).toEqual([])
     expect(snapshot.exportItemsByMenu.workspace).toEqual([])
     expect(snapshot.tasks).toHaveLength(1)

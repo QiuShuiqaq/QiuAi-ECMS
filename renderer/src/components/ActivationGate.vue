@@ -18,9 +18,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'activate-remote',
-  'copy-device-code',
-  'import-license',
-  'refresh-license'
+  'copy-device-code'
 ])
 
 const formState = reactive({
@@ -96,7 +94,7 @@ function submitActivation() {
 
         <div class="activation-gate__status">
           <span class="activation-gate__status-label">授权模式</span>
-          <span class="activation-gate__status-pill">{{ activationState.mode || 'legacy-license' }}</span>
+          <span class="activation-gate__status-pill">{{ activationState.mode || 'server-license' }}</span>
         </div>
       </div>
 
@@ -134,14 +132,6 @@ function submitActivation() {
 
         <button type="button" class="secondary-action" @click="emit('copy-device-code')">
           复制设备码
-        </button>
-
-        <button type="button" class="secondary-action" @click="emit('import-license')">
-          导入旧授权
-        </button>
-
-        <button type="button" class="secondary-action" @click="emit('refresh-license')">
-          刷新校验
         </button>
       </div>
     </div>

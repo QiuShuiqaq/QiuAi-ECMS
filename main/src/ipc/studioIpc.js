@@ -48,11 +48,6 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
     return studioWorkspaceService.createProject(payload)
   })
 
-  ipcMain.handle(ipcChannels.STUDIO_CREATE_PROJECTS_FROM_ASSETS, async (_event, payload = {}) => {
-    await activationGuard?.assertActivated?.()
-    return studioWorkspaceService.createProjectsFromAssets(payload)
-  })
-
   ipcMain.handle(ipcChannels.STUDIO_UPDATE_PROJECT, async (_event, payload = {}) => {
     return studioWorkspaceService.updateProject(payload)
   })
@@ -93,10 +88,6 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
     })
   })
 
-  ipcMain.handle(ipcChannels.STUDIO_REFRESH_DASHBOARD_CREDITS, async (_event, payload = {}) => {
-    return studioWorkspaceService.refreshDashboardCredits(payload)
-  })
-
   ipcMain.handle(ipcChannels.STUDIO_SAVE_DRAFT, async (_event, payload = {}) => {
     return studioWorkspaceService.saveDraft(payload)
   })
@@ -130,10 +121,6 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
 
   ipcMain.handle(ipcChannels.STUDIO_OPEN_EXTERNAL_RESOURCE, async (_event, payload = {}) => {
     return openExternalResource(payload)
-  })
-
-  ipcMain.handle(ipcChannels.STUDIO_DELETE_EXPORT_ITEM, async (_event, payload = {}) => {
-    return studioWorkspaceService.deleteExportItem(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_CLEAR_RUNTIME_STATE, async () => {

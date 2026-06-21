@@ -14,16 +14,13 @@ function createMemoryStore() {
 }
 
 describe('settingsStoreService', () => {
-  it('loads dual api keys and the current upload directory structure', async () => {
+  it('loads the current upload directory structure and auth platform settings', async () => {
     const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
     const service = createSettingsStoreService({ store })
 
     store.set('userSettings', {
-      apiBaseUrl: 'https://grsai.dakka.com.cn',
-      apiKeys: ['sk-demo-1', 'sk-demo-2'],
-      activeApiKeyIndex: 1,
       defaultSize: '1:1',
       downloadDirectory: 'C:/QiuAi',
       uploadDirectories: {
@@ -34,10 +31,6 @@ describe('settingsStoreService', () => {
     })
 
     expect(service.getSettings()).toMatchObject({
-      apiBaseUrl: 'https://grsai.dakka.com.cn',
-      apiKeys: ['sk-demo-1', 'sk-demo-2'],
-      activeApiKeyIndex: 1,
-      apiKey: 'sk-demo-2',
       defaultSize: '1:1',
       downloadDirectory: 'C:/QiuAi',
       uploadDirectories: {
@@ -51,6 +44,33 @@ describe('settingsStoreService', () => {
         sessionToken: ''
       }
     })
+  })
+
+  it('drops legacy local provider configuration fields from the normalized settings shape', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const service = createSettingsStoreService({ store })
+
+    store.set('userSettings', {
+      apiBaseUrl: 'https://legacy.local',
+      apiKeys: ['sk-demo-1', 'sk-demo-2'],
+      activeApiKeyIndex: 1,
+      apiKey: 'sk-demo-2',
+      providerApiKeys: {
+        general: 'sk-general',
+        deepseek: 'sk-deepseek',
+        minimax: 'sk-minimax'
+      }
+    })
+
+    const settings = service.getSettings()
+
+    expect(settings.apiBaseUrl).toBeUndefined()
+    expect(settings.apiKeys).toBeUndefined()
+    expect(settings.activeApiKeyIndex).toBeUndefined()
+    expect(settings.apiKey).toBeUndefined()
+    expect(settings.providerApiKeys).toBeUndefined()
   })
 
   it('rejects invalid workspace upload directories and accepts clearing them', async () => {
@@ -202,23 +222,4 @@ describe('settingsStoreService', () => {
     })
   })
 
-  it('stores provider api keys separately while keeping general api compatibility', async () => {
-    const store = createMemoryStore()
-
-    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
-    const service = createSettingsStoreService({ store })
-
-    const saved = await service.saveProviderApiKeys({
-      imageApiKey: 'sk-general',
-      textApiKey: 'sk-deepseek',
-      videoApiKey: 'sk-minimax'
-    })
-
-    expect(saved.apiKey).toBe('sk-general')
-    expect(saved.providerApiKeys).toEqual({
-      general: 'sk-general',
-      deepseek: 'sk-deepseek',
-      minimax: 'sk-minimax'
-    })
-  })
 })

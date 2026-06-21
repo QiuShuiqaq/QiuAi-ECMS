@@ -75,4 +75,59 @@ describe('promptTemplateStoreService', () => {
     await service.removeTemplate('image-main')
     expect(service.listTemplates().some((item) => item.id === 'image-main')).toBe(true)
   })
+
+  it('migrates legacy 文本 templates into current 标题 and 描述 records on read', async () => {
+    const memory = new Map()
+    const store = {
+      get (key, fallbackValue) {
+        return memory.has(key) ? memory.get(key) : fallbackValue
+      },
+      set (key, value) {
+        memory.set(key, value)
+      }
+    }
+
+    memory.set('promptTemplates', [
+      {
+        id: 'text-temu',
+        name: 'TEMU',
+        category: '文本',
+        prompt: '旧固定模板',
+        source: 'system-fixed'
+      },
+      {
+        id: 'legacy-custom',
+        name: '旧自定义模板',
+        category: '文本',
+        prompt: '旧自定义内容',
+        source: 'custom'
+      }
+    ])
+
+    const { createPromptTemplateStoreService } = await import('../../main/src/services/promptTemplateStoreService.js')
+    const service = createPromptTemplateStoreService({ store })
+    const templates = service.listTemplates()
+
+    expect(templates.find((item) => item.id === 'title-temu')).toMatchObject({
+      category: '标题',
+      prompt: '旧固定模板',
+      source: 'system-fixed'
+    })
+    expect(templates.find((item) => item.id === 'description-temu')).toMatchObject({
+      category: '描述',
+      prompt: '旧固定模板',
+      source: 'system-fixed'
+    })
+    expect(templates.find((item) => item.id === 'legacy-custom-title')).toMatchObject({
+      category: '标题',
+      prompt: '旧自定义内容',
+      source: 'custom'
+    })
+    expect(templates.find((item) => item.id === 'legacy-custom-description')).toMatchObject({
+      category: '描述',
+      prompt: '旧自定义内容',
+      source: 'custom'
+    })
+    expect(templates.some((item) => item.category === '文本')).toBe(false)
+  })
 })

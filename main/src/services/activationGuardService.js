@@ -1,12 +1,10 @@
-function createActivationGuardService({ authorizationService, licenseService }) {
-  const statusService = authorizationService || licenseService
-
-  if (!statusService || typeof statusService.getActivationStatus !== 'function') {
-    throw new Error('authorizationService or licenseService is required.')
+function createActivationGuardService({ authorizationService }) {
+  if (!authorizationService || typeof authorizationService.getActivationStatus !== 'function') {
+    throw new Error('authorizationService is required.')
   }
 
   async function getActivationStatus() {
-    return statusService.getActivationStatus()
+    return authorizationService.getActivationStatus()
   }
 
   async function assertActivated() {

@@ -6,14 +6,6 @@ defineProps({
     type: String,
     required: true
   },
-  themeOptions: {
-    type: Array,
-    required: true
-  },
-  activeTheme: {
-    type: String,
-    required: true
-  },
   activationSummary: {
     type: Object,
     default: null
@@ -24,7 +16,7 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['theme-change', 'cleanup-click', 'recharge-click'])
+const emit = defineEmits(['cleanup-click', 'recharge-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -62,10 +54,6 @@ const activeContactGroup = computed(() => {
   return contactGroups.find((item) => item.key === activeContactKey.value) || null
 })
 
-function onThemeChange(event) {
-  emit('theme-change', event.target.value)
-}
-
 function onCleanupClick() {
   emit('cleanup-click')
 }
@@ -80,7 +68,7 @@ function closeContactPreview() {
 </script>
 
 <template>
-  <header class="topbar-shell" :class="{ 'topbar-shell--compact': themeOptions.length <= 1 }">
+  <header class="topbar-shell topbar-shell--compact">
     <div class="brand-button" role="img" aria-label="QiuAi">
       <span class="brand-mark">Q</span>
       <span class="brand-copy-wrap">
@@ -88,15 +76,6 @@ function closeContactPreview() {
         <span class="brand-meta">ECMS Studio</span>
       </span>
     </div>
-
-    <label v-if="themeOptions.length > 1" class="topbar-theme">
-      <span>主题</span>
-      <select :value="activeTheme" @change="onThemeChange">
-        <option v-for="option in themeOptions" :key="option.value" :value="option.value">
-          {{ option.label }}
-        </option>
-      </select>
-    </label>
 
     <div class="topbar-right-actions">
       <button

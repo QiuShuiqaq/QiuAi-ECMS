@@ -8,6 +8,140 @@ function normalizeBaseUrl(baseUrl = '') {
   return trimString(baseUrl).replace(/\/+$/, '')
 }
 
+function isAbsoluteHttpUrl(value = '') {
+  return /^https?:\/\//i.test(trimString(value))
+}
+
+function normalizePositiveNumber(value, { allowZero = false } = {}) {
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return allowZero ? 0 : undefined
+  }
+
+  if (allowZero) {
+    return numericValue >= 0 ? numericValue : 0
+  }
+
+  return numericValue > 0 ? numericValue : undefined
+}
+
+function normalizeActivationPayload(payload = {}) {
+  return {
+    customerName: trimString(payload.customerName),
+    contact: trimString(payload.contact),
+    inviteCode: trimString(payload.inviteCode),
+    durationDays: normalizePositiveNumber(payload.durationDays),
+    deviceName: trimString(payload.deviceName),
+    deviceFingerprint: trimString(payload.deviceFingerprint)
+  }
+}
+
+function normalizeSoftwareOrderPayload(payload = {}) {
+  return {
+    productPackageId: trimString(payload.productPackageId),
+    channel: trimString(payload.channel || 'alipay') || 'alipay',
+    sessionToken: trimString(payload.sessionToken)
+  }
+}
+
+function normalizeComputePackageOrderPayload(payload = {}) {
+  return {
+    computePackageId: trimString(payload.computePackageId),
+    channel: trimString(payload.channel || 'alipay') || 'alipay',
+    sessionToken: trimString(payload.sessionToken)
+  }
+}
+
+function normalizeRechargeOrderPayload(payload = {}) {
+  return {
+    walletType: trimString(payload.walletType),
+    channel: trimString(payload.channel || 'alipay') || 'alipay',
+    amountCny: normalizePositiveNumber(payload.amountCny, { allowZero: false }),
+    couponCode: trimString(payload.couponCode),
+    sessionToken: trimString(payload.sessionToken)
+  }
+}
+
+function normalizeSelectionSitesPayload (payload = {}) {
+  return {
+    platform: trimString(payload.platform),
+    sessionToken: trimString(payload.sessionToken)
+  }
+}
+
+function normalizeSelectionItemsPayload (payload = {}) {
+  const page = normalizePositiveNumber(payload.page)
+  const pageSize = normalizePositiveNumber(payload.pageSize)
+
+  return {
+    platform: trimString(payload.platform),
+    boardType: trimString(payload.boardType),
+    siteCode: trimString(payload.siteCode),
+    keyword: trimString(payload.keyword),
+    sessionToken: trimString(payload.sessionToken),
+    ...(page ? { page } : {}),
+    ...(pageSize ? { pageSize } : {})
+  }
+}
+
+function normalizeGenerationJobItem(item = {}) {
+  const normalizedItem = {
+    inputSnapshot: item.inputSnapshot && typeof item.inputSnapshot === 'object' ? item.inputSnapshot : {}
+  }
+
+  const groupIndex = normalizePositiveNumber(item.groupIndex)
+  if (groupIndex) {
+    normalizedItem.groupIndex = groupIndex
+  }
+
+  const slotIndex = normalizePositiveNumber(item.slotIndex)
+  if (slotIndex) {
+    normalizedItem.slotIndex = slotIndex
+  }
+
+  const assetType = trimString(item.assetType)
+  if (assetType) {
+    normalizedItem.assetType = assetType
+  }
+
+  const providerType = trimString(item.providerType)
+  if (providerType) {
+    normalizedItem.providerType = providerType
+  }
+
+  const providerModel = trimString(item.providerModel)
+  if (providerModel) {
+    normalizedItem.providerModel = providerModel
+  }
+
+  const maxAttempts = normalizePositiveNumber(item.maxAttempts)
+  if (maxAttempts) {
+    normalizedItem.maxAttempts = maxAttempts
+  }
+
+  if (item.promptSnapshot && typeof item.promptSnapshot === 'object') {
+    normalizedItem.promptSnapshot = item.promptSnapshot
+  }
+
+  if (item.sourceAssetRefs && typeof item.sourceAssetRefs === 'object') {
+    normalizedItem.sourceAssetRefs = item.sourceAssetRefs
+  }
+
+  return normalizedItem
+}
+
+function normalizeGenerationJobPayload(payload = {}) {
+  const requestedConcurrency = normalizePositiveNumber(payload.requestedConcurrency)
+  return {
+    sessionToken: trimString(payload.sessionToken),
+    jobType: trimString(payload.jobType),
+    menuKey: trimString(payload.menuKey),
+    draftSnapshot: payload.draftSnapshot && typeof payload.draftSnapshot === 'object' ? payload.draftSnapshot : {},
+    ...(requestedConcurrency ? { requestedConcurrency } : {}),
+    items: Array.isArray(payload.items) ? payload.items.map((item) => normalizeGenerationJobItem(item)) : []
+  }
+}
+
 function createServiceError(code, message, details = {}) {
   const error = new Error(message)
   error.code = code
@@ -17,20 +151,35 @@ function createServiceError(code, message, details = {}) {
 
 function createQiuAiLicensePlatformClientService({
   baseUrl,
+  getBaseUrl,
   timeoutMs = 10000,
   requestClient = axios
 } = {}) {
+  const hasDynamicBaseUrl = typeof getBaseUrl === 'function'
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
 
-  if (!normalizedBaseUrl) {
+  if (!hasDynamicBaseUrl && !normalizedBaseUrl) {
     throw new Error('baseUrl is required.')
+  }
+
+  function resolveBaseUrl() {
+    const resolvedBaseUrl = hasDynamicBaseUrl
+      ? normalizeBaseUrl(getBaseUrl())
+      : normalizedBaseUrl
+
+    if (!resolvedBaseUrl) {
+      throw new Error('baseUrl is required.')
+    }
+
+    return resolvedBaseUrl
   }
 
   async function request(method, path, { params, data } = {}) {
     try {
+      const currentBaseUrl = resolveBaseUrl()
       const response = await requestClient.request({
         method,
-        url: `${normalizedBaseUrl}${path}`,
+        url: `${currentBaseUrl}${path}`,
         params,
         data,
         timeout: timeoutMs,
@@ -54,11 +203,15 @@ function createQiuAiLicensePlatformClientService({
     }
   }
 
-  async function requestBinary(path, { params } = {}) {
+  async function requestBinary(pathOrUrl, { params } = {}) {
     try {
+      const normalizedPathOrUrl = trimString(pathOrUrl)
+      const currentBaseUrl = resolveBaseUrl()
       const response = await requestClient.request({
         method: 'get',
-        url: `${normalizedBaseUrl}${path}`,
+        url: isAbsoluteHttpUrl(normalizedPathOrUrl)
+          ? normalizedPathOrUrl
+          : `${currentBaseUrl}${normalizedPathOrUrl}`,
         params,
         timeout: timeoutMs,
         responseType: 'arraybuffer'
@@ -106,7 +259,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function activateLicense(payload = {}) {
     return request('post', '/api/activation/activate', {
-      data: payload
+      data: normalizeActivationPayload(payload)
     })
   }
 
@@ -120,7 +273,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function createSoftwareOrder(payload = {}) {
     return request('post', '/api/orders', {
-      data: payload
+      data: normalizeSoftwareOrderPayload(payload)
     })
   }
 
@@ -142,7 +295,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function createComputePackageOrder(payload = {}) {
     return request('post', '/api/compute-package-orders', {
-      data: payload
+      data: normalizeComputePackageOrderPayload(payload)
     })
   }
 
@@ -156,13 +309,49 @@ function createQiuAiLicensePlatformClientService({
 
   async function createRechargeOrder(payload = {}) {
     return request('post', '/api/recharge/orders', {
-      data: payload
+      data: normalizeRechargeOrderPayload(payload)
+    })
+  }
+
+  async function getSelectionManifest ({ sessionToken = '' } = {}) {
+    return request('get', '/api/client/selection/manifest', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function listSelectionPlatforms ({ sessionToken = '' } = {}) {
+    return request('get', '/api/client/selection/platforms', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function listSelectionSites (payload = {}) {
+    return request('get', '/api/client/selection/sites', {
+      params: normalizeSelectionSitesPayload(payload)
+    })
+  }
+
+  async function listSelectionItems (payload = {}) {
+    return request('get', '/api/client/selection/items', {
+      params: normalizeSelectionItemsPayload(payload)
+    })
+  }
+
+  async function getSelectionItemDetail ({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/client/selection/items/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
     })
   }
 
   async function createGenerationJob(payload = {}) {
     return request('post', '/api/generation/jobs', {
-      data: payload
+      data: normalizeGenerationJobPayload(payload)
     })
   }
 
@@ -175,12 +364,16 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function downloadGenerationArtifact({ id = '', sessionToken = '' } = {}) {
-    return requestBinary(`/api/generation/artifacts/${trimString(id)}/download`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
-    })
+  async function downloadGenerationArtifact({ id = '', sessionToken = '', downloadUrl = '' } = {}) {
+    const normalizedDownloadUrl = trimString(downloadUrl)
+    const artifactUrl = normalizedDownloadUrl || `/api/generation/artifacts/${trimString(id)}/download`
+    const params = normalizedDownloadUrl && isAbsoluteHttpUrl(normalizedDownloadUrl)
+      ? undefined
+      : {
+          sessionToken: trimString(sessionToken)
+        }
+
+    return requestBinary(artifactUrl, { params })
   }
 
   async function getRechargeOrder({ id = '', sessionToken = '' } = {}) {
@@ -202,9 +395,14 @@ function createQiuAiLicensePlatformClientService({
     getComputePackageOrder,
     getGenerationJob,
     getRechargeOrder,
+    getSelectionItemDetail,
+    getSelectionManifest,
     getServiceCapacityProfile,
     getSoftwareOrder,
     getWalletSummary,
+    listSelectionItems,
+    listSelectionPlatforms,
+    listSelectionSites,
     listComputePackages,
     listSoftwarePackages
   }

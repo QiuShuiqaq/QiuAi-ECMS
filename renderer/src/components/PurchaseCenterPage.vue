@@ -30,7 +30,20 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  rechargeForm: {
+    type: Object,
+    default: () => ({
+      walletType: 'image',
+      channel: 'alipay',
+      amountCny: '0.01',
+      couponCode: ''
+    })
+  },
   isCatalogLoading: {
+    type: Boolean,
+    default: false
+  },
+  isRechargeSubmitting: {
     type: Boolean,
     default: false
   },
@@ -68,7 +81,8 @@ const emit = defineEmits([
   'create-compute-package-order',
   'refresh-compute-package-order',
   'open-compute-package-order',
-  'open-recharge',
+  'update-recharge-form',
+  'create-recharge',
   'refresh-recharge-order',
   'open-recharge-order'
 ])
@@ -145,6 +159,10 @@ function resolvePackageFeatures(pkg = {}) {
 
   return features
 }
+
+function updateRechargeField(field, value) {
+  emit('update-recharge-form', { field, value })
+}
 </script>
 
 <template>
@@ -198,9 +216,34 @@ function resolvePackageFeatures(pkg = {}) {
           </div>
         </div>
 
+        <div class="purchase-center__recharge-form">
+          <label class="purchase-center__field">
+            <span>Wallet</span>
+            <select :value="rechargeForm.walletType" @change="updateRechargeField('walletType', $event.target.value)">
+              <option value="image">Image balance</option>
+              <option value="video">Video balance</option>
+            </select>
+          </label>
+          <label class="purchase-center__field">
+            <span>Channel</span>
+            <select :value="rechargeForm.channel" @change="updateRechargeField('channel', $event.target.value)">
+              <option value="alipay">Alipay</option>
+              <option value="wechat">WeChat</option>
+            </select>
+          </label>
+          <label class="purchase-center__field">
+            <span>Amount</span>
+            <input :value="rechargeForm.amountCny" type="number" min="0.01" step="0.01" @input="updateRechargeField('amountCny', $event.target.value)">
+          </label>
+          <label class="purchase-center__field">
+            <span>Coupon</span>
+            <input :value="rechargeForm.couponCode" type="text" placeholder="Optional" @input="updateRechargeField('couponCode', $event.target.value)">
+          </label>
+        </div>
+
         <div class="purchase-center__order-actions">
-          <button class="primary-action" type="button" @click="emit('open-recharge')">
-            Create recharge order
+          <button class="primary-action" type="button" :disabled="isRechargeSubmitting" @click="emit('create-recharge')">
+            {{ isRechargeSubmitting ? 'Creating' : 'Create recharge order' }}
           </button>
           <button
             class="secondary-action"
@@ -578,6 +621,34 @@ function resolvePackageFeatures(pkg = {}) {
   align-items: center;
 }
 
+.purchase-center__recharge-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 12px;
+  min-width: min(100%, 460px);
+}
+
+.purchase-center__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.purchase-center__field span {
+  color: rgba(205, 214, 238, 0.76);
+  font-size: 12px;
+}
+
+.purchase-center__field input,
+.purchase-center__field select {
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 10, 18, 0.72);
+  color: rgba(240, 244, 255, 0.94);
+  padding: 0 12px;
+}
+
 .purchase-center__order-info strong,
 .purchase-center__recharge-main strong {
   width: 100%;
@@ -620,6 +691,11 @@ function resolvePackageFeatures(pkg = {}) {
 
   .purchase-center__wallet-grid {
     grid-template-columns: 1fr;
+  }
+
+  .purchase-center__recharge-form {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .purchase-center__package-side,

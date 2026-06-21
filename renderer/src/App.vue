@@ -7,9 +7,21 @@ import PromptLibraryPanel from './components/PromptLibraryPanel.vue'
 import ProductWorkbench from './components/ProductWorkbench.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
 import DataCenterPage from './components/DataCenterPage.vue'
-import ProductTemplateDemoPage from './components/ProductTemplateDemoPage.vue'
-import ModelConfigPage from './components/ModelConfigPage.vue'
 import GeneratorStudioPage from './components/GeneratorStudioPage.vue'
+import studioMenuConfig from '../../shared/studio-menu-config.json'
+import { buildProjectGeneratorDraft, buildWorkspaceRunDraft } from './utils/generatorDraftBuilders'
+import {
+  createComputePackageOrderController,
+  createRechargeOrderController,
+  createSoftwareOrderController
+} from './utils/purchaseControllerConfigs'
+import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'
+import { resolveGeneratorView } from './utils/generatorViews'
+import {
+  resolveImageOutputDirectory,
+  resolveLatestRun,
+  resolveVideoOutputDirectory
+} from './utils/workspaceOutputLocators'
 import {
   activateRemoteLicense,
   clearStudioRuntimeState,
@@ -24,41 +36,39 @@ import {
   getActivationStatus,
   getComputePackageOrder,
   getRechargeOrder,
-  getSettings,
   getSoftwareOrder,
+  getSelectionItemDetail,
+  getSelectionManifest,
   getStudioRuntimeSnapshot,
   getStudioSnapshot,
-  importLicenseFile,
   listComputePackages,
   listPromptTemplates,
+  listSelectionItems,
+  listSelectionPlatforms,
+  listSelectionSites,
   listSoftwarePackages,
   openOutputDirectory,
   openExternalResource,
   pickStudioInputAssets,
   removePromptTemplate,
   savePromptTemplate,
-  saveProviderApiKeys,
   saveStudioDraft,
   updateStudioProject
 } from './services/desktopBridge'
 
-const themeOptions = [{ label: '深色', value: 'dark' }]
-
-const menuItems = [
-  { key: 'workspace', label: '工作台', section: '项目' },
-  { key: 'data-center', label: '数据中心', section: '项目' },
-  { key: 'product-template', label: '商品模板', section: '项目' },
-  { key: 'title-generator', label: '标题生成', section: '生成' },
-  { key: 'description-generator', label: '描述生成', section: '生成' },
-  { key: 'series-generate', label: '套图生成', section: '生成' },
-  { key: 'video-generate', label: '视频生成', section: '生成' },
-  { key: 'model-pricing', label: '模型价格', section: '系统' },
-  { key: 'prompt-library', label: '提示词库', section: '系统' },
-  { key: 'model-config', label: '模型配置', section: '系统' }
+const fallbackMenuItems = [
+  { key: 'workspace', label: '工作台', section: '核心' },
+  { key: 'purchase-center', label: '购买中心', section: '核心' },
+  { key: 'account-usage', label: '账户与用量', section: '核心' },
+  { key: 'prompt-library', label: '提示词库', section: '配置' }
 ]
 
-const activeTheme = ref('dark')
+const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
+  ? studioMenuConfig.primaryMenuItems
+  : fallbackMenuItems
+
 const activeMenu = ref('workspace')
+const activeGeneratorMenu = ref('')
 const submitButtonState = ref('idle')
 const formDrafts = ref({})
 const resultsByMenu = ref({})
@@ -66,6 +76,21 @@ const exportItemsByMenu = ref({})
 const productProjects = ref([])
 const projectRuns = ref([])
 const activeProductProjectId = ref('')
+const selectionManifest = ref({ generatedAt: '', boards: [] })
+const selectionPlatforms = ref([])
+const selectionSites = ref([])
+const selectionItemsState = ref({
+  platform: 'temu',
+  boardType: 'hot-sale',
+  siteCode: '',
+  keyword: '',
+  items: [],
+  totalItems: 0,
+  page: 1,
+  pageSize: 20,
+  isLoading: false,
+  error: ''
+})
 const studioTasks = ref([])
 const studioAgentReadiness = ref({
   queue: {
@@ -93,12 +118,6 @@ const activationState = ref({
 })
 const isActivationLoading = ref(true)
 const isActivationSubmitting = ref(false)
-const isModelConfigSaving = ref(false)
-const modelConfigTextApiKeyDraft = ref('')
-const modelConfigImageApiKeyDraft = ref('')
-const modelConfigVideoApiKeyDraft = ref('')
-const modelConfigFeedback = ref('')
-const rechargeDialogVisible = ref(false)
 const isRechargeSubmitting = ref(false)
 const isRechargeRefreshing = ref(false)
 const isCatalogLoading = ref(false)
@@ -126,16 +145,21 @@ const actionNotice = reactive({
 const runtimePollingIntervalMs = 1500
 let runtimePollingTimer = null
 let runtimePollingInFlight = false
-let rechargeStatusPollingTimer = null
-let softwareOrderPollingTimer = null
-let computePackageOrderPollingTimer = null
+let rechargeOrderController = null
+let softwareOrderController = null
+let computePackageOrderController = null
+
+const activeGeneratorMenuKey = computed(() => {
+  const menuKey = String(activeGeneratorMenu.value || '').trim()
+  return resolveGeneratorView(menuKey) ? menuKey : ''
+})
 
 const currentDraft = computed(() => {
-  return formDrafts.value[activeMenu.value] || {}
+  return formDrafts.value[activeGeneratorMenuKey.value] || {}
 })
 
 const currentResultPayload = computed(() => {
-  return resultsByMenu.value[activeMenu.value] || {
+  return resultsByMenu.value[activeGeneratorMenuKey.value] || {
     textResults: [],
     comparisonResults: [],
     groupedResults: [],
@@ -144,15 +168,21 @@ const currentResultPayload = computed(() => {
 })
 
 const currentExportItems = computed(() => {
-  return exportItemsByMenu.value[activeMenu.value] || []
+  return exportItemsByMenu.value[activeGeneratorMenuKey.value] || []
 })
 
-const fixedPromptTemplates = computed(() => {
-  return promptTemplates.value.filter((item) => item.source === 'system-fixed')
+const activeWorkspaceGeneratorView = computed(() => {
+  if (activeMenu.value !== 'workspace') {
+    return null
+  }
+
+  return resolveGeneratorView(activeGeneratorMenuKey.value)
 })
 
-const customPromptTemplates = computed(() => {
-  return promptTemplates.value.filter((item) => item.source !== 'system-fixed')
+const isWorkspaceGeneratorView = computed(() => Boolean(activeWorkspaceGeneratorView.value))
+
+const isWorkspaceHome = computed(() => {
+  return activeMenu.value === 'workspace' && !isWorkspaceGeneratorView.value
 })
 
 const activationSummary = computed(() => {
@@ -167,28 +197,9 @@ const activationSummary = computed(() => {
 
 const isActivated = computed(() => activationState.value.status === 'activated')
 
-const walletSummary = computed(() => {
-  return activationState.value.walletSummary || null
-})
-
 const remoteServiceCapacity = computed(() => {
   return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
 })
-
-const activeCapability = computed(() => {
-  return activationState.value.activePackage?.capabilityConfig || null
-})
-
-const effectiveGenerationLimits = computed(() => {
-  return {
-    imageConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveImageConcurrency) || 1),
-    videoConcurrency: Math.max(0, Number(remoteServiceCapacity.value?.effectiveVideoConcurrency) || 0),
-    textConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveTextConcurrency) || 1),
-    serviceTier: String(remoteServiceCapacity.value?.serviceTier || 'SHARED')
-  }
-})
-
-const visibleComputePackages = computed(() => computePackages.value)
 
 const rechargeStatusLabel = computed(() => {
   const status = currentRechargeOrder.value?.status || ''
@@ -203,118 +214,6 @@ const rechargeStatusLabel = computed(() => {
   }
   return '待支付'
 })
-
-const pricingCards = computed(() => {
-  return [
-    {
-      categoryKey: 'text',
-      categoryLabel: '文本',
-      title: 'deepseek-v4-flash',
-      unit: 'CNY',
-      accent: 'text',
-      items: [
-        { label: '输入 缓存命中', value: '0.02 / 百万 tokens' },
-        { label: '输入 缓存未命中', value: '1.00 / 百万 tokens' },
-        { label: '输出', value: '2.00 / 百万 tokens' }
-      ]
-    },
-    {
-      categoryKey: 'text',
-      categoryLabel: '文本',
-      title: 'deepseek-v4-pro',
-      unit: 'CNY',
-      accent: 'text',
-      items: [
-        { label: '输入 缓存命中', value: '0.025 / 百万 tokens' },
-        { label: '输入 缓存未命中', value: '3.00 / 百万 tokens' },
-        { label: '输出', value: '6.00 / 百万 tokens' }
-      ]
-    },
-    {
-      categoryKey: 'image',
-      categoryLabel: '图片',
-      title: 'nano-banana-fast',
-      unit: 'CNY',
-      accent: 'image',
-      items: [
-        { label: '单次生成', value: '0.06 / 次' }
-      ]
-    },
-    {
-      categoryKey: 'image',
-      categoryLabel: '图片',
-      title: 'gpt-image-2',
-      unit: 'CNY',
-      accent: 'image',
-      items: [
-        { label: '单次生成', value: '0.18 / 次' }
-      ]
-    },
-    {
-      categoryKey: 'image',
-      categoryLabel: '图片',
-      title: 'nano-banana-2',
-      unit: 'CNY',
-      accent: 'image',
-      items: [
-        { label: '单次生成', value: '0.20 / 次' }
-      ]
-    },
-    {
-      categoryKey: 'video',
-      categoryLabel: '视频',
-      title: 'MiniMax-Hailuo-2.3-Fast',
-      unit: 'CNY',
-      accent: 'video',
-      items: [
-        { label: '图生视频 768P 6s', value: '4.05 CNY' },
-        { label: '图生视频 768P 10s', value: '6.75 CNY' },
-        { label: '图生视频 1080P 6s', value: '6.93 CNY' }
-      ]
-    }
-  ]
-})
-
-const pricingSections = computed(() => {
-  const sectionOrder = [
-    { key: 'text', label: '文本' },
-    { key: 'image', label: '图片' },
-    { key: 'video', label: '视频' }
-  ]
-
-  return sectionOrder
-    .map((section) => {
-      return {
-        ...section,
-        cards: pricingCards.value.filter((item) => item.categoryKey === section.key)
-      }
-    })
-    .filter((section) => section.cards.length)
-})
-
-const pricingSectionStyleMap = {
-  text: {
-    background: `
-      radial-gradient(circle at top right, rgba(78, 119, 255, 0.14), transparent 34%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
-      rgba(10, 12, 22, 0.72)
-    `
-  },
-  image: {
-    background: `
-      radial-gradient(circle at top right, rgba(73, 213, 159, 0.14), transparent 34%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
-      rgba(10, 12, 22, 0.72)
-    `
-  },
-  video: {
-    background: `
-      radial-gradient(circle at top right, rgba(255, 184, 107, 0.14), transparent 34%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
-      rgba(10, 12, 22, 0.72)
-    `
-  }
-}
 
 function showActionFeedback({ type = 'success', title = '', message = '' }) {
   actionNotice.visible = true
@@ -414,26 +313,80 @@ async function loadActivationState() {
 
 async function loadStudioSnapshot() {
   const snapshot = await getStudioSnapshot()
-  activeTheme.value = snapshot.themeMode || 'dark'
   formDrafts.value = snapshot.formDrafts || {}
   workspaceDashboard.value = snapshot.workspaceDashboard || workspaceDashboard.value
   applyStudioRuntimeSnapshot(snapshot)
-}
-
-async function loadSettingsState() {
-  const settings = await getSettings()
-  modelConfigImageApiKeyDraft.value = settings.apiKey || ''
-  modelConfigTextApiKeyDraft.value = settings.providerApiKeys?.deepseek || ''
-  modelConfigVideoApiKeyDraft.value = settings.providerApiKeys?.minimax || ''
-  return settings
 }
 
 async function loadActivatedWorkspace() {
   await Promise.all([
     loadStudioSnapshot(),
     loadPromptTemplateState(),
-    loadPurchaseCenterCatalog()
+    loadPurchaseCenterCatalog(),
+    loadSelectionAssistantState()
   ])
+}
+
+async function loadSelectionAssistantState() {
+  selectionManifest.value = await getSelectionManifest()
+  selectionPlatforms.value = await listSelectionPlatforms()
+  await refreshSelectionSites(selectionItemsState.value.platform)
+  await refreshSelectionItems()
+}
+
+async function refreshSelectionSites(platform) {
+  if (String(platform || '').trim().toLowerCase() !== 'shopee') {
+    selectionSites.value = []
+    selectionItemsState.value = {
+      ...selectionItemsState.value,
+      siteCode: ''
+    }
+    return
+  }
+
+  selectionSites.value = await listSelectionSites({ platform })
+}
+
+async function refreshSelectionItems(overrides = {}) {
+  const nextState = {
+    ...selectionItemsState.value,
+    ...overrides
+  }
+
+  selectionItemsState.value = {
+    ...nextState,
+    isLoading: true,
+    error: ''
+  }
+
+  try {
+    const payload = await listSelectionItems({
+      platform: nextState.platform,
+      boardType: nextState.boardType,
+      siteCode: nextState.siteCode,
+      keyword: nextState.keyword,
+      page: nextState.page,
+      pageSize: nextState.pageSize
+    })
+
+    selectionItemsState.value = {
+      ...nextState,
+      items: Array.isArray(payload.items) ? payload.items : [],
+      totalItems: Number(payload.totalItems) || 0,
+      page: Number(payload.page) || nextState.page,
+      pageSize: Number(payload.pageSize) || nextState.pageSize,
+      isLoading: false,
+      error: ''
+    }
+  } catch (error) {
+    selectionItemsState.value = {
+      ...nextState,
+      items: [],
+      totalItems: 0,
+      isLoading: false,
+      error: buildErrorMessage(error, '选品数据加载失败')
+    }
+  }
 }
 
 async function loadPurchaseCenterCatalog() {
@@ -456,49 +409,12 @@ async function loadPurchaseCenterCatalog() {
   }
 }
 
-function handleThemeChange(value) {
-  activeTheme.value = value
-}
-
 function handleMenuSelect(menuKey) {
-  if (menuKey === 'workspace' && currentDraft.value?.projectId) {
-    activeProductProjectId.value = currentDraft.value.projectId
+  activeGeneratorMenu.value = ''
+  if (menuKey === 'workspace' && formDrafts.value.workspace?.projectId) {
+    activeProductProjectId.value = formDrafts.value.workspace.projectId
   }
   activeMenu.value = menuKey
-}
-
-const seriesGenerateDefaultTypes = [
-  { imageType: '商品主图', templateId: 'image-main' },
-  { imageType: '白底图', templateId: 'image-white-bg' },
-  { imageType: '详情图', templateId: 'image-detail' },
-  { imageType: '细节图', templateId: 'image-closeup' },
-  { imageType: '尺寸图', templateId: 'image-size' },
-  { imageType: '颜色图', templateId: 'image-color' },
-  { imageType: '场景图', templateId: 'image-scene' },
-  { imageType: '模特图', templateId: 'image-model' },
-  { imageType: '换角度', templateId: 'image-angle' },
-  { imageType: '换场景', templateId: 'image-change-scene' },
-  { imageType: '换模特', templateId: 'image-change-model' },
-  { imageType: '全替换', templateId: 'image-replace-all' }
-]
-
-function buildSeriesPromptAssignments({
-  count = 4,
-  sharedPrompt = ''
-} = {}) {
-  const normalizedCount = Math.max(1, Number(count) || 4)
-
-  return Array.from({ length: normalizedCount }, (_unused, index) => {
-    const fallback = seriesGenerateDefaultTypes[index] || seriesGenerateDefaultTypes[2]
-    return {
-      id: `series-generate-${index + 1}`,
-      index: index + 1,
-      prompt: sharedPrompt || '',
-      templateId: fallback.templateId,
-      imageType: fallback.imageType,
-      differenceLevel: 'off'
-    }
-  })
 }
 
 async function handleOpenProjectGenerator({ project, menuKey }) {
@@ -507,60 +423,9 @@ async function handleOpenProjectGenerator({ project, menuKey }) {
   }
 
   activeProductProjectId.value = project.id
-  const generationConfig = project.generationConfig || {}
-  const basePatch = {
-    projectId: project.id,
-    projectName: project.name || project.baseInfo?.productName || '',
-    taskName: project.name || project.baseInfo?.productName || '',
-    productName: project.baseInfo?.productName || project.name || '',
-    platformTargetsText: (project.platformTarget || []).join(', '),
-    language: project.baseInfo?.language || 'zh-CN',
-    keywordsText: (project.baseInfo?.keywords || []).join(', '),
-    sourceImage: project.assets?.sourceImages?.[0] || null
-  }
-
-  const modePatchMap = {
-    'title-generator': {
-      titleMaxChars: generationConfig.titleMaxChars || 60,
-      titlePrompt: generationConfig.titlePrompt || '',
-      titleTemplateId: generationConfig.titleTemplateId || ''
-    },
-    'description-generator': {
-      descriptionMaxChars: generationConfig.descriptionMaxChars || 300,
-      descriptionPrompt: generationConfig.descriptionPrompt || '',
-      descriptionTemplateId: generationConfig.descriptionTemplateId || ''
-    },
-    'series-generate': {
-      model: generationConfig.imageModel || 'gpt-image-2',
-      size: generationConfig.imageSize || '1:1',
-      imageSize: generationConfig.imageSize || '1:1',
-      generateCount: 4,
-      batchCount: 1,
-      prompt: generationConfig.imagePrompt || '',
-      imageTemplateId: generationConfig.imageTemplateId || 'image-default',
-      imageType: '商品主图',
-      promptAssignments: buildSeriesPromptAssignments({
-        count: 4,
-        sharedPrompt: generationConfig.imagePrompt || ''
-      })
-    },
-    'video-generate': {
-      duration: generationConfig.videoDuration || '6s',
-      resolution: generationConfig.videoResolution || '768P',
-      aspectRatio: generationConfig.aspectRatio || '16:9',
-      motionStrength: generationConfig.videoMotionStrength || 'auto',
-      prompt: generationConfig.videoPrompt || '',
-      videoTemplateId: generationConfig.videoTemplateId || 'video-main',
-      model: generationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast',
-      videoQuantity: Math.max(1, Number(generationConfig.videoQuantity) || 1)
-    }
-  }
-
-  await persistDraft(menuKey, {
-    ...basePatch,
-    ...(modePatchMap[menuKey] || {})
-  })
-  activeMenu.value = menuKey
+  await persistDraft(menuKey, buildProjectGeneratorDraft(project, menuKey))
+  activeMenu.value = 'workspace'
+  activeGeneratorMenu.value = menuKey
 }
 
 async function persistDraft(menuKey, patch) {
@@ -579,7 +444,11 @@ async function persistDraft(menuKey, patch) {
 }
 
 async function handleDraftUpdate({ field, value }) {
-  await persistDraft(activeMenu.value, {
+  if (!activeGeneratorMenuKey.value) {
+    return
+  }
+
+  await persistDraft(activeGeneratorMenuKey.value, {
     [field]: value
   })
 }
@@ -667,58 +536,121 @@ async function handleProjectDelete(projectId) {
   }
 }
 
-async function handleSubmitTask(menuKey = activeMenu.value) {
+async function handleSelectionQueryChange(patch = {}) {
+  const nextPlatform = Object.prototype.hasOwnProperty.call(patch, 'platform')
+    ? patch.platform
+    : selectionItemsState.value.platform
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'platform')) {
+    await refreshSelectionSites(nextPlatform)
+  }
+
+  await refreshSelectionItems({
+    ...patch,
+    platform: nextPlatform,
+    page: 1,
+    siteCode: nextPlatform === 'shopee'
+      ? (Object.prototype.hasOwnProperty.call(patch, 'siteCode') ? patch.siteCode : selectionItemsState.value.siteCode)
+      : ''
+  })
+}
+
+async function handleSelectionImport({ item, mode }) {
+  if (!item?.id) {
+    return
+  }
+
+  try {
+    const detail = await getSelectionItemDetail({ id: item.id })
+    const highlights = []
+    if (detail.subtitle) highlights.push(detail.subtitle)
+    if (detail.priceText) highlights.push(`价格：${detail.priceText}`)
+    if (detail.salesVolumeText) highlights.push(`销量：${detail.salesVolumeText}`)
+    if (detail.ratingText) highlights.push(`评分：${detail.ratingText}`)
+
+    const patch = {
+      name: detail.title || '选品项目',
+      platformTarget: [String(detail.platform || 'temu').trim().toLowerCase() || 'temu'],
+      baseInfo: {
+        productName: detail.title || '',
+        category: detail.categoryText || '',
+        highlights,
+        keywords: Array.isArray(detail.extractedKeywords) ? detail.extractedKeywords : [],
+        language: 'zh-CN'
+      },
+      metadata: {
+        selectionSource: {
+          itemId: detail.id,
+          platform: detail.platform,
+          boardType: detail.boardType,
+          siteCode: detail.siteCode || '',
+          capturedAt: detail.capturedAt,
+          sourceDetailUrl: detail.sourceDetailUrl || '',
+          importedAt: new Date().toISOString()
+        }
+      }
+    }
+
+    let nextProjectId = ''
+    if (mode === 'update' && activeProductProjectId.value) {
+      const updatedProject = await updateStudioProject({
+        projectId: activeProductProjectId.value,
+        patch
+      })
+      nextProjectId = updatedProject?.id || activeProductProjectId.value
+    } else {
+      const createdProject = await createStudioProject({
+        productName: detail.title || '',
+        platform: String(detail.platform || 'temu').trim().toLowerCase() || 'temu',
+        language: 'zh-CN',
+        patch
+      })
+      nextProjectId = createdProject?.id || ''
+    }
+
+    await loadStudioSnapshot()
+    if (nextProjectId) {
+      activeProductProjectId.value = nextProjectId
+    }
+    showActionFeedback({
+      type: 'success',
+      title: '已导入',
+      message: mode === 'update' ? '已覆盖当前项目素材' : '已新建工作台项目'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '导入失败',
+      message: buildErrorMessage(error, '选品条目导入失败')
+    })
+  }
+}
+
+async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
+  if (!menuKey) {
+    return
+  }
+
   submitButtonState.value = 'pending'
   try {
     const draft = formDrafts.value[menuKey] || {}
-    if ((menuKey === 'series-generate' || menuKey === 'video-generate') && !draft.sourceImage) {
+    const validationError = validateGeneratorTaskDraft({
+      menuKey,
+      draft,
+      capability: activationState.value.activePackage?.capabilityConfig || null,
+      effectiveGenerationLimits: {
+        imageConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveImageConcurrency) || 1),
+        videoConcurrency: Math.max(0, Number(remoteServiceCapacity.value?.effectiveVideoConcurrency) || 0),
+        textConcurrency: Math.max(1, Number(remoteServiceCapacity.value?.effectiveTextConcurrency) || 1),
+        serviceTier: String(remoteServiceCapacity.value?.serviceTier || 'SHARED')
+      }
+    })
+
+    if (validationError) {
       showActionFeedback({
         type: 'error',
-        title: '请先上传样图',
-        message: '套图生成和视频生成都需要先上传样图'
-      })
-      return
-    }
-
-    if (menuKey === 'series-generate') {
-      const generateCount = Math.max(1, Number(draft.generateCount) || 1)
-      const batchCount = Math.max(1, Number(draft.batchCount) || 1)
-      const capability = activeCapability.value
-      const imageConcurrencyLimit = effectiveGenerationLimits.value.imageConcurrency
-
-      if (capability && capability.batchTaskEnabled === false && batchCount > 1) {
-        showActionFeedback({
-          type: 'error',
-          title: '当前版本不支持',
-          message: '标准版不支持批量套图任务'
-        })
-        return
-      }
-
-      if (batchCount > imageConcurrencyLimit) {
-        showActionFeedback({
-          type: 'error',
-          title: '瓒呰繃鏈嶅姟骞跺彂涓婇檺',
-          message: `褰撳墠鏈嶅姟妗ｄ綅 ${effectiveGenerationLimits.value.serviceTier} 鏈€澶氬厑璁?${imageConcurrencyLimit} 涓浘鍍忓苟鍙戞壒娆?`
-        })
-        return
-      }
-
-      if (capability && generateCount > Number(capability.seriesImageLimitPerTask || 5)) {
-        showActionFeedback({
-          type: 'error',
-          title: '超过版本上限',
-          message: `当前版本单次套图最多 ${capability.seriesImageLimitPerTask} 张`
-        })
-        return
-      }
-    }
-
-    if (menuKey === 'video-generate' && effectiveGenerationLimits.value.videoConcurrency < 1) {
-      showActionFeedback({
-        type: 'error',
-        title: '褰撳墠鏈嶅姟鏆備笉鏀寔',
-        message: '褰撳墠璐︽埛杩樻病鏈夎棰戠敓鎴愬苟鍙戞潈闄?'
+        title: validationError.title,
+        message: validationError.message
       })
       return
     }
@@ -751,47 +683,9 @@ async function handleRunProject(project) {
 
   submitButtonState.value = 'pending'
   try {
-    const sourceImage = project.assets?.sourceImages?.[0] || null
-    const generationConfig = project.generationConfig || {}
     await createStudioTask({
       menuKey: 'workspace',
-      draft: {
-        ...(formDrafts.value.workspace || {}),
-        projectId: project.id,
-        projectName: project.name || project.baseInfo?.productName || '',
-        productName: project.baseInfo?.productName || project.name || '',
-        taskName: project.name || project.baseInfo?.productName || '',
-        brand: project.baseInfo?.brand || '',
-        category: project.baseInfo?.category || '',
-        highlightsText: (project.baseInfo?.highlights || []).join(', '),
-        platformTargetsText: (project.platformTarget || []).join(', '),
-        language: project.baseInfo?.language || 'zh-CN',
-        keywordsText: [formDrafts.value.workspace?.keywordsText || '', ...(project.baseInfo?.keywords || [])]
-          .filter(Boolean)
-          .join(', '),
-        sourceImage,
-        enabledSteps: generationConfig.enabledSteps || undefined,
-        titleMaxChars: generationConfig.titleMaxChars || formDrafts.value.workspace?.titleMaxChars || 60,
-        descriptionMaxChars: generationConfig.descriptionMaxChars || formDrafts.value.workspace?.descriptionMaxChars || 300,
-        titlePrompt: generationConfig.titlePrompt || formDrafts.value.workspace?.titlePrompt || '',
-        descriptionPrompt: generationConfig.descriptionPrompt || formDrafts.value.workspace?.descriptionPrompt || '',
-        imagePrompt: generationConfig.imagePrompt || '',
-        videoPrompt: generationConfig.videoPrompt || '',
-        imageSize: generationConfig.imageSize || '1:1',
-        size: generationConfig.imageSize || '1:1',
-        videoDuration: generationConfig.videoDuration || '6s',
-        duration: generationConfig.videoDuration || '6s',
-        videoResolution: generationConfig.videoResolution || '768P',
-        resolution: generationConfig.videoResolution || '768P',
-        aspectRatio: generationConfig.aspectRatio || '16:9',
-        videoMotionStrength: generationConfig.videoMotionStrength || 'auto',
-        motionStrength: generationConfig.videoMotionStrength || 'auto',
-        titleTemplateId: generationConfig.titleTemplateId || '',
-        descriptionTemplateId: generationConfig.descriptionTemplateId || '',
-        imageTemplateId: generationConfig.imageTemplateId || 'image-default',
-        videoTemplateId: generationConfig.videoTemplateId || 'video-main',
-        model: generationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast'
-      }
+      draft: buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})
     })
     await loadStudioSnapshot()
     showActionFeedback({
@@ -811,9 +705,13 @@ async function handleRunProject(project) {
 }
 
 async function handlePickGeneratorImage() {
+  if (!activeGeneratorMenuKey.value) {
+    return
+  }
+
   try {
     const result = await pickStudioInputAssets({
-      menuKey: activeMenu.value,
+      menuKey: activeGeneratorMenuKey.value,
       allowMultiple: false
     })
 
@@ -821,7 +719,7 @@ async function handlePickGeneratorImage() {
       return
     }
 
-    await persistDraft(activeMenu.value, {
+    await persistDraft(activeGeneratorMenuKey.value, {
       sourceImage: result.files[0]
     })
   } catch (error) {
@@ -834,14 +732,8 @@ async function handlePickGeneratorImage() {
 }
 
 async function handleOpenImages(project) {
-  const payload = project && typeof project === 'object' && Object.prototype.hasOwnProperty.call(project, 'project')
-    ? project
-    : { project, run: null }
-  const latestRun = payload.run || projectRuns.value.find((item) => item.id === payload.project?.latestRunId) || null
-  const imageDirectory = latestRun?.storage?.imageDirectory ||
-    (latestRun?.outputs?.images?.[0]?.savedPath ? latestRun.outputs.images[0].savedPath.replace(/[\\/][^\\/]+$/, '') : '') ||
-    payload.project?.assets?.generatedImages?.[0]?.savedPath?.replace(/[\\/][^\\/]+$/, '') ||
-    payload.project?.assets?.generatedImages?.[0]?.path?.replace(/[\\/][^\\/]+$/, '')
+  const latestRun = resolveLatestRun(project, projectRuns.value)
+  const imageDirectory = resolveImageOutputDirectory(project, latestRun)
 
   if (!imageDirectory) {
     return
@@ -853,13 +745,8 @@ async function handleOpenImages(project) {
 }
 
 async function handleOpenVideo(project) {
-  const payload = project && typeof project === 'object' && Object.prototype.hasOwnProperty.call(project, 'project')
-    ? project
-    : { project, run: null }
-  const latestRun = payload.run || projectRuns.value.find((item) => item.id === payload.project?.latestRunId) || null
-  const videoDirectory = latestRun?.storage?.videoDirectory ||
-    (latestRun?.outputs?.video?.savedPath ? latestRun.outputs.video.savedPath.replace(/[\\/][^\\/]+$/, '') : '') ||
-    payload.project?.assets?.generatedVideo?.savedPath?.replace(/[\\/][^\\/]+$/, '')
+  const latestRun = resolveLatestRun(project, projectRuns.value)
+  const videoDirectory = resolveVideoOutputDirectory(project, latestRun)
 
   if (!videoDirectory) {
     return
@@ -932,6 +819,10 @@ async function handleOpenGeneratorExportItem(exportItem) {
 }
 
 async function handleExportCurrentResults(payload = {}) {
+  if (!activeGeneratorMenuKey.value) {
+    return
+  }
+
   const selectedExportIds = Array.isArray(payload?.selectedExportIds) && payload.selectedExportIds.length
     ? payload.selectedExportIds
     : currentExportItems.value.map((item) => item.id).filter(Boolean)
@@ -942,7 +833,7 @@ async function handleExportCurrentResults(payload = {}) {
 
   try {
     const exportResult = await exportStudioResults({
-      menuKey: activeMenu.value,
+      menuKey: activeGeneratorMenuKey.value,
       selectedExportIds
     })
 
@@ -964,14 +855,6 @@ async function handleExportCurrentResults(payload = {}) {
   }
 }
 
-async function handleImportLicense() {
-  await importLicenseFile()
-  await loadActivationState()
-  if (isActivated.value) {
-    await loadActivatedWorkspace()
-  }
-}
-
 async function handleCopyDeviceCode() {
   await navigator.clipboard.writeText(activationState.value.deviceCode || '')
   showActionFeedback({
@@ -990,7 +873,6 @@ async function handleActivateRemote(payload) {
       inviteCode: payload.inviteCode,
       deviceName: 'QiuAi Desktop'
     })
-    await loadSettingsState()
 
     if (activationState.value.status === 'activated') {
       await loadActivatedWorkspace()
@@ -1030,32 +912,6 @@ function openClearRuntimeConfirm() {
     })
 }
 
-async function handleSaveModelConfig() {
-  isModelConfigSaving.value = true
-  modelConfigFeedback.value = ''
-  try {
-    const settings = await saveProviderApiKeys({
-      textApiKey: modelConfigTextApiKeyDraft.value,
-      imageApiKey: modelConfigImageApiKeyDraft.value,
-      videoApiKey: modelConfigVideoApiKeyDraft.value
-    })
-
-    modelConfigImageApiKeyDraft.value = settings.apiKey || ''
-    modelConfigTextApiKeyDraft.value = settings.providerApiKeys?.deepseek || ''
-    modelConfigVideoApiKeyDraft.value = settings.providerApiKeys?.minimax || ''
-
-    showActionFeedback({
-      type: 'success',
-      title: '保存成功',
-      message: '模型配置已更新'
-    })
-  } catch (error) {
-    modelConfigFeedback.value = buildErrorMessage(error, '保存失败')
-  } finally {
-    isModelConfigSaving.value = false
-  }
-}
-
 async function handleSavePromptTemplate(payload) {
   await savePromptTemplate(payload)
   await loadPromptTemplateState()
@@ -1066,339 +922,107 @@ async function handleRemovePromptTemplate(templateId) {
   await loadPromptTemplateState()
 }
 
-function openRechargeDialog() {
-  rechargeDialogVisible.value = true
+function openPurchaseCenter() {
+  activeGeneratorMenu.value = ''
+  activeMenu.value = 'purchase-center'
 }
 
-function closeRechargeDialog() {
-  rechargeDialogVisible.value = false
-  currentRechargeOrder.value = null
-}
-
-function handleScrollToRechargeForm() {
-  const panel = document.getElementById('recharge-form-panel')
-  if (panel) {
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-}
-
-async function handleCreateRecharge() {
-  isRechargeSubmitting.value = true
-  try {
-    currentRechargeOrder.value = await createRechargeOrder({
-      walletType: rechargeForm.walletType,
-      channel: rechargeForm.channel,
-      amountCny: Number(rechargeForm.amountCny),
-      couponCode: rechargeForm.couponCode
-    })
-    startRechargeStatusPolling()
-
-    showActionFeedback({
-      type: 'success',
-      title: '订单已创建',
-      message: '请继续完成支付'
-    })
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '创建失败',
-      message: buildErrorMessage(error, '充值订单创建失败')
-    })
-  } finally {
-    isRechargeSubmitting.value = false
-  }
-}
-
-async function handleRefreshRechargeOrder() {
-  if (!currentRechargeOrder.value?.id) {
+function handleRechargeFormUpdate({ field, value }) {
+  if (!field) {
     return
   }
 
-  isRechargeRefreshing.value = true
-  try {
-    currentRechargeOrder.value = await getRechargeOrder({
-      id: currentRechargeOrder.value.id
-    })
+  rechargeForm[field] = value
+}
 
-    if (currentRechargeOrder.value.status === 'paid') {
-      await Promise.all([
-        loadStudioSnapshot(),
-        loadActivationState()
-      ])
-      showActionFeedback({
-        type: 'success',
-        title: '到账成功',
-        message: '余额已更新'
-      })
-    }
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '查询失败',
-      message: buildErrorMessage(error, '订单状态查询失败')
-    })
-  } finally {
-    isRechargeRefreshing.value = false
-  }
+async function handleCreateRecharge() {
+  await rechargeOrderController?.create()
+}
+
+async function handleRefreshRechargeOrder() {
+  await rechargeOrderController?.refresh()
 }
 
 async function handleCreateSoftwareOrder(productPackageId) {
   if (!productPackageId) {
     return
   }
-
-  isSoftwareOrderSubmitting.value = true
-  try {
-    currentSoftwareOrder.value = await createSoftwareOrder({
-      productPackageId,
-      channel: 'alipay'
-    })
-    startSoftwareOrderPolling()
-
-    showActionFeedback({
-      type: 'success',
-      title: '授权订单已创建',
-      message: '请继续完成支付'
-    })
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '创建失败',
-      message: buildErrorMessage(error, '授权订单创建失败')
-    })
-  } finally {
-    isSoftwareOrderSubmitting.value = false
-  }
+  await softwareOrderController?.create(productPackageId)
 }
 
 async function handleRefreshSoftwareOrder() {
-  if (!currentSoftwareOrder.value?.id) {
-    return
-  }
-
-  isSoftwareOrderRefreshing.value = true
-  try {
-    currentSoftwareOrder.value = await getSoftwareOrder({
-      id: currentSoftwareOrder.value.id
-    })
-
-    if (currentSoftwareOrder.value?.status === 'paid') {
-      await Promise.all([
-        loadActivationState(),
-        loadStudioSnapshot(),
-        loadPurchaseCenterCatalog()
-      ])
-      showActionFeedback({
-        type: 'success',
-        title: '授权已到账',
-        message: '已同步最新授权状态'
-      })
-    }
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '查询失败',
-      message: buildErrorMessage(error, '授权订单查询失败')
-    })
-  } finally {
-    isSoftwareOrderRefreshing.value = false
-  }
+  await softwareOrderController?.refresh()
 }
 
 async function handleOpenSoftwareOrderLink() {
-  const payUrl = currentSoftwareOrder.value?.paymentPayload?.mockPayUrl || ''
-  if (!payUrl) {
-    return
-  }
-
-  await navigator.clipboard.writeText(payUrl)
-  await openExternalResource({ target: payUrl })
-  showActionFeedback({
-    type: 'success',
-    title: '已打开支付',
-    message: '授权订单支付链接已在浏览器打开'
-  })
+  await softwareOrderController?.openPaymentLink()
 }
 
 async function handleCreateComputePackageOrder(computePackageId) {
   if (!computePackageId) {
     return
   }
-
-  isComputePackageOrderSubmitting.value = true
-  try {
-    const targetPackage = computePackages.value.find((item) => item.id === computePackageId)
-    if (targetPackage?.canPurchase === false) {
-      showActionFeedback({
-        type: 'error',
-        title: '无法购买',
-        message: targetPackage.purchaseBlockedReason || '当前授权版本不可购买该算力包'
-      })
-      return
-    }
-
-    currentComputePackageOrder.value = await createComputePackageOrder({
-      computePackageId,
-      channel: 'alipay'
-    })
-    startComputePackageOrderPolling()
-
-    showActionFeedback({
-      type: 'success',
-      title: '月套餐订单已创建',
-      message: '请继续完成支付'
-    })
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '创建失败',
-      message: buildErrorMessage(error, '月套餐订单创建失败')
-    })
-  } finally {
-    isComputePackageOrderSubmitting.value = false
-  }
+  await computePackageOrderController?.create(computePackageId)
 }
 
 async function handleRefreshComputePackageOrder() {
-  if (!currentComputePackageOrder.value?.id) {
-    return
-  }
-
-  isComputePackageOrderRefreshing.value = true
-  try {
-    currentComputePackageOrder.value = await getComputePackageOrder({
-      id: currentComputePackageOrder.value.id
-    })
-
-    if (currentComputePackageOrder.value?.status === 'paid') {
-      await Promise.all([
-        loadActivationState(),
-        loadStudioSnapshot(),
-        loadPurchaseCenterCatalog()
-      ])
-      showActionFeedback({
-        type: 'success',
-        title: '月套餐已到账',
-        message: '已同步最新算力额度'
-      })
-    }
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '查询失败',
-      message: buildErrorMessage(error, '月套餐订单查询失败')
-    })
-  } finally {
-    isComputePackageOrderRefreshing.value = false
-  }
+  await computePackageOrderController?.refresh()
 }
 
 async function handleOpenComputePackageOrderLink() {
-  const payUrl = currentComputePackageOrder.value?.paymentPayload?.mockPayUrl || ''
-  if (!payUrl) {
-    return
-  }
-
-  await navigator.clipboard.writeText(payUrl)
-  await openExternalResource({ target: payUrl })
-  showActionFeedback({
-    type: 'success',
-    title: '已打开支付',
-    message: '月套餐订单支付链接已在浏览器打开'
-  })
-}
-
-function stopRechargeStatusPolling() {
-  if (rechargeStatusPollingTimer) {
-    clearInterval(rechargeStatusPollingTimer)
-    rechargeStatusPollingTimer = null
-  }
-}
-
-function stopSoftwareOrderPolling() {
-  if (softwareOrderPollingTimer) {
-    clearInterval(softwareOrderPollingTimer)
-    softwareOrderPollingTimer = null
-  }
-}
-
-function stopComputePackageOrderPolling() {
-  if (computePackageOrderPollingTimer) {
-    clearInterval(computePackageOrderPollingTimer)
-    computePackageOrderPollingTimer = null
-  }
-}
-
-function startRechargeStatusPolling() {
-  stopRechargeStatusPolling()
-
-  rechargeStatusPollingTimer = setInterval(() => {
-    if (!currentRechargeOrder.value?.id || isRechargeRefreshing.value) {
-      return
-    }
-
-    if (['paid', 'failed', 'closed'].includes(currentRechargeOrder.value.status)) {
-      stopRechargeStatusPolling()
-      return
-    }
-
-    void handleRefreshRechargeOrder()
-  }, 5000)
-}
-
-function startSoftwareOrderPolling() {
-  stopSoftwareOrderPolling()
-
-  softwareOrderPollingTimer = setInterval(() => {
-    if (!currentSoftwareOrder.value?.id || isSoftwareOrderRefreshing.value) {
-      return
-    }
-
-    if (['paid', 'failed', 'closed'].includes(currentSoftwareOrder.value.status)) {
-      stopSoftwareOrderPolling()
-      return
-    }
-
-    void handleRefreshSoftwareOrder()
-  }, 5000)
-}
-
-function startComputePackageOrderPolling() {
-  stopComputePackageOrderPolling()
-
-  computePackageOrderPollingTimer = setInterval(() => {
-    if (!currentComputePackageOrder.value?.id || isComputePackageOrderRefreshing.value) {
-      return
-    }
-
-    if (['paid', 'failed', 'closed'].includes(currentComputePackageOrder.value.status)) {
-      stopComputePackageOrderPolling()
-      return
-    }
-
-    void handleRefreshComputePackageOrder()
-  }, 5000)
+  await computePackageOrderController?.openPaymentLink()
 }
 
 async function handleOpenRechargeLink() {
-  const payUrl = currentRechargeOrder.value?.paymentPayload?.mockPayUrl || ''
-  if (!payUrl) {
-    return
-  }
-
-  await navigator.clipboard.writeText(payUrl)
-  await openExternalResource({ target: payUrl })
-  showActionFeedback({
-    type: 'success',
-    title: '已打开',
-    message: '支付链接已在新窗口打开'
-  })
+  await rechargeOrderController?.openPaymentLink()
 }
+
+rechargeOrderController = createRechargeOrderController({
+  currentRechargeOrderRef: currentRechargeOrder,
+  isRechargeSubmittingRef: isRechargeSubmitting,
+  isRechargeRefreshingRef: isRechargeRefreshing,
+  rechargeForm,
+  createRechargeOrder,
+  getRechargeOrder,
+  openExternalResource,
+  showActionFeedback,
+  buildErrorMessage,
+  loadStudioSnapshot,
+  loadActivationState
+})
+
+softwareOrderController = createSoftwareOrderController({
+  currentSoftwareOrderRef: currentSoftwareOrder,
+  isSoftwareOrderSubmittingRef: isSoftwareOrderSubmitting,
+  isSoftwareOrderRefreshingRef: isSoftwareOrderRefreshing,
+  createSoftwareOrder,
+  getSoftwareOrder,
+  openExternalResource,
+  showActionFeedback,
+  buildErrorMessage,
+  loadActivationState,
+  loadStudioSnapshot,
+  loadPurchaseCenterCatalog
+})
+
+computePackageOrderController = createComputePackageOrderController({
+  currentComputePackageOrderRef: currentComputePackageOrder,
+  isComputePackageOrderSubmittingRef: isComputePackageOrderSubmitting,
+  isComputePackageOrderRefreshingRef: isComputePackageOrderRefreshing,
+  computePackagesRef: computePackages,
+  createComputePackageOrder,
+  getComputePackageOrder,
+  openExternalResource,
+  showActionFeedback,
+  buildErrorMessage,
+  loadActivationState,
+  loadStudioSnapshot,
+  loadPurchaseCenterCatalog
+})
 
 onMounted(() => {
   void (async () => {
     await loadActivationState()
-    await loadSettingsState()
     if (isActivated.value) {
       await loadActivatedWorkspace()
     }
@@ -1420,23 +1044,20 @@ watch(
 
 onUnmounted(() => {
   stopRuntimePolling()
-  stopRechargeStatusPolling()
-  stopSoftwareOrderPolling()
-  stopComputePackageOrderPolling()
+  rechargeOrderController?.stopPolling()
+  softwareOrderController?.stopPolling()
+  computePackageOrderController?.stopPolling()
 })
 </script>
 
 <template>
-  <main class="app-shell" :data-theme="activeTheme">
+  <main class="app-shell" data-theme="dark">
     <AppTopBar
       brand-label="QiuAi"
-      :theme-options="themeOptions"
-      :active-theme="activeTheme"
       :activation-summary="activationSummary"
       :recharge-enabled="isActivated"
       @cleanup-click="openClearRuntimeConfirm"
-      @theme-change="handleThemeChange"
-      @recharge-click="openRechargeDialog"
+      @recharge-click="openPurchaseCenter"
     />
 
     <div v-if="actionNotice.visible" class="app-notice-layer" role="status" aria-live="polite">
@@ -1453,8 +1074,6 @@ onUnmounted(() => {
         :is-submitting="isActivationSubmitting"
         @activate-remote="handleActivateRemote"
         @copy-device-code="handleCopyDeviceCode"
-        @import-license="handleImportLicense"
-        @refresh-license="loadActivationState"
       />
     </section>
 
@@ -1469,13 +1088,16 @@ onUnmounted(() => {
 
       <section class="shell-grid__workspace">
         <ProductWorkbench
-          v-if="activeMenu === 'workspace'"
+          v-if="isWorkspaceHome"
           :product-projects="productProjects"
           :project-runs="projectRuns"
           :active-project-id="activeProductProjectId"
           :focus-project-id="activeProductProjectId"
-          :prompt-templates="promptTemplates"
           :submit-button-state="submitButtonState"
+          :selection-manifest="selectionManifest"
+          :selection-platforms="selectionPlatforms"
+          :selection-sites="selectionSites"
+          :selection-state="selectionItemsState"
           @create-project="handleCreateProject"
           @run-project="handleRunProject"
           @replace-project-image="handleReplaceProjectImage"
@@ -1487,21 +1109,14 @@ onUnmounted(() => {
           @open-resource="handleOpenResource"
           @export-project="handleExportProject"
           @open-generator="handleOpenProjectGenerator"
-        />
-
-        <DataCenterPage
-          v-else-if="activeMenu === 'data-center'"
-          :workspace-dashboard="workspaceDashboard"
-        />
-
-        <ProductTemplateDemoPage
-          v-else-if="activeMenu === 'product-template'"
+          @selection-query-change="handleSelectionQueryChange"
+          @selection-import="handleSelectionImport"
         />
 
         <GeneratorStudioPage
-          v-else-if="activeMenu === 'title-generator'"
-          title="标题生成"
-          mode="title"
+          v-else-if="isWorkspaceGeneratorView"
+          :title="activeWorkspaceGeneratorView.title"
+          :mode="activeWorkspaceGeneratorView.mode"
           :draft="currentDraft"
           :result-payload="currentResultPayload"
           :export-items="currentExportItems"
@@ -1510,162 +1125,25 @@ onUnmounted(() => {
           :prompt-templates="promptTemplates"
           :remote-service-capacity="remoteServiceCapacity"
           @update-draft="handleDraftUpdate"
-          @submit-task="handleSubmitTask('title-generator')"
+          @submit-task="handleSubmitTask(activeGeneratorMenuKey)"
           @pick-image="handlePickGeneratorImage"
           @copy-text="handleCopyText"
           @open-export-item="handleOpenGeneratorExportItem"
           @export-results="handleExportCurrentResults"
         />
-
-        <GeneratorStudioPage
-          v-else-if="activeMenu === 'description-generator'"
-          title="描述生成"
-          mode="description"
-          :draft="currentDraft"
-          :result-payload="currentResultPayload"
-          :export-items="currentExportItems"
-          :tasks="studioTasks"
-          :agent-readiness="studioAgentReadiness"
-          :prompt-templates="promptTemplates"
-          :remote-service-capacity="remoteServiceCapacity"
-          @update-draft="handleDraftUpdate"
-          @submit-task="handleSubmitTask('description-generator')"
-          @pick-image="handlePickGeneratorImage"
-          @copy-text="handleCopyText"
-          @open-export-item="handleOpenGeneratorExportItem"
-          @export-results="handleExportCurrentResults"
-        />
-
-        <GeneratorStudioPage
-          v-else-if="activeMenu === 'series-generate'"
-          title="套图生成"
-          mode="image"
-          :draft="currentDraft"
-          :result-payload="currentResultPayload"
-          :export-items="currentExportItems"
-          :tasks="studioTasks"
-          :agent-readiness="studioAgentReadiness"
-          :prompt-templates="promptTemplates"
-          :remote-service-capacity="remoteServiceCapacity"
-          @update-draft="handleDraftUpdate"
-          @submit-task="handleSubmitTask('series-generate')"
-          @pick-image="handlePickGeneratorImage"
-          @copy-text="handleCopyText"
-          @open-export-item="handleOpenGeneratorExportItem"
-          @export-results="handleExportCurrentResults"
-        />
-
-        <GeneratorStudioPage
-          v-else-if="activeMenu === 'video-generate'"
-          title="视频生成"
-          mode="video"
-          :draft="currentDraft"
-          :result-payload="currentResultPayload"
-          :export-items="currentExportItems"
-          :tasks="studioTasks"
-          :agent-readiness="studioAgentReadiness"
-          :prompt-templates="promptTemplates"
-          :remote-service-capacity="remoteServiceCapacity"
-          @update-draft="handleDraftUpdate"
-          @submit-task="handleSubmitTask('video-generate')"
-          @pick-image="handlePickGeneratorImage"
-          @copy-text="handleCopyText"
-          @open-export-item="handleOpenGeneratorExportItem"
-          @export-results="handleExportCurrentResults"
-        />
-
-        <section v-else-if="activeMenu === 'model-pricing'" class="pricing-page">
-          <section
-            v-for="section in pricingSections"
-            :key="section.key"
-            class="pricing-section"
-            :style="pricingSectionStyleMap[section.key]"
-          >
-            <header class="pricing-section__header">
-              <span>{{ section.label }}</span>
-              <strong>{{ section.label }}模型</strong>
-            </header>
-
-            <div class="pricing-section__grid">
-              <article
-                v-for="card in section.cards"
-                :key="card.title"
-                class="pricing-card"
-                :class="`pricing-card--${card.accent}`"
-              >
-                <div class="pricing-card__top">
-                  <span class="pricing-card__tag">{{ card.unit }}</span>
-                  <strong>{{ card.title }}</strong>
-                </div>
-
-                <div class="pricing-card__rows">
-                  <div
-                    v-for="item in card.items"
-                    :key="`${card.title}-${item.label}`"
-                    class="pricing-card__row"
-                  >
-                    <span>{{ item.label }}</span>
-                    <strong>{{ item.value }}</strong>
-                  </div>
-                </div>
-              </article>
-            </div>
-          </section>
-        </section>
-
-        <PromptLibraryPanel
-          v-else-if="activeMenu === 'prompt-library'"
-          :fixed-prompt-templates="fixedPromptTemplates"
-          :custom-prompt-templates="customPromptTemplates"
-          @save-template="handleSavePromptTemplate"
-          @remove-template="handleRemovePromptTemplate"
-        />
-
-        <ModelConfigPage
-          v-else-if="activeMenu === 'model-config'"
-          :text-api-key="modelConfigTextApiKeyDraft"
-          :image-api-key="modelConfigImageApiKeyDraft"
-          :video-api-key="modelConfigVideoApiKeyDraft"
-          :is-saving="isModelConfigSaving"
-          :feedback-message="modelConfigFeedback"
-          @update-text-api-key="modelConfigTextApiKeyDraft = $event"
-          @update-image-api-key="modelConfigImageApiKeyDraft = $event"
-          @update-video-api-key="modelConfigVideoApiKeyDraft = $event"
-          @save="handleSaveModelConfig"
-        />
-      </section>
-    </section>
-
-    <div
-      v-if="rechargeDialogVisible"
-      class="recharge-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="充值"
-      @click.self="closeRechargeDialog"
-    >
-      <div class="recharge-modal__card">
-        <header class="recharge-modal__header">
-          <div>
-            <strong>充值中心</strong>
-            <span>{{ currentRechargeOrder ? rechargeStatusLabel : '统一处理充值、月套餐和授权套餐' }}</span>
-          </div>
-
-          <button class="secondary-action" type="button" @click="closeRechargeDialog">
-            关闭
-          </button>
-        </header>
 
         <PurchaseCenterPage
-          embedded
+          v-else-if="activeMenu === 'purchase-center'"
           :activation-state="activationState"
-          :wallet-summary="walletSummary"
+          :wallet-summary="activationState.walletSummary || null"
           :software-packages="softwarePackages"
-          :compute-packages="visibleComputePackages"
+          :compute-packages="computePackages"
           :current-software-order="currentSoftwareOrder"
           :current-compute-package-order="currentComputePackageOrder"
           :current-recharge-order="currentRechargeOrder"
+          :recharge-form="rechargeForm"
           :is-catalog-loading="isCatalogLoading"
+          :is-recharge-submitting="isRechargeSubmitting"
           :is-software-order-submitting="isSoftwareOrderSubmitting"
           :is-software-order-refreshing="isSoftwareOrderRefreshing"
           :is-compute-package-order-submitting="isComputePackageOrderSubmitting"
@@ -1678,94 +1156,25 @@ onUnmounted(() => {
           @create-compute-package-order="handleCreateComputePackageOrder"
           @refresh-compute-package-order="handleRefreshComputePackageOrder"
           @open-compute-package-order="handleOpenComputePackageOrderLink"
-          @open-recharge="handleScrollToRechargeForm"
+          @update-recharge-form="handleRechargeFormUpdate"
+          @create-recharge="handleCreateRecharge"
           @refresh-recharge-order="handleRefreshRechargeOrder"
           @open-recharge-order="handleOpenRechargeLink"
         />
 
-        <section id="recharge-form-panel" class="recharge-modal__panel">
-          <header class="recharge-modal__panel-header">
-            <div>
-              <strong>余额充值下单</strong>
-              <span>这里保留直接充值表单，保证现有支付流不变。</span>
-            </div>
-          </header>
+        <DataCenterPage
+          v-else-if="activeMenu === 'account-usage'"
+          :workspace-dashboard="workspaceDashboard"
+        />
 
-          <div class="recharge-modal__form">
-            <label class="recharge-modal__field">
-              <span>账户</span>
-              <select v-model="rechargeForm.walletType">
-                <option value="image">图片余额</option>
-                <option value="video">视频余额</option>
-              </select>
-            </label>
+        <PromptLibraryPanel
+          v-else-if="activeMenu === 'prompt-library'"
+          :prompt-templates="promptTemplates"
+          @save-template="handleSavePromptTemplate"
+          @remove-template="handleRemovePromptTemplate"
+        />
+      </section>
+    </section>
 
-            <label class="recharge-modal__field">
-              <span>方式</span>
-              <select v-model="rechargeForm.channel">
-                <option value="alipay">支付宝</option>
-                <option value="wechat">微信支付</option>
-              </select>
-            </label>
-
-            <label class="recharge-modal__field">
-              <span>金额</span>
-              <input v-model="rechargeForm.amountCny" type="number" min="0.01" step="0.01">
-            </label>
-
-            <label class="recharge-modal__field">
-              <span>优惠码</span>
-              <input v-model="rechargeForm.couponCode" type="text" placeholder="没有可留空">
-            </label>
-          </div>
-
-          <div class="recharge-modal__actions">
-            <button class="primary-action" type="button" :disabled="isRechargeSubmitting" @click="handleCreateRecharge">
-              {{ isRechargeSubmitting ? '创建中' : '创建订单' }}
-            </button>
-
-            <button
-              class="secondary-action"
-              type="button"
-              :disabled="!currentRechargeOrder || isRechargeRefreshing"
-              @click="handleRefreshRechargeOrder"
-            >
-              {{ isRechargeRefreshing ? '查询中' : '查询状态' }}
-            </button>
-
-            <button
-              class="secondary-action"
-              type="button"
-              :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl"
-              @click="handleOpenRechargeLink"
-            >
-              打开支付
-            </button>
-          </div>
-
-          <div v-if="currentRechargeOrder" class="recharge-modal__result">
-            <div class="recharge-modal__result-row">
-              <span>订单号</span>
-              <strong>{{ currentRechargeOrder.merchantOrderNo }}</strong>
-            </div>
-
-            <div class="recharge-modal__result-row">
-              <span>支付金额</span>
-              <strong>{{ currentRechargeOrder.payAmountCny }} CNY</strong>
-            </div>
-
-            <div class="recharge-modal__result-row">
-              <span>赠送金额</span>
-              <strong>{{ currentRechargeOrder.bonusAmountCny }} CNY</strong>
-            </div>
-
-            <div class="recharge-modal__result-row">
-              <span>状态</span>
-              <strong>{{ rechargeStatusLabel }}</strong>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
   </main>
 </template>

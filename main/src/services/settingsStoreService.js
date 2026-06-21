@@ -1,7 +1,6 @@
 const fs = require('node:fs')
 
 const SETTINGS_KEY = 'userSettings'
-const API_KEY_SLOT_COUNT = 2
 const CREDIT_HISTORY_LIMIT = 20
 
 const defaultCreditState = {
@@ -48,15 +47,6 @@ const defaultAuthPlatform = {
 }
 
 const defaultSettings = {
-  apiBaseUrl: 'https://grsai.dakka.com.cn',
-  apiKeys: ['', ''],
-  activeApiKeyIndex: 0,
-  apiKey: '',
-  providerApiKeys: {
-    general: '',
-    deepseek: '',
-    minimax: ''
-  },
   defaultSize: '1:1',
   downloadDirectory: '',
   globalUploadDirectory: '',
@@ -75,23 +65,6 @@ function normalizeThemeMode() {
   return 'dark'
 }
 
-function normalizeApiKeys(apiKeys = []) {
-  return Array.from({ length: API_KEY_SLOT_COUNT }, (_unused, index) => {
-    const value = Array.isArray(apiKeys) ? apiKeys[index] : ''
-    return typeof value === 'string' ? value : ''
-  })
-}
-
-function normalizeActiveApiKeyIndex(activeApiKeyIndex = 0) {
-  const numericIndex = Number(activeApiKeyIndex)
-
-  if (!Number.isInteger(numericIndex) || numericIndex < 0 || numericIndex >= API_KEY_SLOT_COUNT) {
-    return 0
-  }
-
-  return numericIndex
-}
-
 function normalizeUploadDirectories(uploadDirectories = {}) {
   const source = uploadDirectories && typeof uploadDirectories === 'object' ? uploadDirectories : {}
 
@@ -103,17 +76,6 @@ function normalizeUploadDirectories(uploadDirectories = {}) {
 
 function normalizeGlobalUploadDirectory(globalUploadDirectory = '') {
   return typeof globalUploadDirectory === 'string' ? globalUploadDirectory : ''
-}
-
-function normalizeProviderApiKeys(providerApiKeys = {}, fallbackApiKey = '') {
-  const source = providerApiKeys && typeof providerApiKeys === 'object' ? providerApiKeys : {}
-  const normalizedFallbackApiKey = typeof fallbackApiKey === 'string' ? fallbackApiKey.trim() : ''
-
-  return {
-    general: typeof source.general === 'string' ? source.general.trim() : normalizedFallbackApiKey,
-    deepseek: typeof source.deepseek === 'string' ? source.deepseek.trim() : '',
-    minimax: typeof source.minimax === 'string' ? source.minimax.trim() : ''
-  }
 }
 
 function normalizeDownloadCleanupEnabled(downloadCleanupEnabled = true) {
@@ -298,7 +260,7 @@ function applyCreditAdjustment(creditState, adjustment = {}, { getNow = () => ne
 
   const operation = adjustment.operation === 'decrease' ? 'decrease' : 'increase'
   if (operation === 'decrease' && normalizedCreditState.remainingCredits < amount) {
-    throw new Error('可用积分不足，无法扣减')
+    throw new Error('???????????')
   }
 
   const createdAt = getNow()
@@ -354,7 +316,7 @@ function validateUploadDirectories(uploadDirectories = {}, { isDirectory = defau
     }
 
     if (!isDirectory(directoryPath)) {
-      throw new Error('默认上传目录不存在或不是文件夹')
+      throw new Error('???????????????')
     }
   }
 }
@@ -366,7 +328,7 @@ function validateGlobalUploadDirectory(globalUploadDirectory = '', { isDirectory
   }
 
   if (!isDirectory(normalizedPath)) {
-    throw new Error('默认上传目录不存在或不是文件夹')
+    throw new Error('???????????????')
   }
 }
 
@@ -375,29 +337,27 @@ function normalizeSettings(rawSettings = {}) {
     ...defaultSettings,
     ...rawSettings
   }
-  const activeApiKeyIndex = normalizeActiveApiKeyIndex(mergedSettings.activeApiKeyIndex)
-  const apiKeys = normalizeApiKeys(mergedSettings.apiKeys)
-
-  if ((!rawSettings.apiKeys || !rawSettings.apiKeys.length) && typeof rawSettings.apiKey === 'string') {
-    apiKeys[activeApiKeyIndex] = rawSettings.apiKey
-  }
+  const {
+    defaultSize,
+    downloadDirectory,
+    globalUploadDirectory,
+    uploadDirectories,
+    downloadCleanupEnabled,
+    dashboardCreditState,
+    creditState,
+    authPlatform
+  } = mergedSettings
 
   return {
-    ...mergedSettings,
+    defaultSize: typeof defaultSize === 'string' ? defaultSize : defaultSettings.defaultSize,
+    downloadDirectory: typeof downloadDirectory === 'string' ? downloadDirectory : '',
+    globalUploadDirectory: normalizeGlobalUploadDirectory(globalUploadDirectory),
+    uploadDirectories: normalizeUploadDirectories(uploadDirectories),
     themeMode: normalizeThemeMode(mergedSettings.themeMode),
-    downloadCleanupEnabled: normalizeDownloadCleanupEnabled(mergedSettings.downloadCleanupEnabled),
-    globalUploadDirectory: normalizeGlobalUploadDirectory(mergedSettings.globalUploadDirectory),
-    uploadDirectories: normalizeUploadDirectories(mergedSettings.uploadDirectories),
-    dashboardCreditState: normalizeDashboardCreditState(mergedSettings.dashboardCreditState),
-    creditState: normalizeCreditState(mergedSettings.creditState),
-    authPlatform: normalizeAuthPlatform(mergedSettings.authPlatform),
-    providerApiKeys: normalizeProviderApiKeys(
-      mergedSettings.providerApiKeys,
-      apiKeys[activeApiKeyIndex] || mergedSettings.apiKey || ''
-    ),
-    apiKeys,
-    activeApiKeyIndex,
-    apiKey: apiKeys[activeApiKeyIndex] || ''
+    downloadCleanupEnabled: normalizeDownloadCleanupEnabled(downloadCleanupEnabled),
+    dashboardCreditState: normalizeDashboardCreditState(dashboardCreditState),
+    creditState: normalizeCreditState(creditState),
+    authPlatform: normalizeAuthPlatform(authPlatform)
   }
 }
 
@@ -407,14 +367,6 @@ function createSettingsStoreService({ store }) {
   }
 
   async function saveSettings(payload = {}, options = {}) {
-    const hasSensitiveApiKeyFields = ['apiKeys', 'apiKey', 'activeApiKeyIndex'].some((field) => {
-      return Object.prototype.hasOwnProperty.call(payload || {}, field)
-    })
-
-    if (hasSensitiveApiKeyFields) {
-      throw new Error('当前版本不允许用户修改 API-Key')
-    }
-
     const currentSettings = getSettings()
     const {
       creditAdjustment,
@@ -462,38 +414,9 @@ function createSettingsStoreService({ store }) {
     return nextSettings
   }
 
-  async function saveProviderApiKeys({ imageApiKey = '', textApiKey = '', videoApiKey = '' } = {}) {
-    const normalizedImageApiKey = typeof imageApiKey === 'string' ? imageApiKey.trim() : ''
-    const normalizedTextApiKey = typeof textApiKey === 'string' ? textApiKey.trim() : ''
-    const normalizedVideoApiKey = typeof videoApiKey === 'string' ? videoApiKey.trim() : ''
-
-    if (!normalizedImageApiKey && !normalizedTextApiKey && !normalizedVideoApiKey) {
-      throw new Error('API-Key 不能为空')
-    }
-
-    const currentSettings = getSettings()
-    const nextGeneralApiKey = normalizedImageApiKey || currentSettings.providerApiKeys?.general || currentSettings.apiKey || ''
-    const nextApiKeys = normalizeApiKeys([nextGeneralApiKey, ''])
-    const nextSettings = normalizeSettings({
-      ...currentSettings,
-      apiKeys: nextApiKeys,
-      activeApiKeyIndex: 0,
-      apiKey: nextGeneralApiKey,
-      providerApiKeys: {
-        general: nextGeneralApiKey,
-        deepseek: normalizedTextApiKey || currentSettings.providerApiKeys?.deepseek || '',
-        minimax: normalizedVideoApiKey || currentSettings.providerApiKeys?.minimax || ''
-      }
-    })
-
-    store.set(SETTINGS_KEY, nextSettings)
-    return nextSettings
-  }
-
   return {
     getSettings,
-    saveSettings,
-    saveProviderApiKeys
+    saveSettings
   }
 }
 

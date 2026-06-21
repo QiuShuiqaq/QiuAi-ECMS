@@ -1,0 +1,30 @@
+{
+  "runtimeTaskMenuKeys": [
+    "workspace",
+    "series-generate",
+    "video-generate"
+  ],
+  "runtimeTaskMenuItems": [
+    { "key": "workspace", "label": "工作台" },
+    { "key": "series-generate", "label": "套图生成" },
+    { "key": "video-generate", "label": "视频生成" }
+  ],
+  "primaryMenuItems": [
+    { "key": "workspace", "label": "工作台", "section": "核心" },
+    { "key": "purchase-center", "label": "购买中心", "section": "核心" },
+    { "key": "account-usage", "label": "账户与用量", "section": "核心" },
+    { "key": "prompt-library", "label": "提示词库", "section": "配置" }
+  ],
+  "generatorViews": {
+    "series-generate": {
+      "title": "Series Generate",
+      "mode": "image",
+      "shortcutLabel": "套图"
+    },
+    "video-generate": {
+      "title": "Video Generate",
+      "mode": "video",
+      "shortcutLabel": "视频"
+    }
+  }
+}

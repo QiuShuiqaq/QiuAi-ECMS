@@ -2,15 +2,18 @@
 const fsSync = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const os = require('node:os')
 const { pathToFileURL } = require('node:url')
+const studioMenuConfig = require('../../../shared/studio-menu-config.json')
+const { createWorkspaceExportService } = require('./workspaceExportService')
+const { createWorkspaceCreditService } = require('./workspaceCreditService')
+const { createWorkspaceProductProjectService } = require('./workspaceProductProjectService')
+const { createWorkspaceProjectRunService } = require('./workspaceProjectRunService')
+const { createWorkspaceSnapshotService } = require('./workspaceSnapshotService')
+const { createWorkspaceStateMaintenanceService } = require('./workspaceStateMaintenanceService')
+const { createWorkspaceTaskLifecycleService } = require('./workspaceTaskLifecycleService')
+const { createWorkspaceTaskExecutionService } = require('./workspaceTaskExecutionService')
 const { exportTaskDirectory: defaultExportTaskDirectory } = require('./taskExportService')
-const {
-  createStudioImageGenerationService,
-  MAX_SERIES_GENERATE_GROUP_SIZE
-} = require('./studioImageGenerationService')
-const { createCopywritingGenerationService } = require('./copywritingGenerationService')
-const { createStudioVideoGenerationService } = require('./studioVideoGenerationService')
+const { MAX_SERIES_GENERATE_GROUP_SIZE } = require('./studioGenerationConstants')
 const {
   ensureDirectory,
   getTaskDataDirectories,
@@ -21,6 +24,18 @@ const { persistSourceFiles } = require('./inputAssetStorageService')
 const { ensureDraftWithinCapability } = require('./packageCapabilityService')
 
 const STUDIO_WORKSPACE_KEY = 'studioWorkspace'
+
+function createMissingGenerationDependencyError(capabilityName = '') {
+  const error = new Error(`${capabilityName} generation dependency is required for the current desktop runtime.`)
+  error.code = 'MISSING_GENERATION_DEPENDENCY'
+  return error
+}
+
+function createMissingGenerationDependency(capabilityName = '') {
+  return async () => {
+    throw createMissingGenerationDependencyError(capabilityName)
+  }
+}
 
 async function fileExists(targetPath) {
   try {
@@ -35,18 +50,16 @@ const themeOptions = [
   { label: '暗黑', value: 'dark' }
 ]
 
-const menuItems = [
-  { key: 'workspace', label: '工作台' },
-  { key: 'data-center', label: '数据中心' },
-  { key: 'product-template', label: '商品模板' },
-  { key: 'title-generator', label: '标题生成' },
-  { key: 'description-generator', label: '描述生成' },
-  { key: 'series-generate', label: '套图生成' },
-  { key: 'video-generate', label: '视频生成' },
-  { key: 'model-pricing', label: '模型价格' },
-  { key: 'prompt-library', label: '提示词库' },
-  { key: 'model-config', label: '模型配置' }
-]
+const primaryMenuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
+  ? studioMenuConfig.primaryMenuItems
+  : []
+const runtimeStateMenuItems = Array.isArray(studioMenuConfig.runtimeTaskMenuItems)
+  ? studioMenuConfig.runtimeTaskMenuItems
+  : primaryMenuItems.filter((item) => {
+      return Array.isArray(studioMenuConfig.runtimeTaskMenuKeys) &&
+        studioMenuConfig.runtimeTaskMenuKeys.includes(item.key)
+    })
+const runtimeStateMenuKeySet = new Set(runtimeStateMenuItems.map((item) => item.key))
 
 const imageModelOptions = [
   { label: 'gpt-image-2', value: 'gpt-image-2' },
@@ -73,19 +86,15 @@ const batchOptions = [
   { label: '单批 12 个结果', value: 'batch-12' }
 ]
 
-const menuLabelMap = Object.fromEntries(menuItems.map((item) => [item.key, item.label]))
+const menuItems = primaryMenuItems
+const menuLabelMap = Object.fromEntries(runtimeStateMenuItems.map((item) => [item.key, item.label]))
 const taskCategoryMap = {
   workspace: '工作台',
-  'title-generator': '标题生成',
-  'description-generator': '描述生成',
   'series-generate': '套图生成',
-  'video-generate': '视频生成',
-  'model-pricing': '模型价格'
+  'video-generate': '视频生成'
 }
 const taskMenuMapByCategory = {
   工作台: 'workspace',
-  标题生成: 'title-generator',
-  描述生成: 'description-generator',
   '套图生成': 'series-generate'
 }
 const CREDIT_ACTIVITY_HISTORY_LIMIT = 20
@@ -128,13 +137,14 @@ const SERIES_GENERATE_DEFAULT_TYPE_ORDER = [
   '换模特',
   '全替换'
 ]
-const EXPORT_FREE_SPACE_MULTIPLIER = 3
-const EXPORT_MIN_REQUIRED_BYTES = 1024
 const workspaceDashboardSections = [
-  { cardKey: 'titleStats', menuKey: 'title-generator', title: '标题生成统计' },
-  { cardKey: 'descriptionStats', menuKey: 'description-generator', title: '描述生成统计' },
   { cardKey: 'seriesGenerateStats', menuKey: 'series-generate', title: '套图生成统计' }
 ]
+
+const publicSnapshotMenuItems = primaryMenuItems
+const runtimeStateMenuLabelMap = Object.fromEntries(runtimeStateMenuItems.map((item) => [item.key, item.label]))
+const publicSnapshotTaskMenuMapByCategory = taskMenuMapByCategory
+const publicWorkspaceDashboardSections = workspaceDashboardSections
 
 function getModelOptionsByMenu() {
   return imageModelOptions
@@ -149,11 +159,7 @@ function resolveDefaultModelForMenu() {
   return modelOptions[0]?.value || 'gpt-image-2'
 }
 
-function resolveTextModelForMenu(menuKey = '') {
-  if (menuKey === 'description-generator') {
-    return 'deepseek-v4-pro'
-  }
-
+function resolveTextModelForMenu() {
   return 'deepseek-v4-flash'
 }
 
@@ -219,6 +225,10 @@ function normalizePromptAssignments(promptAssignments = [], count = 1) {
 
 function normalizeDraftForMenu(menuKey, draft = {}) {
   const defaultDraft = createDefaultDrafts()[menuKey] || {}
+  if (!runtimeStateMenuKeySet.has(menuKey)) {
+    return {}
+  }
+
   if (menuKey === 'workspace') {
     return {
       ...defaultDraft,
@@ -233,45 +243,27 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       keywordsText: String(draft.keywordsText || defaultDraft.keywordsText || ''),
       platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
       language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
+      enabledSteps: normalizeProjectEnabledSteps(draft.enabledSteps || defaultDraft.enabledSteps),
       titlePrompt: String(draft.titlePrompt || defaultDraft.titlePrompt || ''),
       descriptionPrompt: String(draft.descriptionPrompt || defaultDraft.descriptionPrompt || ''),
-      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
-      descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
-      model: String(draft.model || defaultDraft.model || 'gpt-4o-mini')
-    }
-  }
-
-  if (menuKey === 'title-generator') {
-    return {
-      ...defaultDraft,
-      ...draft,
-      projectId: String(draft.projectId || defaultDraft.projectId || ''),
-      taskName: String(draft.taskName || defaultDraft.taskName || ''),
-      productName: String(draft.productName || defaultDraft.productName || ''),
-      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
-      language: String(draft.language || defaultDraft.language || 'zh-CN'),
-      titlePrompt: String(draft.titlePrompt || defaultDraft.titlePrompt || ''),
-      titleTemplateId: String(draft.titleTemplateId || defaultDraft.titleTemplateId || ''),
+      imagePrompt: String(draft.imagePrompt || defaultDraft.imagePrompt || ''),
+      videoPrompt: String(draft.videoPrompt || defaultDraft.videoPrompt || ''),
+      imageModel: String(draft.imageModel || defaultDraft.imageModel || resolveDefaultModelForMenu('series-generate')),
+      videoModel: String(draft.videoModel || defaultDraft.videoModel || 'MiniMax-Hailuo-2.3-Fast'),
+      imageTemplateId: String(draft.imageTemplateId || defaultDraft.imageTemplateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID),
+      videoTemplateId: String(draft.videoTemplateId || defaultDraft.videoTemplateId || 'video-main'),
       titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || defaultDraft.titleMaxChars || 60),
-      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
-      model: String(draft.model || defaultDraft.model || 'deepseek-v4-flash')
-    }
-  }
-
-  if (menuKey === 'description-generator') {
-    return {
-      ...defaultDraft,
-      ...draft,
-      projectId: String(draft.projectId || defaultDraft.projectId || ''),
-      taskName: String(draft.taskName || defaultDraft.taskName || ''),
-      productName: String(draft.productName || defaultDraft.productName || ''),
-      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
-      language: String(draft.language || defaultDraft.language || 'zh-CN'),
-      descriptionPrompt: String(draft.descriptionPrompt || defaultDraft.descriptionPrompt || ''),
-      descriptionTemplateId: String(draft.descriptionTemplateId || defaultDraft.descriptionTemplateId || ''),
       descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || defaultDraft.descriptionMaxChars || 300),
+      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
       descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
-      model: String(draft.model || defaultDraft.model || 'deepseek-v4-flash')
+      generateCount: Math.max(1, Number(draft.generateCount) || defaultDraft.generateCount || 4),
+      size: String(draft.size || defaultDraft.size || '1:1').trim() || '1:1',
+      duration: String(draft.duration || defaultDraft.duration || '6s').trim() || '6s',
+      resolution: String(draft.resolution || defaultDraft.resolution || '768P').trim() || '768P',
+      aspectRatio: String(draft.aspectRatio || defaultDraft.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
+      motionStrength: String(draft.motionStrength || defaultDraft.motionStrength || 'auto').trim() || 'auto',
+      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
     }
   }
 
@@ -422,37 +414,27 @@ function createDefaultDrafts() {
       keywordsText: '',
       platformTargetsText: 'temu, ozon',
       language: 'zh-CN',
+      sourceImage: null,
+      enabledSteps: normalizeProjectEnabledSteps(),
       titlePrompt: '生成适合跨境电商平台使用的商品标题，突出核心卖点，避免夸张和违规表达',
       descriptionPrompt: '生成适合电商详情页或上架页使用的商品描述，语气清晰、利于转化、避免空话',
-      titleQuantity: 3,
-      descriptionQuantity: 2,
-      model: resolveTextModelForMenu('workspace')
-    },
-    'data-center': {},
-    'product-template': {},
-    'title-generator': {
-      projectId: '',
-      taskName: '',
-      productName: '',
-      platformTargetsText: 'temu',
-      language: 'zh-CN',
-      titlePrompt: '生成适合跨境电商平台使用的商品标题，突出核心卖点，避免夸张和违规表达',
-      titleTemplateId: 'title-default',
+      imagePrompt: '',
+      videoPrompt: '',
+      imageModel: resolveDefaultModelForMenu('series-generate'),
+      videoModel: 'MiniMax-Hailuo-2.3-Fast',
+      imageTemplateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+      videoTemplateId: 'video-main',
       titleMaxChars: 60,
-      titleQuantity: 3,
-      model: resolveTextModelForMenu('title-generator')
-    },
-    'description-generator': {
-      projectId: '',
-      taskName: '',
-      productName: '',
-      platformTargetsText: 'temu',
-      language: 'zh-CN',
-      descriptionPrompt: '生成适合电商详情页或上架页使用的商品描述，语气清晰、利于转化、避免空话',
-      descriptionTemplateId: 'description-default',
       descriptionMaxChars: 300,
+      titleQuantity: 3,
       descriptionQuantity: 2,
-      model: resolveTextModelForMenu('description-generator')
+      generateCount: 4,
+      size: '1:1',
+      duration: '6s',
+      resolution: '768P',
+      aspectRatio: resolveVideoAspectRatioForMenu(),
+      motionStrength: 'auto',
+      model: resolveTextModelForMenu('workspace')
     },
     'series-generate': {
       prompt: '',
@@ -480,86 +462,24 @@ function createDefaultDrafts() {
       prompt: '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点',
       model: 'MiniMax-Hailuo-2.3-Fast',
       videoQuantity: 1
-    },
-    'model-pricing': {},
-    'prompt-library': {},
-    'model-config': {
-      apiKey: '',
-      titleModel: 'deepseek-v4-flash',
-      descriptionModel: 'deepseek-v4-pro',
-      imageModel: 'nano-banana-fast',
-      videoModel: 'MiniMax-Hailuo-2.3-Fast'
     }
   }
 }
 
 function createDefaultResultsByMenu() {
-  return {
-    workspace: {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'data-center': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'product-template': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'title-generator': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'description-generator': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'series-generate': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'video-generate': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'model-pricing': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'prompt-library': {
-      textResults: [],
-      comparisonResults: [],
-      groupedResults: [],
-      summary: null
-    },
-    'model-config': {
+  return Object.fromEntries(runtimeStateMenuItems.map((item) => [
+    item.key,
+    {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
       summary: null
     }
-  }
+  ]))
 }
 
 function createDefaultExportItemsByMenu() {
-  return Object.fromEntries(menuItems.map((item) => [
+  return Object.fromEntries(runtimeStateMenuItems.map((item) => [
     item.key,
     []
   ]))
@@ -587,8 +507,6 @@ function createDefaultProjectGenerationConfig() {
     videoDuration: '6s',
     videoResolution: '768P',
     videoMotionStrength: 'auto',
-    titleTemplateId: '',
-    descriptionTemplateId: '',
     imageTemplateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
     videoTemplateId: 'video-main',
     titlePrompt: '',
@@ -614,8 +532,6 @@ function normalizeProjectGenerationConfig(generationConfig = {}) {
   const source = generationConfig && typeof generationConfig === 'object' ? generationConfig : {}
 
   return {
-    ...defaults,
-    ...source,
     enabledSteps: normalizeProjectEnabledSteps(source.enabledSteps),
     titleMaxChars: Math.max(1, Number(source.titleMaxChars) || defaults.titleMaxChars),
     descriptionMaxChars: Math.max(1, Number(source.descriptionMaxChars) || defaults.descriptionMaxChars),
@@ -624,8 +540,6 @@ function normalizeProjectGenerationConfig(generationConfig = {}) {
     videoResolution: String(source.videoResolution || defaults.videoResolution).trim() || defaults.videoResolution,
     aspectRatio: String(source.aspectRatio || defaults.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
     videoMotionStrength: String(source.videoMotionStrength || defaults.videoMotionStrength).trim() || defaults.videoMotionStrength,
-    titleTemplateId: String(source.titleTemplateId || '').trim(),
-    descriptionTemplateId: String(source.descriptionTemplateId || '').trim(),
     imageTemplateId: String(source.imageTemplateId || defaults.imageTemplateId).trim() || defaults.imageTemplateId,
     videoTemplateId: String(source.videoTemplateId || defaults.videoTemplateId).trim() || defaults.videoTemplateId,
     titlePrompt: String(source.titlePrompt || '').trim(),
@@ -710,6 +624,7 @@ function normalizeProductProject(project = {}) {
   const content = source.content && typeof source.content === 'object' ? source.content : {}
   const publishDraft = source.publishDraft && typeof source.publishDraft === 'object' ? source.publishDraft : {}
   const generationConfig = source.generationConfig && typeof source.generationConfig === 'object' ? source.generationConfig : {}
+  const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {}
   const supportedStatusSet = new Set(['draft', 'ready', 'archived'])
 
   return {
@@ -747,6 +662,11 @@ function normalizeProductProject(project = {}) {
       platformDrafts: publishDraft.platformDrafts && typeof publishDraft.platformDrafts === 'object'
         ? { ...publishDraft.platformDrafts }
         : {}
+    },
+    metadata: {
+      selectionSource: metadata.selectionSource && typeof metadata.selectionSource === 'object'
+        ? { ...metadata.selectionSource }
+        : null
     },
     latestRunId: typeof source.latestRunId === 'string' ? source.latestRunId : '',
     runIds: normalizeStringList(source.runIds),
@@ -796,14 +716,6 @@ function resolveProjectRunStepKey(menuKey = '') {
     return null
   }
 
-  if (menuKey === 'title-generator') {
-    return 'title'
-  }
-
-  if (menuKey === 'description-generator') {
-    return 'description'
-  }
-
   if (menuKey === 'series-generate') {
     return 'image'
   }
@@ -818,7 +730,7 @@ function resolveProjectRunStepKey(menuKey = '') {
 function resolveWorkspaceEnabledRunSteps(draft = {}, currentProject = null) {
   const generationConfig = currentProject?.generationConfig || {}
   const enabledSteps = normalizeProjectEnabledSteps(generationConfig.enabledSteps)
-  const hasSourceImage = Boolean(draft.sourceImage || draft.referenceImage || currentProject?.assets?.sourceImages?.length)
+  const hasSourceImage = Boolean(draft.sourceImage || currentProject?.assets?.sourceImages?.length)
 
   return {
     title: enabledSteps.title !== false,
@@ -826,366 +738,6 @@ function resolveWorkspaceEnabledRunSteps(draft = {}, currentProject = null) {
     image: enabledSteps.image !== false && hasSourceImage,
     video: enabledSteps.video !== false && hasSourceImage
   }
-}
-
-function buildProjectRunStepStatesForTask({ menuKey = '', draft = {}, currentProject = null, createdAt = '' } = {}) {
-  const defaultStepStates = createDefaultProjectRunStepStates()
-  const enabledSteps = menuKey === 'workspace'
-    ? resolveWorkspaceEnabledRunSteps(draft, currentProject)
-    : {
-        title: false,
-        description: false,
-        image: false,
-        video: false
-      }
-
-  if (menuKey !== 'workspace') {
-    const stepKey = resolveProjectRunStepKey(menuKey)
-    if (stepKey) {
-      enabledSteps[stepKey] = true
-    }
-  }
-
-  return Object.fromEntries(Object.entries(defaultStepStates).map(([stepKey, stepState]) => {
-    if (!enabledSteps[stepKey]) {
-      return [
-        stepKey,
-        {
-          ...stepState,
-          status: 'success',
-          completedAt: createdAt || ''
-        }
-      ]
-    }
-
-    return [stepKey, stepState]
-  }))
-}
-
-function buildProjectRunRecord({
-  runId = '',
-  projectId = '',
-  menuKey = '',
-  draft = {},
-  currentProject = null,
-  taskId = '',
-  taskNumber = '',
-  createdAt = '',
-  runDirectory = ''
-} = {}) {
-  return normalizeProjectRun({
-    id: runId,
-    projectId,
-    taskId,
-    taskNumber,
-    triggerMenuKey: menuKey,
-    status: 'pending',
-    stepStates: buildProjectRunStepStatesForTask({
-      menuKey,
-      draft,
-      currentProject,
-      createdAt
-    }),
-    outputs: {
-      title: '',
-      description: '',
-      images: [],
-      video: null
-    },
-    storage: {
-      runDirectory: String(runDirectory || '').trim(),
-      titleFile: '',
-      descriptionFile: '',
-      imageDirectory: '',
-      videoDirectory: ''
-    },
-    createdAt,
-    completedAt: ''
-  })
-}
-
-function attachProjectRunToProject(project = {}, runId = '', updatedAt = '') {
-  const normalizedRunId = String(runId || '').trim()
-  const currentRunIds = normalizeStringList(project.runIds)
-
-  return normalizeProductProject({
-    ...project,
-    latestRunId: normalizedRunId,
-    runIds: normalizedRunId
-      ? [
-          normalizedRunId,
-          ...currentRunIds.filter((item) => item !== normalizedRunId)
-        ]
-      : currentRunIds,
-    updatedAt: updatedAt || project.updatedAt || ''
-  })
-}
-
-function resolveProjectRunStatus(stepStates = {}) {
-  const normalizedStepStates = stepStates && typeof stepStates === 'object'
-    ? stepStates
-    : createDefaultProjectRunStepStates()
-  const statuses = Object.values(normalizedStepStates).map((stepState) => stepState?.status || 'pending')
-
-  if (statuses.some((status) => status === 'failed')) {
-    return 'failed'
-  }
-
-  if (statuses.every((status) => status === 'success')) {
-    return 'success'
-  }
-
-  if (statuses.some((status) => status === 'running')) {
-    return 'running'
-  }
-
-  return 'pending'
-}
-
-function resolveRunDirectoryFromExportItems(exportItems = [], outputDirectory = '') {
-  const candidateDirectory = (Array.isArray(exportItems) ? exportItems : [])
-    .map((item) => item?.directoryPath || item?.outputDirectory || '')
-    .find(Boolean)
-
-  if (candidateDirectory) {
-    return path.resolve(candidateDirectory, '..')
-  }
-
-  return String(outputDirectory || '').trim()
-}
-
-function resolveTextStorageFromResultPayload(resultPayload = {}, exportItems = []) {
-  const directories = (Array.isArray(exportItems) ? exportItems : [])
-    .map((item) => item?.directoryPath || item?.outputDirectory || '')
-    .filter(Boolean)
-
-  if (!directories.length) {
-    return {
-      titleFile: '',
-      descriptionFile: ''
-    }
-  }
-
-  const groupDirectory = directories[0]
-  const textResults = Array.isArray(resultPayload.textResults) ? resultPayload.textResults : []
-  const titleIndex = textResults.findIndex((item) => item?.kind === 'title')
-  const descriptionIndex = textResults.findIndex((item) => item?.kind === 'description')
-  const titleItem = titleIndex >= 0 ? textResults[titleIndex] : null
-  const descriptionItem = descriptionIndex >= 0 ? textResults[descriptionIndex] : null
-
-  return {
-    titleFile: titleItem
-      ? path.resolve(groupDirectory, `${String(titleIndex).padStart(2, '0')}-${sanitizePathSegment(titleItem.title || `text-${titleIndex + 1}`, `text-${titleIndex + 1}`)}.txt`)
-      : '',
-    descriptionFile: descriptionItem
-      ? path.resolve(groupDirectory, `${String(descriptionIndex).padStart(2, '0')}-${sanitizePathSegment(descriptionItem.title || `text-${descriptionIndex + 1}`, `text-${descriptionIndex + 1}`)}.txt`)
-      : ''
-  }
-}
-
-function buildStartedProjectRun({
-  projectRun = {},
-  menuKey = '',
-  startedAt = ''
-} = {}) {
-  const normalizedProjectRun = normalizeProjectRun(projectRun)
-  const nextStepStates = {
-    ...normalizedProjectRun.stepStates
-  }
-
-  if (menuKey === 'workspace') {
-    for (const stepKey of Object.keys(nextStepStates)) {
-      if (nextStepStates[stepKey]?.status !== 'pending') {
-        continue
-      }
-
-      nextStepStates[stepKey] = {
-        ...nextStepStates[stepKey],
-        status: 'running',
-        startedAt
-      }
-    }
-  } else {
-    const stepKey = resolveProjectRunStepKey(menuKey)
-    if (stepKey && nextStepStates[stepKey]?.status === 'pending') {
-      nextStepStates[stepKey] = {
-        ...nextStepStates[stepKey],
-        status: 'running',
-        startedAt
-      }
-    }
-  }
-
-  return normalizeProjectRun({
-    ...normalizedProjectRun,
-    status: 'running',
-    stepStates: nextStepStates
-  })
-}
-
-function resolveImageRunOutput(resultPayload = {}) {
-  return (resultPayload.groupedResults || [])
-    .flatMap((group) => group.outputs || [])
-    .filter((item) => {
-      const savedPath = String(item.savedPath || item.path || '').trim()
-      return Boolean(savedPath) && !/\.mp4$/i.test(savedPath)
-    })
-    .map((item) => ({
-      ...item,
-      path: item.savedPath || item.path || '',
-      savedPath: item.savedPath || item.path || ''
-    }))
-}
-
-function resolveVideoRunOutput(resultPayload = {}) {
-  return (resultPayload.groupedResults || [])
-    .flatMap((group) => group.outputs || [])
-    .find((item) => {
-      const savedPath = String(item.savedPath || item.path || '').trim()
-      return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
-    }) || null
-}
-
-function buildProjectRunUpdateFromResult({
-  projectRun = {},
-  menuKey = '',
-  resultPayload = {},
-  exportItems = [],
-  outputDirectory = '',
-  completedAt = ''
-} = {}) {
-  let nextProjectRun = normalizeProjectRun(projectRun)
-  const runDirectory = resolveRunDirectoryFromExportItems(exportItems, outputDirectory)
-  const stepStates = {
-    ...nextProjectRun.stepStates
-  }
-  const nextOutputs = {
-    ...nextProjectRun.outputs
-  }
-  const nextStorage = {
-    ...nextProjectRun.storage,
-    runDirectory
-  }
-
-  if (menuKey === 'workspace' || menuKey === 'title-generator') {
-    const titleValue = menuKey === 'workspace'
-      ? (resultPayload.textResults || []).find((item) => item.kind === 'title')?.content || ''
-      : (resultPayload.textResults || [])[0]?.content || ''
-    const titleStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
-    nextOutputs.title = String(titleValue || '').trim()
-    nextStorage.titleFile = titleStorage.titleFile || nextStorage.titleFile
-    stepStates.title = {
-      ...stepStates.title,
-      status: 'success',
-      completedAt
-    }
-  }
-
-  if (menuKey === 'workspace' || menuKey === 'description-generator') {
-    const descriptionValue = menuKey === 'workspace'
-      ? (resultPayload.textResults || []).find((item) => item.kind === 'description')?.content || ''
-      : (resultPayload.textResults || [])[0]?.content || ''
-    const textStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
-    nextOutputs.description = String(descriptionValue || '').trim()
-    nextStorage.descriptionFile = textStorage.descriptionFile || nextStorage.descriptionFile
-    stepStates.description = {
-      ...stepStates.description,
-      status: 'success',
-      completedAt
-    }
-  }
-
-  if (menuKey === 'workspace' || menuKey === 'series-generate') {
-    const imageOutputs = resolveImageRunOutput(resultPayload)
-    if (imageOutputs.length) {
-      nextOutputs.images = imageOutputs
-      nextStorage.imageDirectory = imageOutputs[0]?.savedPath
-        ? path.dirname(imageOutputs[0].savedPath)
-        : nextStorage.imageDirectory
-    }
-    stepStates.image = {
-      ...stepStates.image,
-      status: 'success',
-      completedAt
-    }
-  }
-
-  if (menuKey === 'workspace' || menuKey === 'video-generate') {
-    const videoOutput = resolveVideoRunOutput(resultPayload)
-    if (videoOutput) {
-      nextOutputs.video = {
-        ...videoOutput,
-        path: videoOutput.savedPath || videoOutput.path || '',
-        savedPath: videoOutput.savedPath || videoOutput.path || ''
-      }
-      nextStorage.videoDirectory = nextOutputs.video.savedPath
-        ? path.dirname(nextOutputs.video.savedPath)
-        : nextStorage.videoDirectory
-    }
-    stepStates.video = {
-      ...stepStates.video,
-      status: 'success',
-      completedAt
-    }
-  }
-
-  nextProjectRun = normalizeProjectRun({
-    ...nextProjectRun,
-    stepStates,
-    outputs: nextOutputs,
-    storage: nextStorage,
-    completedAt
-  })
-
-  return normalizeProjectRun({
-    ...nextProjectRun,
-    status: resolveProjectRunStatus(nextProjectRun.stepStates)
-  })
-}
-
-function buildFailedProjectRun({
-  projectRun = {},
-  menuKey = '',
-  errorMessage = '',
-  failedAt = ''
-} = {}) {
-  const normalizedProjectRun = normalizeProjectRun(projectRun)
-  const nextStepStates = {
-    ...normalizedProjectRun.stepStates
-  }
-
-  if (menuKey === 'workspace') {
-    for (const stepKey of Object.keys(nextStepStates)) {
-      const currentState = nextStepStates[stepKey]
-      if (currentState.status === 'success') {
-        continue
-      }
-
-      nextStepStates[stepKey] = {
-        ...currentState,
-        status: 'failed',
-        error: String(errorMessage || '').trim(),
-        completedAt: failedAt
-      }
-    }
-  } else {
-    const stepKey = resolveProjectRunStepKey(menuKey)
-    if (stepKey) {
-      nextStepStates[stepKey] = {
-        ...nextStepStates[stepKey],
-        status: 'failed',
-        error: String(errorMessage || '').trim(),
-        completedAt: failedAt
-      }
-    }
-  }
-
-  return normalizeProjectRun({
-    ...normalizedProjectRun,
-    status: 'failed',
-    stepStates: nextStepStates,
-    completedAt: failedAt
-  })
 }
 
 function splitWorkspaceTextValues(value = '') {
@@ -1272,40 +824,6 @@ function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, up
       titleCandidates,
       descriptionCandidates,
       selectedTitle: titleCandidates[0] || project.content?.selectedTitle || '',
-      selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
-    },
-    updatedAt
-  })
-}
-
-function applyTitleResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
-  const titleCandidates = (resultPayload.textResults || [])
-    .map((item) => String(item.content || '').trim())
-    .filter(Boolean)
-
-  return normalizeProductProject({
-    ...project,
-    status: titleCandidates.length ? 'ready' : (project.status || 'draft'),
-    content: {
-      ...(project.content || {}),
-      titleCandidates,
-      selectedTitle: titleCandidates[0] || project.content?.selectedTitle || ''
-    },
-    updatedAt
-  })
-}
-
-function applyDescriptionResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
-  const descriptionCandidates = (resultPayload.textResults || [])
-    .map((item) => String(item.content || '').trim())
-    .filter(Boolean)
-
-  return normalizeProductProject({
-    ...project,
-    status: descriptionCandidates.length ? 'ready' : (project.status || 'draft'),
-    content: {
-      ...(project.content || {}),
-      descriptionCandidates,
       selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
     },
     updatedAt
@@ -1438,6 +956,7 @@ function updateProductProjectFields(project = {}, patch = {}, updatedAt = '') {
   const baseInfoPatch = nextPatch.baseInfo && typeof nextPatch.baseInfo === 'object' ? nextPatch.baseInfo : {}
   const assetsPatch = nextPatch.assets && typeof nextPatch.assets === 'object' ? nextPatch.assets : {}
   const contentPatch = nextPatch.content && typeof nextPatch.content === 'object' ? nextPatch.content : {}
+  const metadataPatch = nextPatch.metadata && typeof nextPatch.metadata === 'object' ? nextPatch.metadata : {}
 
   return normalizeProductProject({
     ...normalizedProject,
@@ -1470,6 +989,10 @@ function updateProductProjectFields(project = {}, patch = {}, updatedAt = '') {
     content: {
       ...normalizedProject.content,
       ...contentPatch
+    },
+    metadata: {
+      ...normalizedProject.metadata,
+      ...metadataPatch
     },
     updatedAt
   })
@@ -1559,13 +1082,7 @@ function scanStoredExportItemsByMenu({
   statSync = fsSync.statSync
 } = {}) {
   const exportItemsByMenu = createDefaultExportItemsByMenu()
-  const supportedMenuKeys = [
-    'workspace',
-    'title-generator',
-    'description-generator',
-    'series-generate',
-    'video-generate'
-  ]
+  const supportedMenuKeys = ['workspace', 'series-generate', 'video-generate']
 
   for (const menuKey of supportedMenuKeys) {
     const featureRootDirectory = path.resolve(outputRootDirectory, getFeatureDirectoryKey(menuKey))
@@ -1654,7 +1171,7 @@ function mergeStudioState(savedState = {}) {
     ...defaultState.formDrafts,
     ...(savedState.formDrafts || {})
   }
-  const normalizedFormDrafts = Object.fromEntries(menuItems.map((item) => {
+  const normalizedFormDrafts = Object.fromEntries(runtimeStateMenuItems.map((item) => {
     return [
       item.key,
       normalizeDraftForMenu(item.key, mergedFormDrafts[item.key] || {})
@@ -1663,7 +1180,7 @@ function mergeStudioState(savedState = {}) {
 
   return {
     formDrafts: normalizedFormDrafts,
-    resultsByMenu: Object.fromEntries(menuItems.map((item) => {
+    resultsByMenu: Object.fromEntries(runtimeStateMenuItems.map((item) => {
       return [
         item.key,
         {
@@ -1672,7 +1189,7 @@ function mergeStudioState(savedState = {}) {
         }
       ]
     })),
-    exportItemsByMenu: Object.fromEntries(menuItems.map((item) => {
+    exportItemsByMenu: Object.fromEntries(runtimeStateMenuItems.map((item) => {
       return [
         item.key,
         Array.isArray((savedState.exportItemsByMenu || {})[item.key])
@@ -1701,47 +1218,12 @@ function sortTasks(tasks = []) {
   })
 }
 
-function resolveTaskMenuKey(task = {}) {
-  if (task.menuKey && menuLabelMap[task.menuKey]) {
-    return task.menuKey
-  }
-
-  return taskMenuMapByCategory[task.category] || ''
-}
-
-function countStoredResults(exportItems = []) {
-  return exportItems.filter((item) => {
-    return item && (item.savedPath || item.directoryPath || item.outputDirectory || item.status === '已存储')
-  }).length
-}
-
 function countCurrentResults(resultPayload = {}) {
   const groupedResultCount = (resultPayload.groupedResults || []).reduce((total, group) => {
     return total + (group.outputs || []).length
   }, 0)
 
   return (resultPayload.textResults || []).length + (resultPayload.comparisonResults || []).length + groupedResultCount
-}
-
-function buildWorkspaceStatsCard({ state, tasks = [], menuKey, title }) {
-  const relatedTasks = sortTasks(tasks).filter((task) => resolveTaskMenuKey(task) === menuKey)
-  const completedTaskCount = relatedTasks.filter((task) => task.status === '已完成').length
-  const failedTaskCount = relatedTasks.filter((task) => task.status === '失败').length
-  const exportItems = state.exportItemsByMenu[menuKey] || []
-  const resultPayload = state.resultsByMenu[menuKey] || { textResults: [], images: [] }
-  const items = [
-    { label: '模型调用次数', value: String(relatedTasks.length) },
-    { label: '任务总数', value: String(relatedTasks.length) },
-    { label: '已完成任务', value: String(completedTaskCount) },
-    { label: '失败任务', value: String(failedTaskCount) },
-    { label: '当前结果数', value: String(countCurrentResults(resultPayload)) },
-    { label: '已存储结果', value: String(countStoredResults(exportItems)) }
-  ]
-
-  return {
-    title,
-    items
-  }
 }
 
 function normalizeCreditStateForDisplay(creditState = {}) {
@@ -1780,13 +1262,9 @@ function resolveModelCreditCost(modelName = '') {
 }
 
 function estimateTaskCredits(menuKey, draft = {}) {
-  if (menuKey === 'title-generator' || menuKey === 'description-generator') {
-    return 0
-  }
-
   if (menuKey === 'workspace') {
     const imageCost = Math.max(1, Number(draft.generateCount) || 4) * resolveModelCreditCost(draft.imageModel || 'gpt-image-2')
-    return (draft.sourceImage || draft.referenceImage) ? imageCost : 0
+    return draft.sourceImage ? imageCost : 0
   }
 
   if (menuKey === 'series-generate') {
@@ -1800,57 +1278,6 @@ function estimateTaskCredits(menuKey, draft = {}) {
   return 0
 }
 
-function buildCreditOverview(settings = {}) {
-  const creditState = normalizeCreditStateForDisplay(settings.creditState)
-  const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-    ? settings.dashboardCreditState
-    : {}
-  const textBalanceCny = Math.max(0, Number(dashboardCreditState.text?.balanceCny) || 0)
-  const imageRemainingCredits = Math.max(0, Number(dashboardCreditState.image?.remainingCredits) || 0)
-  const imageTotalCredits = Math.max(0, Number(dashboardCreditState.image?.totalCredits) || 0)
-  const videoBalanceCny = Math.max(0, Number(dashboardCreditState.video?.balanceCny) || 0)
-  const baseModelCreditCost = resolveModelCreditCost('gpt-image-2') || 600
-  const latestAdjustmentLabel = creditState.lastAdjustmentAt
-    ? `${creditState.lastAdjustmentOperation === 'decrease' ? '扣减' : '增加'} ${creditState.lastAdjustmentAmount}`
-    : '--'
-
-  return {
-    ledgers: [
-      {
-        key: 'text',
-        title: '文本',
-        unit: 'CNY',
-        value: textBalanceCny.toFixed(2),
-        items: [
-          { label: '充值余额', value: textBalanceCny.toFixed(2) }
-        ]
-      },
-      {
-        key: 'image',
-        title: '图片',
-        unit: '积分',
-        value: String(imageRemainingCredits),
-        items: [
-          { label: '剩余积分', value: String(imageRemainingCredits) },
-          { label: '总积分', value: String(imageTotalCredits) },
-          { label: '冻结积分', value: String(creditState.frozenCredits) },
-          { label: '已用积分', value: String(creditState.usedCredits) },
-          { label: '最近调整', value: latestAdjustmentLabel },
-          { label: '按 gpt-image-2 约可生成', value: String(Math.floor(imageRemainingCredits / baseModelCreditCost)) }
-        ]
-      },
-      {
-        key: 'video',
-        title: '视频',
-        unit: 'CNY',
-        value: videoBalanceCny.toFixed(2),
-        items: [
-          { label: '可用额度', value: videoBalanceCny.toFixed(2) }
-        ]
-      }
-    ]
-  }
-}
 
 function appendCreditActivity(creditState, activityEntry = {}) {
   return [
@@ -1871,181 +1298,9 @@ function appendCreditActivity(creditState, activityEntry = {}) {
   ].slice(0, CREDIT_ACTIVITY_HISTORY_LIMIT)
 }
 
-function resolveCreditActivityLabel(item = {}) {
-  if (item.type === 'manual_increase') {
-    return '手动增加积分'
-  }
-  if (item.type === 'manual_decrease') {
-    return '手动扣减积分'
-  }
-  if (item.type === 'task_freeze') {
-    return '任务冻结积分'
-  }
-  if (item.type === 'task_settle') {
-    return '任务消耗积分'
-  }
-  if (item.type === 'task_refund') {
-    return '任务返还积分'
-  }
-  return '积分变动'
-}
-
-function resolveCreditActivityDescription(item = {}) {
-  if (item.taskNumber || item.taskName) {
-    const taskHeader = [item.taskNumber, item.taskName].filter(Boolean).join(' / ')
-    const modelText = item.modelSummary ? ` / ${item.modelSummary}` : ''
-    return `${taskHeader || '任务'}${modelText}`
-  }
-
-  return item.note || '本地积分流水'
-}
-
-function buildCreditMessages(settings = {}) {
-  const creditState = normalizeCreditStateForDisplay(settings.creditState)
-  const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-    ? settings.dashboardCreditState
-    : {}
-
-  return {
-    ledgers: [
-      {
-        key: 'text',
-        title: '文本记录',
-        items: dashboardCreditState.text?.lastSyncedAt
-          ? [{
-              id: `text-sync-${dashboardCreditState.text.lastSyncedAt}`,
-              createdAt: dashboardCreditState.text.lastSyncedAt,
-              note: '文本余额同步',
-              amount: Number(dashboardCreditState.text.balanceCny || 0).toFixed(2)
-            }]
-          : []
-      },
-      {
-        key: 'image',
-        title: '图片记录',
-        items: creditState.activityHistory.map((item) => ({
-          ...item,
-          label: resolveCreditActivityLabel(item),
-          description: resolveCreditActivityDescription(item),
-          amountDisplay: `${item.operation === 'decrease' ? '-' : '+'}${item.amount}`
-        }))
-      },
-      {
-        key: 'video',
-        title: '视频记录',
-        items: dashboardCreditState.video?.lastSyncedAt
-          ? [{
-              id: `video-sync-${dashboardCreditState.video.lastSyncedAt}`,
-              createdAt: dashboardCreditState.video.lastSyncedAt,
-              note: '视频额度同步',
-              amount: Number(dashboardCreditState.video.balanceCny || 0).toFixed(2)
-            }]
-          : []
-      }
-    ]
-  }
-}
-
-function formatMonitorTimeLabel(dateValue = '') {
-  const date = new Date(dateValue)
-  if (Number.isNaN(date.getTime())) {
-    return '--:--:--'
-  }
-
-  return [
-    String(date.getHours()).padStart(2, '0'),
-    String(date.getMinutes()).padStart(2, '0'),
-    String(date.getSeconds()).padStart(2, '0')
-  ].join(':')
-}
-
-function buildNetworkMonitor(state = {}) {
-  const requestMetrics = normalizeRequestMetrics(state.requestMetrics).sort((left, right) => {
-    const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0
-    const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0
-    return rightTime - leftTime
-  })
-  const totalCount = requestMetrics.length
-  const successCount = requestMetrics.filter((item) => item.requestStatus === 'success').length
-  const averageLatencyMs = totalCount
-    ? Math.round(requestMetrics.reduce((sum, item) => sum + item.elapsedMs, 0) / totalCount)
-    : 0
-
-  return {
-    title: '网络监控',
-    items: requestMetrics.slice(0, 12).map((item) => ({
-      id: item.id,
-      createdAt: item.createdAt,
-      timeLabel: formatMonitorTimeLabel(item.createdAt),
-      method: item.method || 'POST',
-      requestPath: item.requestPath,
-      elapsedMs: item.elapsedMs,
-      status: item.requestStatus
-    })),
-    summary: {
-      latestLatencyMs: requestMetrics[0]?.elapsedMs || 0,
-      averageLatencyMs,
-      successRate: totalCount ? `${Math.round((successCount / totalCount) * 100)}%` : '0%'
-    }
-  }
-}
-
-function buildWorkspaceDashboard(state, tasks = [], settings = {}) {
-  return {
-    ...Object.fromEntries(workspaceDashboardSections.map((section) => [
-      section.cardKey,
-      buildWorkspaceStatsCard({
-        state,
-        tasks,
-        menuKey: section.menuKey,
-        title: section.title
-      })
-    ])),
-    creditOverview: buildCreditOverview(settings),
-    creditMessages: buildCreditMessages(settings),
-    networkMonitor: buildNetworkMonitor(state)
-  }
-}
-
-function safeResolveUserName() {
-  try {
-    return os.userInfo().username || 'unknown'
-  } catch (_error) {
-    return 'unknown'
-  }
-}
-
-function buildHostInfo() {
-  const cpuList = os.cpus() || []
-
-  return {
-    systemName: os.hostname(),
-    platformName: `${os.platform()} ${os.release()}`,
-    architecture: os.arch(),
-    cpuModel: cpuList[0]?.model || 'Unknown CPU',
-    userName: safeResolveUserName(),
-    runtimeName: `Node ${process.versions.node}`
-  }
-}
-
-function buildSettingsSummary(settings = {}) {
-  return {
-    apiKeys: Array.isArray(settings.apiKeys) ? settings.apiKeys.slice(0, 2) : ['', ''],
-    activeApiKeyIndex: Number.isInteger(settings.activeApiKeyIndex) ? settings.activeApiKeyIndex : 0,
-    dashboardCreditState: settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-      ? settings.dashboardCreditState
-      : {
-          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
-        },
-    creditState: normalizeCreditStateForDisplay(settings.creditState)
-  }
-}
-
 async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   generateImageResults,
-  generateCopywritingResults,
+  generateTextResults,
   generateVideoResults,
   onProgress
 }) {
@@ -2062,7 +1317,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     const platformText = splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'
 
     const titleResults = enabledSteps.title
-      ? await generateCopywritingResults({
+      ? await generateTextResults({
           taskId: `${taskId}-title`,
           draft: {
             model: draft.model,
@@ -2089,7 +1344,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     })
 
     const descriptionResults = enabledSteps.description
-      ? await generateCopywritingResults({
+      ? await generateTextResults({
           taskId: `${taskId}-description`,
           draft: {
             model: draft.model,
@@ -2117,17 +1372,16 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
 
     const workspaceImagePromptBase = String(
       draft.imagePrompt ||
-      draft.globalPrompt ||
       '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'
     ).trim()
     const workspaceImageTypeLabels = SERIES_GENERATE_DEFAULT_TYPE_ORDER
     const imageDraft = {
       ...draft,
-      sourceImage: draft.sourceImage || draft.referenceImage || null,
+      sourceImage: draft.sourceImage || null,
       model: draft.imageModel || 'gpt-image-2',
       generateCount: Math.max(1, Number(draft.generateCount) || 4),
       batchCount: 1,
-      size: draft.size || draft.imageSize || '1:1',
+      size: draft.size || '1:1',
       promptAssignments: normalizePromptAssignments(
         Array.from({ length: Math.max(1, Number(draft.generateCount) || 4) }, (_unused, index) => ({
           id: `workspace-series-${index + 1}`,
@@ -2171,12 +1425,12 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
 
     const videoDraft = {
       ...draft,
-      sourceImage: draft.sourceImage || draft.referenceImage || null,
+      sourceImage: draft.sourceImage || null,
       model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
       prompt: String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim(),
-      duration: draft.duration || draft.videoDuration || '6s',
-      resolution: draft.resolution || draft.videoResolution || '768P',
-      motionStrength: draft.motionStrength || draft.videoMotionStrength || 'auto',
+      duration: draft.duration || '6s',
+      resolution: draft.resolution || '768P',
+      motionStrength: draft.motionStrength || 'auto',
       videoTemplateId: draft.videoTemplateId || 'video-main'
     }
 
@@ -2231,70 +1485,6 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       summary: {
         title: `${workspaceProjectName} / 全链路生成结果`,
         description: `已生成 ${titleResults.length} 条标题、${descriptionResults.length} 条描述，并完成套图与视频流程`
-      }
-    }
-  }
-
-  if (menuKey === 'title-generator') {
-    const titleResults = await generateCopywritingResults({
-      taskId,
-      draft: {
-        model: draft.model || resolveTextModelForMenu(menuKey),
-        quantity: draft.titleQuantity || 3,
-        prompt: [
-          `商品名称：${draft.productName || '未命名商品'}`,
-          `目标平台：${draft.platformTargetsText || 'temu'}`,
-          `语言：${draft.language || 'zh-CN'}`,
-          `任务要求：${draft.titlePrompt || ''}`,
-          `最大字数：${draft.titleMaxChars || 60}`,
-          '请输出适合商品上架的商品标题，不要解释，不要编号。'
-        ].join('\n')
-      }
-    })
-
-    return {
-      textResults: titleResults.map((item, index) => ({
-        ...item,
-        id: `${taskId}-title-${index + 1}`,
-        kind: 'title',
-        title: `标题 ${index + 1}`
-      })),
-      comparisonResults: [],
-      groupedResults: [],
-      summary: {
-        title: '标题生成结果'
-      }
-    }
-  }
-
-  if (menuKey === 'description-generator') {
-    const descriptionResults = await generateCopywritingResults({
-      taskId,
-      draft: {
-        model: draft.model || resolveTextModelForMenu(menuKey),
-        quantity: draft.descriptionQuantity || 2,
-        prompt: [
-          `商品名称：${draft.productName || '未命名商品'}`,
-          `目标平台：${draft.platformTargetsText || 'temu'}`,
-          `语言：${draft.language || 'zh-CN'}`,
-          `任务要求：${draft.descriptionPrompt || ''}`,
-          `最大字数：${draft.descriptionMaxChars || 300}`,
-          '请输出适合商品详情页或上架页的商品描述，不要解释，不要编号。'
-        ].join('\n')
-      }
-    })
-
-    return {
-      textResults: descriptionResults.map((item, index) => ({
-        ...item,
-        id: `${taskId}-description-${index + 1}`,
-        kind: 'description',
-        title: `描述 ${index + 1}`
-      })),
-      comparisonResults: [],
-      groupedResults: [],
-      summary: {
-        title: '描述生成结果'
       }
     }
   }
@@ -2355,14 +1545,6 @@ function sanitizePathSegment(value, fallbackValue = 'result') {
     .replace(/^-|-$/g, '')
 
   return sanitizedValue || fallbackValue
-}
-
-function isPathInsideDirectory(targetPath, rootDirectory) {
-  const normalizedRootDirectory = path.resolve(rootDirectory)
-  const normalizedTargetPath = path.resolve(targetPath)
-  const relativePath = path.relative(normalizedRootDirectory, normalizedTargetPath)
-
-  return relativePath !== '' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
 }
 
 function resolveTaskFolderBaseName({ draft, menuKey, taskId }) {
@@ -2548,7 +1730,7 @@ async function saveStudioResults({
 
 function resolveInputCount(menuKey, draft) {
   if (menuKey === 'workspace') {
-    return (draft.projectId && (draft.sourceImage || draft.referenceImage)) ? 1 : 0
+    return (draft.projectId && draft.sourceImage) ? 1 : 0
   }
 
   if (menuKey === 'series-generate') {
@@ -2601,7 +1783,7 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
 
 function resolveEstimatedInputCount(menuKey, draft = {}) {
   if (menuKey === 'workspace') {
-    return (draft.projectId && (draft.sourceImage || draft.referenceImage)) ? 1 : 0
+    return (draft.projectId && draft.sourceImage) ? 1 : 0
   }
 
   if (menuKey === 'series-generate') {
@@ -2619,19 +1801,11 @@ function resolveEstimatedPlannedOutputCount(menuKey, draft = {}) {
   if (menuKey === 'workspace') {
     return Math.max(1, Number(draft.titleQuantity) || 0) +
       Math.max(1, Number(draft.descriptionQuantity) || 0) +
-      ((draft.sourceImage || draft.referenceImage) ? (Math.max(1, Number(draft.generateCount) || 4) + 1) : 0)
+      (draft.sourceImage ? (Math.max(1, Number(draft.generateCount) || 4) + 1) : 0)
   }
 
   if (menuKey === 'series-generate') {
     return Math.max(1, Number(draft.batchCount) || 1) * resolveGroupImageCount(menuKey, draft)
-  }
-
-  if (menuKey === 'title-generator') {
-    return Math.max(1, Number(draft.titleQuantity) || 1)
-  }
-
-  if (menuKey === 'description-generator') {
-    return Math.max(1, Number(draft.descriptionQuantity) || 1)
   }
 
   return 0
@@ -2640,14 +1814,6 @@ function resolveEstimatedPlannedOutputCount(menuKey, draft = {}) {
 function resolveTaskTitle(menuKey, draft = {}) {
   if (menuKey === 'workspace') {
     return `${resolveWorkspaceProjectDisplayName(draft)} / 全链路生成`
-  }
-
-  if (menuKey === 'title-generator') {
-    return '标题生成'
-  }
-
-  if (menuKey === 'description-generator') {
-    return '描述生成'
   }
 
   if (menuKey === 'series-generate') {
@@ -2931,40 +2097,6 @@ function validateTaskScale(menuKey, draft = {}) {
   }
 }
 
-async function getAvailableDiskSpaceBytes(targetPath = process.cwd(), {
-  statfs = fs.statfs
-} = {}) {
-  let resolvedPath = path.resolve(targetPath || process.cwd())
-
-  if (!fsSync.existsSync(resolvedPath)) {
-    resolvedPath = path.dirname(resolvedPath)
-  }
-
-  while (!fsSync.existsSync(resolvedPath)) {
-    const parentPath = path.dirname(resolvedPath)
-    if (parentPath === resolvedPath) {
-      resolvedPath = process.cwd()
-      break
-    }
-    resolvedPath = parentPath
-  }
-
-  const stats = await statfs(resolvedPath)
-  const blockSize = Number(stats?.bsize || stats?.frsize || 0)
-  const freeBlocks = Number(stats?.bavail || stats?.bfree || 0)
-
-  if (!Number.isFinite(blockSize) || !Number.isFinite(freeBlocks) || blockSize <= 0 || freeBlocks < 0) {
-    throw new Error('无法读取磁盘可用空间')
-  }
-
-  return blockSize * freeBlocks
-}
-
-function estimateExportRequiredBytes(selectedItems = []) {
-  const itemCount = Math.max(1, Array.isArray(selectedItems) ? selectedItems.length : 0)
-  return Math.max(EXPORT_MIN_REQUIRED_BYTES, itemCount * EXPORT_MIN_REQUIRED_BYTES * EXPORT_FREE_SPACE_MULTIPLIER)
-}
-
 function buildPendingConfirmationTaskSummary(
   task = {},
   errorMessage = '任务状态待确认：软件重启前任务可能仍在远端处理中，请手动结束或重新提交'
@@ -2977,146 +2109,10 @@ function buildPendingConfirmationTaskSummary(
   }
 }
 
-function buildTaskLedgerEntry({ taskId, taskNumber, menuKey, draft = {}, estimatedCredits = 0, createdAt, status }) {
-  return {
-    taskId,
-    taskNumber,
-    menuKey,
-    taskName: String(draft.taskName || ''),
-    modelSummary: resolveTaskModelSummary(menuKey, draft),
-    estimatedCredits: Math.max(0, Number(estimatedCredits) || 0),
-    status,
-    createdAt,
-    updatedAt: createdAt
-  }
-}
-
-function freezeCreditsForTask({ creditState, taskId, taskNumber, menuKey, draft, estimatedCredits, createdAt }) {
-  const normalizedCreditState = normalizeCreditStateForDisplay(creditState)
-  const normalizedEstimatedCredits = Math.max(0, Number(estimatedCredits) || 0)
-
-  if (!normalizedEstimatedCredits) {
-    return normalizedCreditState
-  }
-
-  if (normalizedCreditState.remainingCredits < normalizedEstimatedCredits) {
-    throw new Error(`积分不足：当前可用 ${normalizedCreditState.remainingCredits}，需要 ${normalizedEstimatedCredits}`)
-  }
-
-  const modelSummary = resolveTaskModelSummary(menuKey, draft)
-
-  return normalizeCreditStateForDisplay({
-    ...normalizedCreditState,
-    remainingCredits: normalizedCreditState.remainingCredits - normalizedEstimatedCredits,
-    frozenCredits: normalizedCreditState.frozenCredits + normalizedEstimatedCredits,
-    activityHistory: appendCreditActivity(normalizedCreditState, {
-      id: `task-freeze-${taskId}-${createdAt}`,
-      type: 'task_freeze',
-      operation: 'decrease',
-      amount: normalizedEstimatedCredits,
-      createdAt,
-      taskId,
-      taskNumber,
-      taskName: String(draft.taskName || ''),
-      menuKey,
-      modelSummary
-    }),
-    taskLedger: {
-      ...normalizedCreditState.taskLedger,
-      [taskId]: buildTaskLedgerEntry({
-        taskId,
-        taskNumber,
-        menuKey,
-        draft,
-        modelSummary,
-        estimatedCredits: normalizedEstimatedCredits,
-        createdAt,
-        status: 'frozen'
-      })
-    }
-  })
-}
-
-function settleCreditsForTask({ creditState, taskId, updatedAt }) {
-  const normalizedCreditState = normalizeCreditStateForDisplay(creditState)
-  const currentLedger = normalizedCreditState.taskLedger[taskId]
-
-  if (!currentLedger || currentLedger.status === 'settled') {
-    return normalizedCreditState
-  }
-
-  const estimatedCredits = Math.max(0, Number(currentLedger.estimatedCredits) || 0)
-
-  return normalizeCreditStateForDisplay({
-    ...normalizedCreditState,
-    frozenCredits: Math.max(0, normalizedCreditState.frozenCredits - estimatedCredits),
-    usedCredits: normalizedCreditState.usedCredits + estimatedCredits,
-    activityHistory: appendCreditActivity(normalizedCreditState, {
-      id: `task-settle-${taskId}-${updatedAt}`,
-      type: 'task_settle',
-      operation: 'decrease',
-      amount: estimatedCredits,
-      createdAt: updatedAt,
-      taskId,
-      taskNumber: currentLedger.taskNumber,
-      taskName: currentLedger.taskName,
-      menuKey: currentLedger.menuKey,
-      modelSummary: currentLedger.modelSummary
-    }),
-    taskLedger: {
-      ...normalizedCreditState.taskLedger,
-      [taskId]: {
-        ...currentLedger,
-        status: 'settled',
-        updatedAt
-      }
-    }
-  })
-}
-
-function refundCreditsForTask({ creditState, taskId, updatedAt }) {
-  const normalizedCreditState = normalizeCreditStateForDisplay(creditState)
-  const currentLedger = normalizedCreditState.taskLedger[taskId]
-
-  if (!currentLedger || currentLedger.status === 'refunded') {
-    return normalizedCreditState
-  }
-
-  const estimatedCredits = Math.max(0, Number(currentLedger.estimatedCredits) || 0)
-
-  return normalizeCreditStateForDisplay({
-    ...normalizedCreditState,
-    remainingCredits: normalizedCreditState.remainingCredits + estimatedCredits,
-    frozenCredits: Math.max(0, normalizedCreditState.frozenCredits - estimatedCredits),
-    activityHistory: appendCreditActivity(normalizedCreditState, {
-      id: `task-refund-${taskId}-${updatedAt}`,
-      type: 'task_refund',
-      operation: 'increase',
-      amount: estimatedCredits,
-      createdAt: updatedAt,
-      taskId,
-      taskNumber: currentLedger.taskNumber,
-      taskName: currentLedger.taskName,
-      menuKey: currentLedger.menuKey,
-      modelSummary: currentLedger.modelSummary
-    }),
-    taskLedger: {
-      ...normalizedCreditState.taskLedger,
-      [taskId]: {
-        ...currentLedger,
-        status: 'refunded',
-        updatedAt
-      }
-    }
-  })
-}
-
 function createStudioWorkspaceService({
   store,
   settingsService,
   authorizationService,
-  apiKeyCreditService,
-  deepseekBalanceService,
   promptTemplateService,
   remoteLicensePlatformClient,
   messageRecorder,
@@ -3139,75 +2135,17 @@ function createStudioWorkspaceService({
   exportScanCacheTtlMs = 3000,
   exportTaskDirectory: exportTaskDirectoryDependency = defaultExportTaskDirectory,
   generateImageResults,
-  generateCopywritingResults,
+  generateTextResults,
   generateVideoResults,
   taskManagerService
 }) {
-  const studioImageGenerationService = createStudioImageGenerationService({
-    settingsService,
-    promptTemplateService,
-    messageRecorder,
-    runtimeLogger,
-    requestMetricRecorder: async (metric) => {
-      const latestState = getStoredState()
-      saveState({
-        ...latestState,
-        requestMetrics: appendRequestMetric(latestState.requestMetrics, {
-          id: createId(),
-          createdAt: getNow(),
-          ...metric
-        })
-      })
-    }
-  })
-  const studioVideoGenerationService = createStudioVideoGenerationService({
-    settingsService,
-    messageRecorder,
-    runtimeLogger,
-    requestMetricRecorder: async (metric) => {
-      const latestState = getStoredState()
-      saveState({
-        ...latestState,
-        requestMetrics: appendRequestMetric(latestState.requestMetrics, {
-          id: createId(),
-          createdAt: getNow(),
-          ...metric
-        })
-      })
-    }
-  })
-  const generateImageResultsDependency = generateImageResults || studioImageGenerationService.generateImageResults
-  const generateCopywritingResultsDependency = generateCopywritingResults || createCopywritingGenerationService({
-    settingsService,
-    messageRecorder
-  }).generateCopywritingResults
-  const generateVideoResultsDependency = generateVideoResults || studioVideoGenerationService.generateVideoResults
+  const generateImageResultsDependency = generateImageResults || createMissingGenerationDependency('image')
+  const generateTextResultsDependency = generateTextResults || createMissingGenerationDependency('text')
+  const generateVideoResultsDependency = generateVideoResults || createMissingGenerationDependency('video')
   const queuedTaskExecutions = []
   const activeTaskControllers = new Map()
   let isTaskQueueRunning = false
   let taskQueuePromise = Promise.resolve()
-  let cachedExportItemsByMenu = null
-  let cachedExportItemsAt = 0
-  let isExportItemsCacheDirty = true
-
-  function buildBaseSnapshot() {
-    const state = getStoredState()
-    const settings = settingsService.getSettings()
-    const tasks = getStoredTasks(state)
-    const exportItemsByMenu = getResolvedExportItemsByMenu(state)
-    const derivedState = {
-      ...state,
-      exportItemsByMenu
-    }
-
-    return {
-      state,
-      settings,
-      tasks,
-      exportItemsByMenu,
-      derivedState
-    }
-  }
 
   function buildAgentReadinessSnapshot(tasks = getStoredTasks()) {
     const queuedTaskIds = queuedTaskExecutions
@@ -3273,11 +2211,166 @@ function createStudioWorkspaceService({
     }
   }
 
-  function invalidateExportItemsCache() {
-    cachedExportItemsByMenu = null
-    cachedExportItemsAt = 0
-    isExportItemsCacheDirty = true
-  }
+  const workspaceExportService = createWorkspaceExportService({
+    getStoredState,
+    getResolvedExportItemsByMenu: (...args) => workspaceStateMaintenanceService.getResolvedExportItemsByMenu(...args),
+    menuLabelMap,
+    ensureDirectory: ensureDirectoryDependency,
+    writeFile,
+    mkdtemp,
+    copyFile,
+    copyDirectory,
+    removeDirectory,
+    getAvailableDiskSpaceBytes: getAvailableDiskSpaceBytesDependency,
+    exportTaskDirectory: exportTaskDirectoryDependency,
+    runtimeLogger
+  })
+  const workspaceCreditService = createWorkspaceCreditService({
+    settingsService,
+    remoteLicensePlatformClient,
+    getNow,
+    normalizeCreditStateForDisplay,
+    appendCreditActivity,
+    resolveTaskModelSummary
+  })
+  const workspaceProjectRunService = createWorkspaceProjectRunService({
+    createDefaultProjectRunStepStates,
+    resolveWorkspaceEnabledRunSteps,
+    resolveProjectRunStepKey,
+    normalizeProjectRun,
+    normalizeProductProject,
+    normalizeStringList,
+    sanitizePathSegment
+  })
+  const workspaceProductProjectService = createWorkspaceProductProjectService({
+    getStoredState,
+    saveState,
+    createId,
+    getNow,
+    normalizeProductProjects,
+    resolveActiveProductProjectId,
+    buildEmptyProductProject,
+    buildProjectCardFromAsset,
+    updateProductProjectFields,
+    upsertProductProject,
+    attachTaskRefToProductProject,
+    buildWorkspaceProjectDraft,
+    applyWorkspaceTextResultsToProject,
+    applyImageResultsToProject,
+    applyVideoResultsToProject,
+    attachProjectRunToProject: workspaceProjectRunService.attachProjectRunToProject,
+    normalizeImageAsset
+  })
+  const workspaceTaskExecutionService = createWorkspaceTaskExecutionService({
+    createTaskExecutionController,
+    activeTaskControllers,
+    getNow,
+    getStoredState,
+    persistTaskAndState,
+    ensureDirectory: ensureDirectoryDependency,
+    persistSourceFiles: persistSourceFilesDependency,
+    buildRunningTaskSummary,
+    buildFailedTaskSummary,
+    buildTaskSummary,
+    normalizeTaskProgress,
+    buildResultPayload,
+    generateImageResults: generateImageResultsDependency,
+    generateTextResults: generateTextResultsDependency,
+    generateVideoResults: generateVideoResultsDependency,
+    saveStudioResults,
+    writeFile,
+    enrichResultPayloadSummary,
+    buildWorkspaceProjectDraft,
+    attachTaskRefToProductProject,
+    applyWorkspaceTextResultsToProject,
+    applyImageResultsToProject,
+    applyVideoResultsToProject,
+    upsertProductProject,
+    applyTaskResultToProjects: (...args) => workspaceProductProjectService.applyTaskResultToProjects(...args),
+    normalizeProjectRuns,
+    upsertProjectRun,
+    workspaceProjectRunService,
+    settleCreditsForTask: (...args) => workspaceCreditService.settleCreditsForTask(...args),
+    refundCreditsForTask: (...args) => workspaceCreditService.refundCreditsForTask(...args),
+    settingsService,
+    safeRuntimeLog,
+    runtimeLogger
+  })
+  const workspaceTaskLifecycleService = createWorkspaceTaskLifecycleService({
+    getStoredState,
+    getStoredTasks,
+    settingsService,
+    authorizationService,
+    createId,
+    createTaskNumber,
+    getNow,
+    formatDisplayDateTime,
+    getTaskDataDirectories,
+    normalizeDraftForMenu,
+    createDefaultDrafts,
+    createDefaultResultsByMenu,
+    buildAgentReadinessSnapshot,
+    ensureDraftWithinCapability,
+    validateTaskScale,
+    estimateTaskCredits,
+    buildQueuedTaskSummary,
+    persistTaskAndState,
+    workspaceProductProjectService,
+    workspaceProjectRunService,
+    upsertProjectRun,
+    syncCreditStateWithRealtimeBalance,
+    workspaceCreditService,
+    enqueueTaskExecution,
+    outputDirectoryResolver: (taskId, menuKey, taskDataDirectories) => {
+      return taskDataDirectories({
+        featureKey: menuKey,
+        taskId
+      })
+    }
+  })
+  const workspaceStateMaintenanceService = createWorkspaceStateMaintenanceService({
+    getStoredState,
+    getStoredTasks,
+    saveState,
+    persistTaskAndState,
+    safeRuntimeLog,
+    runtimeLogger,
+    buildPendingConfirmationTaskSummary,
+    createDefaultDrafts,
+    createDefaultResultsByMenu,
+    createDefaultExportItemsByMenu,
+    createDefaultRequestMetrics,
+    scanStoredExportItemsByMenu,
+    mergeExportItemsByMenu,
+    outputRootDirectory,
+    readdirSync,
+    statSync,
+    getNowMs,
+    exportScanCacheTtlMs,
+    queuedTaskExecutions,
+    activeTaskControllers
+  })
+  const workspaceSnapshotService = createWorkspaceSnapshotService({
+    settingsService,
+    getStoredState,
+    getStoredTasks,
+    getResolvedExportItemsByMenu: (...args) => workspaceStateMaintenanceService.getResolvedExportItemsByMenu(...args),
+    buildAgentReadinessSnapshot,
+    refreshDashboardCredits: (...args) => workspaceCreditService.refreshDashboardCredits(...args),
+    hydrateResultsByMenuForDisplay,
+    hydrateProjectRunsForDisplay,
+    normalizeRequestMetrics,
+    normalizeCreditStateForDisplay,
+    sortTasks,
+    countCurrentResults,
+    menuItems: publicSnapshotMenuItems,
+    stateMenuItems: runtimeStateMenuItems,
+    workspaceDashboardSections: publicWorkspaceDashboardSections,
+    menuLabelMap: runtimeStateMenuLabelMap,
+    taskMenuMapByCategory: publicSnapshotTaskMenuMapByCategory,
+    modelCreditCostMap,
+    creditActivityHistoryLimit: CREDIT_ACTIVITY_HISTORY_LIMIT
+  })
 
   async function persistTaskAndState({
     task,
@@ -3331,7 +2424,7 @@ function createStudioWorkspaceService({
     })
 
     if (exportItemsByMenuPatch) {
-      invalidateExportItemsCache()
+      workspaceStateMaintenanceService.invalidateExportItemsCache()
     }
 
     if (taskManagerService && typeof taskManagerService.saveTask === 'function') {
@@ -3342,52 +2435,12 @@ function createStudioWorkspaceService({
   }
 
   async function prepareDraftForExecution({ menuKey, draft, inputDirectory, outputDirectory }) {
-    await ensureDirectoryDependency(inputDirectory)
-    await ensureDirectoryDependency(outputDirectory)
-
-    const sourcePaths = []
-    const sourcePathAssignments = []
-
-    if (menuKey === 'series-generate') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
-      if (sourcePath) {
-        sourcePathAssignments.push({ type: 'series-generate-source' })
-        sourcePaths.push(sourcePath)
-      }
-    }
-
-    if (menuKey === 'video-generate') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
-      if (sourcePath) {
-        sourcePathAssignments.push({ type: 'video-generate-source' })
-        sourcePaths.push(sourcePath)
-      }
-    }
-
-    const persistedSourcePaths = sourcePaths.length
-      ? await persistSourceFilesDependency({
-          sourcePaths,
-          targetDirectory: inputDirectory
-        })
-      : []
-
-    const preparedDraft = JSON.parse(JSON.stringify(draft))
-    sourcePathAssignments.forEach((assignment, index) => {
-      const storedPath = persistedSourcePaths[index] || ''
-      if (!storedPath) {
-        return
-      }
-
-      if (assignment.type === 'series-generate-source' && preparedDraft.sourceImage) {
-        preparedDraft.sourceImage.storedPath = storedPath
-      }
-
-      if (assignment.type === 'video-generate-source' && preparedDraft.sourceImage) {
-        preparedDraft.sourceImage.storedPath = storedPath
-      }
+    return workspaceTaskExecutionService.prepareDraftForExecution({
+      menuKey,
+      draft,
+      inputDirectory,
+      outputDirectory
     })
-
-    return preparedDraft
   }
 
   async function runQueuedTaskExecution({
@@ -3400,315 +2453,16 @@ function createStudioWorkspaceService({
     outputDirectory,
     projectRunId = ''
   }) {
-    const executionController = createTaskExecutionController(taskId)
-    activeTaskControllers.set(taskId, executionController)
-    const executionUpdatedAt = getNow()
-    const latestStateBeforeRun = getStoredState()
-    const currentProjectRun = projectRunId
-      ? normalizeProjectRuns(latestStateBeforeRun.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
-      : null
-    const runningTask = buildRunningTaskSummary({
+    return workspaceTaskExecutionService.runQueuedTaskExecution({
       menuKey,
       draft,
       taskId,
       taskNumber,
       createdAt,
       inputDirectory,
-      outputDirectory
+      outputDirectory,
+      projectRunId
     })
-
-    await persistTaskAndState({
-      task: runningTask,
-      projectRunsPatch: currentProjectRun
-        ? upsertProjectRun(
-            latestStateBeforeRun.projectRuns,
-            buildStartedProjectRun({
-              projectRun: currentProjectRun,
-              menuKey,
-              startedAt: executionUpdatedAt
-            })
-          )
-        : null,
-      activeProjectRunId: currentProjectRun ? currentProjectRun.id : null
-    })
-
-    try {
-      let latestRunningTask = runningTask
-      const executionStartedAt = new Date(getNow()).getTime()
-      const preparedDraft = await prepareDraftForExecution({
-        menuKey,
-        draft,
-        inputDirectory,
-        outputDirectory
-      })
-      if (executionController.isStopped()) {
-        return
-      }
-      const handleTaskProgress = async ({ progress, status } = {}) => {
-        if (executionController.isStopped()) {
-          return
-        }
-
-        const normalizedProgress = normalizeTaskProgress(progress, latestRunningTask.progress)
-        const cappedProgress = status === 'succeeded'
-          ? Math.min(99, normalizedProgress)
-          : normalizedProgress
-
-        if (cappedProgress <= latestRunningTask.progress) {
-          return
-        }
-
-        latestRunningTask = {
-          ...latestRunningTask,
-          progress: cappedProgress
-        }
-
-        await persistTaskAndState({
-          task: latestRunningTask
-        })
-      }
-      const resultPayloadOutcome = await Promise.race([
-        Promise.resolve(buildResultPayload(menuKey, preparedDraft, taskId, outputDirectory, {
-          generateImageResults: generateImageResultsDependency,
-          generateCopywritingResults: generateCopywritingResultsDependency,
-          generateVideoResults: generateVideoResultsDependency,
-          onProgress: handleTaskProgress
-        })).then((resultPayload) => ({
-          type: 'result',
-          resultPayload
-        })).catch((error) => ({
-          type: 'error',
-          error
-        })),
-        executionController.waitForStop()
-      ])
-
-      if (resultPayloadOutcome?.stopped) {
-        return
-      }
-
-      if (resultPayloadOutcome?.type === 'error') {
-        throw resultPayloadOutcome.error
-      }
-
-      const resultPayload = resultPayloadOutcome.resultPayload
-      if (executionController.isStopped()) {
-        return
-      }
-
-      const {
-        exportItems,
-        persistedResultPayload
-      } = await saveStudioResults({
-        menuKey,
-        taskId,
-        draft: preparedDraft,
-        resultPayload,
-        outputDirectory,
-        writeFile
-      })
-      if (executionController.isStopped()) {
-        return
-      }
-      const executionCompletedAt = new Date(getNow()).getTime()
-      const enrichedResultPayload = enrichResultPayloadSummary({
-        menuKey,
-        draft: preparedDraft,
-        resultPayload: persistedResultPayload,
-        elapsedMilliseconds: executionCompletedAt - executionStartedAt
-      })
-      const completedTask = buildTaskSummary({
-        menuKey,
-        draft: preparedDraft,
-        taskId,
-        taskNumber,
-        createdAt,
-        inputDirectory,
-        outputDirectory,
-        resultPayload: enrichedResultPayload
-      })
-      const latestState = getStoredState()
-      const currentProject = preparedDraft.projectId
-        ? (
-            latestState.productProjects.find((project) => project.id === preparedDraft.projectId) || buildWorkspaceProjectDraft({
-              draft: preparedDraft,
-              projectId: preparedDraft.projectId,
-              createdAt,
-              updatedAt: getNow()
-            })
-          )
-        : null
-      const currentProjectRunAfterExecution = projectRunId
-        ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
-        : null
-      let nextProductProjects = latestState.productProjects
-      let nextProjectRuns = latestState.projectRuns
-
-      if (currentProject && menuKey === 'workspace') {
-        const projectWithTaskRef = attachTaskRefToProductProject(currentProject, taskId, getNow())
-        const projectWithText = applyWorkspaceTextResultsToProject(
-          projectWithTaskRef,
-          enrichedResultPayload,
-          getNow()
-        )
-        const projectWithImages = applyImageResultsToProject(
-          projectWithText,
-          enrichedResultPayload,
-          getNow()
-        )
-        nextProductProjects = upsertProductProject(
-          latestState.productProjects,
-          applyVideoResultsToProject(
-            projectWithImages,
-            enrichedResultPayload,
-            getNow()
-          )
-        )
-      }
-
-      if (currentProject && menuKey === 'title-generator') {
-        nextProductProjects = upsertProductProject(
-          latestState.productProjects,
-          applyTitleResultsToProject(
-            attachTaskRefToProductProject(currentProject, taskId, getNow()),
-            enrichedResultPayload,
-            getNow()
-          )
-        )
-      }
-
-      if (currentProject && menuKey === 'description-generator') {
-        nextProductProjects = upsertProductProject(
-          latestState.productProjects,
-          applyDescriptionResultsToProject(
-            attachTaskRefToProductProject(currentProject, taskId, getNow()),
-            enrichedResultPayload,
-            getNow()
-          )
-        )
-      }
-
-      if (currentProject && menuKey === 'series-generate') {
-        nextProductProjects = upsertProductProject(
-          latestState.productProjects,
-          applyImageResultsToProject(
-            attachTaskRefToProductProject(currentProject, taskId, getNow()),
-            enrichedResultPayload,
-            getNow()
-          )
-        )
-      }
-
-      if (currentProject && menuKey === 'video-generate') {
-        nextProductProjects = upsertProductProject(
-          latestState.productProjects,
-          applyVideoResultsToProject(
-            attachTaskRefToProductProject(currentProject, taskId, getNow()),
-            enrichedResultPayload,
-            getNow()
-          )
-        )
-      }
-
-      if (currentProjectRunAfterExecution) {
-        nextProjectRuns = upsertProjectRun(
-          latestState.projectRuns,
-          buildProjectRunUpdateFromResult({
-            projectRun: currentProjectRunAfterExecution,
-            menuKey,
-            resultPayload: enrichedResultPayload,
-            exportItems,
-            outputDirectory,
-            completedAt: getNow()
-          })
-        )
-      }
-
-      await persistTaskAndState({
-        task: completedTask,
-        formDraftPatch: {
-          [menuKey]: preparedDraft
-        },
-        resultsByMenuPatch: {
-          [menuKey]: enrichedResultPayload
-        },
-        exportItemsByMenuPatch: {
-          [menuKey]: exportItems
-        },
-        productProjectsPatch: nextProductProjects,
-        activeProductProjectId: preparedDraft.projectId || null,
-        projectRunsPatch: nextProjectRuns,
-        activeProjectRunId: currentProjectRunAfterExecution?.id || null
-      })
-
-      const settledCreditState = settleCreditsForTask({
-        creditState: settingsService.getSettings().creditState,
-        taskId,
-        updatedAt: getNow()
-      })
-      await settingsService.saveSettings({
-        creditState: settledCreditState
-      })
-
-      await safeRuntimeLog(runtimeLogger, {
-        level: 'info',
-        event: 'studio-task-succeeded',
-        taskId,
-        menuKey,
-        outputDirectory
-      })
-    } catch (error) {
-      const failedTask = buildFailedTaskSummary({
-        menuKey,
-        draft,
-        taskId,
-        taskNumber,
-        createdAt,
-        inputDirectory,
-        outputDirectory,
-        errorMessage: error.message
-      })
-      const latestState = getStoredState()
-      const currentProjectRun = projectRunId
-        ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
-        : null
-
-      await persistTaskAndState({
-        task: failedTask,
-        projectRunsPatch: currentProjectRun
-          ? upsertProjectRun(
-              latestState.projectRuns,
-              buildFailedProjectRun({
-                projectRun: currentProjectRun,
-                menuKey,
-                errorMessage: error.message,
-                failedAt: getNow()
-              })
-            )
-          : null,
-        activeProjectRunId: currentProjectRun?.id || null
-      })
-
-      const refundedCreditState = refundCreditsForTask({
-        creditState: settingsService.getSettings().creditState,
-        taskId,
-        updatedAt: getNow()
-      })
-      await settingsService.saveSettings({
-        creditState: refundedCreditState
-      })
-
-      await safeRuntimeLog(runtimeLogger, {
-        level: 'error',
-        event: 'studio-task-failed',
-        taskId,
-        menuKey,
-        outputDirectory,
-        error: error.message
-      })
-    } finally {
-      activeTaskControllers.delete(taskId)
-    }
   }
 
   async function processQueuedTasks() {
@@ -3754,325 +2508,34 @@ function createStudioWorkspaceService({
   }
 
   async function reconcileOrphanedActiveTasks(tasks = getStoredTasks()) {
-    const activeTasks = tasks.filter((task) => ['等待中', '进行中'].includes(task.status))
-
-    if (!activeTasks.length) {
-      return []
-    }
-
-    const reconciledTasks = []
-    for (const task of activeTasks) {
-      const isQueuedLocally = queuedTaskExecutions.some((item) => item?.taskId === task.id)
-      const hasActiveController = activeTaskControllers.has(task.id)
-
-      if (isQueuedLocally || hasActiveController) {
-        continue
-      }
-
-      const pendingTask = buildPendingConfirmationTaskSummary(task)
-      await persistTaskAndState({
-        task: pendingTask
-      })
-      reconciledTasks.push(pendingTask)
-    }
-
-    if (reconciledTasks.length) {
-      await safeRuntimeLog(runtimeLogger, {
-        level: 'warn',
-        scope: 'studio-workspace',
-        message: 'Marked orphaned active studio tasks as pending confirmation before runtime cleanup',
-        taskIds: reconciledTasks.map((task) => task.id)
-      })
-    }
-
-    return reconciledTasks
+    return workspaceStateMaintenanceService.reconcileOrphanedActiveTasks(tasks)
   }
 
   function getResolvedExportItemsByMenu(state = getStoredState()) {
-    const now = getNowMs()
-    const shouldReuseCache = !isExportItemsCacheDirty &&
-      cachedExportItemsByMenu &&
-      now - cachedExportItemsAt <= exportScanCacheTtlMs
-
-    const scannedExportItemsByMenu = shouldReuseCache
-      ? cachedExportItemsByMenu
-      : scanStoredExportItemsByMenu({
-          outputRootDirectory,
-          readdirSync,
-          statSync
-        })
-
-    if (!shouldReuseCache) {
-      cachedExportItemsByMenu = scannedExportItemsByMenu
-      cachedExportItemsAt = now
-      isExportItemsCacheDirty = false
-    }
-
-    return mergeExportItemsByMenu({
-      scannedExportItemsByMenu,
-      storedExportItemsByMenu: state.exportItemsByMenu || {}
-    })
-  }
-
-  function getSnapshot() {
-    const {
-      state,
-      settings,
-      tasks,
-      exportItemsByMenu,
-      derivedState
-    } = buildBaseSnapshot()
-
-    return {
-      themeMode: settings.themeMode || 'dark',
-      themeOptions,
-      menuItems,
-      batchOptions,
-      imageModelOptions,
-      modelPricingCatalog,
-      productProjects: state.productProjects,
-      activeProductProjectId: state.activeProductProjectId,
-      projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
-      activeProjectRunId: state.activeProjectRunId,
-      formDrafts: state.formDrafts,
-      resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
-      exportItemsByMenu,
-      tasks,
-      agentReadiness: buildAgentReadinessSnapshot(tasks),
-      workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
-      settingsSummary: buildSettingsSummary(settings),
-      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null,
-      hostInfo: buildHostInfo()
-    }
-  }
-
-  async function refreshDashboardCredits({
-    target = 'image'
-  } = {}) {
-    const settings = settingsService.getSettings()
-    const currentDashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-      ? settings.dashboardCreditState
-      : {
-          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
-        }
-    let nextDashboardCreditState = currentDashboardCreditState
-
-    if (target === 'text' || target === 'all') {
-      const realtimeTextBalance = deepseekBalanceService && typeof deepseekBalanceService.getRealtimeBalance === 'function'
-        ? await deepseekBalanceService.getRealtimeBalance()
-        : null
-
-      if (realtimeTextBalance && Number.isFinite(Number(realtimeTextBalance.balanceCny))) {
-        nextDashboardCreditState = {
-          ...nextDashboardCreditState,
-          text: {
-            balanceCny: Math.max(0, Number(realtimeTextBalance.balanceCny) || 0),
-            lastSyncedAt: realtimeTextBalance.lastSyncedAt || getNow(),
-            syncStatus: realtimeTextBalance.syncStatus || 'success'
-          }
-        }
-      }
-    }
-
-    if (target === 'image' || target === 'all') {
-      const authPlatform = settings.authPlatform && typeof settings.authPlatform === 'object'
-        ? settings.authPlatform
-        : { enabled: false, sessionToken: '' }
-      const shouldUseRemoteWallet = authPlatform.enabled !== false && typeof authPlatform.sessionToken === 'string' && authPlatform.sessionToken.trim()
-
-      if (shouldUseRemoteWallet && remoteLicensePlatformClient && typeof remoteLicensePlatformClient.getWalletSummary === 'function') {
-        try {
-          const walletSummary = await remoteLicensePlatformClient.getWalletSummary({
-            sessionToken: authPlatform.sessionToken
-          })
-          nextDashboardCreditState = {
-            ...nextDashboardCreditState,
-            image: {
-              totalCredits: Math.max(0, Number(nextDashboardCreditState.image?.totalCredits) || 0),
-              remainingCredits: Math.max(0, Number(nextDashboardCreditState.image?.remainingCredits) || 0),
-              balanceCny: Math.max(0, Number(walletSummary?.imageBalanceCny) || 0),
-              lastSyncedAt: walletSummary?.updatedAt || getNow(),
-              syncStatus: 'success'
-            },
-            video: {
-              balanceCny: Math.max(0, Number(walletSummary?.videoBalanceCny) || 0),
-              lastSyncedAt: walletSummary?.updatedAt || getNow(),
-              syncStatus: 'success'
-            }
-          }
-        } catch {
-          nextDashboardCreditState = {
-            ...nextDashboardCreditState,
-            image: {
-              ...nextDashboardCreditState.image,
-              syncStatus: 'remote-failed'
-            },
-            video: {
-              ...nextDashboardCreditState.video,
-              syncStatus: 'remote-failed'
-            }
-          }
-        }
-      }
-
-      const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
-        ? await apiKeyCreditService.getRealtimeCredits()
-        : null
-
-      if (realtimeCredits && Number.isFinite(Number(realtimeCredits.remainingCredits))) {
-        const fetchedCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
-        nextDashboardCreditState = {
-          ...nextDashboardCreditState,
-          image: target === 'total'
-            ? {
-                totalCredits: fetchedCredits,
-                remainingCredits: Math.min(
-                  Math.max(0, Number(nextDashboardCreditState.image?.remainingCredits) || 0),
-                  fetchedCredits
-                ),
-                balanceCny: Math.max(0, Number(nextDashboardCreditState.image?.balanceCny) || 0),
-                lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
-                syncStatus: realtimeCredits.syncStatus || 'success'
-              }
-            : {
-                totalCredits: Math.max(0, Number(nextDashboardCreditState.image?.totalCredits) || 0),
-                remainingCredits: fetchedCredits,
-                balanceCny: Math.max(0, Number(nextDashboardCreditState.image?.balanceCny) || 0),
-                lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
-                syncStatus: realtimeCredits.syncStatus || 'success'
-              }
-        }
-      }
-    }
-
-    if (nextDashboardCreditState === currentDashboardCreditState) {
-      return currentDashboardCreditState
-    }
-
-    await settingsService.saveSettings({
-      dashboardCreditState: nextDashboardCreditState
-    })
-
-    return nextDashboardCreditState
+    return workspaceStateMaintenanceService.getResolvedExportItemsByMenu(state)
   }
 
   async function syncCreditStateWithRealtimeBalance() {
-    const settings = settingsService.getSettings()
-    const currentDashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
-      ? settings.dashboardCreditState
-      : {
-          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
-          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
-        }
-    const currentCreditState = normalizeCreditStateForDisplay(settings.creditState)
-    const realtimeCredits = apiKeyCreditService && typeof apiKeyCreditService.getRealtimeCredits === 'function'
-      ? await apiKeyCreditService.getRealtimeCredits()
-      : null
+    return workspaceCreditService.syncCreditStateWithRealtimeBalance()
+  }
 
-    let nextDashboardCreditState = currentDashboardCreditState
-    let resolvedRemainingCredits = null
-
-    if (realtimeCredits && Number.isFinite(Number(realtimeCredits.remainingCredits))) {
-      resolvedRemainingCredits = Math.max(0, Math.round(Number(realtimeCredits.remainingCredits)))
-      nextDashboardCreditState = {
-        ...currentDashboardCreditState,
-        image: {
-          totalCredits: Math.max(0, Number(currentDashboardCreditState.image?.totalCredits) || 0),
-          remainingCredits: resolvedRemainingCredits,
-          lastSyncedAt: realtimeCredits.lastSyncedAt || getNow(),
-          syncStatus: realtimeCredits.syncStatus || 'success'
-        }
-      }
-    } else if (Number.isFinite(Number(currentDashboardCreditState.image?.remainingCredits)) && Number(currentDashboardCreditState.image?.remainingCredits) > 0) {
-      resolvedRemainingCredits = Math.max(0, Math.round(Number(currentDashboardCreditState.image?.remainingCredits)))
-    }
-
-    if (resolvedRemainingCredits === null) {
-      return {
-        synced: false,
-        creditState: currentCreditState,
-        dashboardCreditState: currentDashboardCreditState
-      }
-    }
-
-    const nextCreditState = normalizeCreditStateForDisplay({
-      ...currentCreditState,
-      remainingCredits: Math.max(0, resolvedRemainingCredits - currentCreditState.frozenCredits)
-    })
-
-    await settingsService.saveSettings({
-      dashboardCreditState: nextDashboardCreditState,
-      creditState: nextCreditState
-    })
-
-    return {
-      synced: true,
-      creditState: nextCreditState,
-      dashboardCreditState: nextDashboardCreditState
-    }
+  function getSnapshot() {
+    return workspaceSnapshotService.getSnapshot()
   }
 
   async function getDisplaySnapshot() {
-    await refreshDashboardCredits({
-      target: 'all'
-    })
-    const {
-      state,
-      settings,
-      tasks,
-      exportItemsByMenu,
-      derivedState
-    } = buildBaseSnapshot()
-
-    return {
-      themeMode: settings.themeMode || 'dark',
-      themeOptions,
-      menuItems,
-      batchOptions,
-      imageModelOptions,
-      modelPricingCatalog,
-      productProjects: state.productProjects,
-      activeProductProjectId: state.activeProductProjectId,
-      projectRuns: state.projectRuns,
-      activeProjectRunId: state.activeProjectRunId,
-      formDrafts: state.formDrafts,
-      resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
-      exportItemsByMenu,
-      tasks,
-      agentReadiness: buildAgentReadinessSnapshot(tasks),
-      workspaceDashboard: buildWorkspaceDashboard(derivedState, tasks, settings),
-      settingsSummary: buildSettingsSummary(settings),
-      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null,
-      hostInfo: buildHostInfo()
-    }
+    return workspaceSnapshotService.getDisplaySnapshot()
   }
 
   function getRuntimeSnapshot() {
-    const {
-      state,
-      settings,
-      tasks,
-      exportItemsByMenu
-    } = buildBaseSnapshot()
-
-    return {
-      productProjects: state.productProjects,
-      activeProductProjectId: state.activeProductProjectId,
-      projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
-      activeProjectRunId: state.activeProjectRunId,
-      formDrafts: state.formDrafts,
-      resultsByMenu: hydrateResultsByMenuForDisplay(state.resultsByMenu),
-      exportItemsByMenu,
-      tasks,
-      agentReadiness: buildAgentReadinessSnapshot(tasks),
-      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null
-    }
+    return workspaceSnapshotService.getRuntimeSnapshot()
   }
 
   async function saveDraft({ menuKey = 'workspace', patch = {} } = {}) {
+    if (!runtimeStateMenuKeySet.has(menuKey)) {
+      return {}
+    }
+
     const state = getStoredState()
     const nextDraft = normalizeDraftForMenu(menuKey, {
       ...(state.formDrafts[menuKey] || createDefaultDrafts()[menuKey] || {}),
@@ -4093,459 +2556,54 @@ function createStudioWorkspaceService({
   async function createProject({
     productName = '',
     platform = 'temu',
-    language = 'zh-CN'
+    language = 'zh-CN',
+    patch = null
   } = {}) {
-    const state = getStoredState()
-    const createdAt = getNow()
-    const createdProject = buildEmptyProductProject({
-      projectId: `project-${createId()}`,
+    return workspaceProductProjectService.createProject({
       productName,
       platform,
       language,
-      createdAt
+      patch
     })
-
-    const nextProjects = [
-      createdProject,
-      ...normalizeProductProjects(state.productProjects)
-    ]
-
-    saveState({
-      ...state,
-      productProjects: nextProjects,
-      activeProductProjectId: createdProject.id
-    })
-
-    return createdProject
-  }
-
-  async function createProjectsFromAssets({
-    files = [],
-    platform = 'temu',
-    language = 'zh-CN'
-  } = {}) {
-    const normalizedFiles = Array.isArray(files) ? files.map((item) => normalizeImageAsset(item)).filter(Boolean) : []
-
-    if (!normalizedFiles.length) {
-      return {
-        createdProjects: [],
-        activeProductProjectId: ''
-      }
-    }
-
-    const state = getStoredState()
-    const createdAt = getNow()
-    const createdProjects = normalizedFiles.map((asset, index) => {
-      return buildProjectCardFromAsset({
-        asset,
-        projectId: `project-${createId()}-${index + 1}`,
-        createdAt,
-        platform,
-        language
-      })
-    })
-
-    const nextProjects = [
-      ...createdProjects,
-      ...normalizeProductProjects(state.productProjects)
-    ]
-
-    saveState({
-      ...state,
-      productProjects: nextProjects,
-      activeProductProjectId: createdProjects[0]?.id || state.activeProductProjectId
-    })
-
-    return {
-      createdProjects,
-      activeProductProjectId: createdProjects[0]?.id || ''
-    }
   }
 
   async function updateProject({
     projectId = '',
     patch = {}
   } = {}) {
-    const normalizedProjectId = String(projectId || '').trim()
-    if (!normalizedProjectId) {
-      throw new Error('商品项目 ID 不能为空')
-    }
-
-    const state = getStoredState()
-    const existingProject = normalizeProductProjects(state.productProjects).find((item) => item.id === normalizedProjectId)
-    if (!existingProject) {
-      throw new Error('未找到需要更新的商品项目')
-    }
-
-    const nextProject = updateProductProjectFields(existingProject, patch, getNow())
-    const nextProjects = upsertProductProject(state.productProjects, nextProject)
-
-    saveState({
-      ...state,
-      productProjects: nextProjects,
-      activeProductProjectId: normalizedProjectId
+    return workspaceProductProjectService.updateProject({
+      projectId,
+      patch
     })
-
-    return nextProject
   }
 
   async function deleteProject({
     projectId = ''
   } = {}) {
-    const normalizedProjectId = String(projectId || '').trim()
-    if (!normalizedProjectId) {
-      throw new Error('商品项目 ID 不能为空')
-    }
-
-    const state = getStoredState()
-    const nextProjects = normalizeProductProjects(state.productProjects).filter((item) => item.id !== normalizedProjectId)
-    const nextActiveProductProjectId = resolveActiveProductProjectId(nextProjects, state.activeProductProjectId === normalizedProjectId ? '' : state.activeProductProjectId)
-
-    saveState({
-      ...state,
-      productProjects: nextProjects,
-      activeProductProjectId: nextActiveProductProjectId
+    return workspaceProductProjectService.deleteProject({
+      projectId
     })
-
-    return {
-      deleted: true,
-      projectId: normalizedProjectId
-    }
   }
 
   async function createTask({ menuKey = 'workspace', draft: incomingDraft } = {}) {
-    const state = getStoredState()
-    let settings = settingsService.getSettings()
-    const taskId = createId()
-    const projectRunId = `run-${createId()}`
-    const taskNumber = createTaskNumber()
-    let draft = normalizeDraftForMenu(menuKey, {
-      ...(state.formDrafts[menuKey] || createDefaultDrafts()[menuKey] || {}),
-      ...(incomingDraft || {})
-    })
-    let nextProductProjects = state.productProjects
-    let nextActiveProductProjectId = state.activeProductProjectId
-    let nextProjectRuns = state.projectRuns
-    let nextActiveProjectRunId = state.activeProjectRunId
-    let currentProjectForRun = null
-    const createdAt = formatDisplayDateTime(getNow())
-    const {
-      inputDirectory,
-      outputDirectory
-    } = getTaskDataDirectories({
-      featureKey: menuKey,
-      taskId
-    })
-
-    if (menuKey === 'workspace') {
-      const existingProject = state.productProjects.find((project) => {
-        return project.id === draft.projectId || project.id === state.activeProductProjectId
-      }) || null
-      const projectId = draft.projectId || existingProject?.id || `project-${createId()}`
-      const updatedProject = attachTaskRefToProductProject(
-        buildWorkspaceProjectDraft({
-          currentProject: existingProject,
-          draft,
-          projectId,
-          createdAt: existingProject?.createdAt || getNow(),
-          updatedAt: getNow()
-        }),
-        taskId,
-        getNow()
-      )
-      currentProjectForRun = updatedProject
-      nextProductProjects = upsertProductProject(
-        state.productProjects,
-        attachProjectRunToProject(updatedProject, projectRunId, getNow())
-      )
-      nextActiveProductProjectId = projectId
-      draft = {
-        ...draft,
-        projectId,
-        projectName: updatedProject.name
-      }
-    } else if (draft.projectId) {
-      const existingProject = normalizeProductProjects(state.productProjects).find((project) => project.id === draft.projectId) || null
-      if (existingProject) {
-        currentProjectForRun = attachTaskRefToProductProject(existingProject, taskId, getNow())
-        nextProductProjects = upsertProductProject(
-          state.productProjects,
-          attachProjectRunToProject(currentProjectForRun, projectRunId, getNow())
-        )
-        nextActiveProductProjectId = existingProject.id
-      }
-    }
-
-    if (draft.projectId && currentProjectForRun) {
-      const runDirectory = path.resolve(outputDirectory)
-      const createdProjectRun = buildProjectRunRecord({
-        runId: projectRunId,
-        projectId: draft.projectId,
-        menuKey,
-        draft,
-        currentProject: currentProjectForRun,
-        taskId,
-        taskNumber,
-        createdAt,
-        runDirectory
-      })
-
-      nextProjectRuns = upsertProjectRun(state.projectRuns, createdProjectRun)
-      nextActiveProjectRunId = createdProjectRun.id
-    }
-
-    const activationStatus = authorizationService && typeof authorizationService.getActivationStatus === 'function'
-      ? await authorizationService.getActivationStatus().catch(() => null)
-      : null
-
-    ensureDraftWithinCapability({
+    return workspaceTaskLifecycleService.createTask({
       menuKey,
-      draft,
-      activationStatus,
-      runtimeSnapshot: {
-        agentReadiness: buildAgentReadinessSnapshot(getStoredTasks(state))
-      }
+      draft: incomingDraft
     })
-
-    validateTaskScale(menuKey, draft)
-    const estimatedCredits = estimateTaskCredits(menuKey, draft)
-    const queuedTask = buildQueuedTaskSummary({
-      menuKey,
-      draft,
-      taskId,
-      taskNumber,
-      createdAt,
-      inputDirectory,
-      outputDirectory
-    })
-
-    if (estimatedCredits > 0) {
-      const creditSyncResult = await syncCreditStateWithRealtimeBalance()
-      if (creditSyncResult.synced) {
-        settings = settingsService.getSettings()
-      }
-
-      const frozenCreditState = freezeCreditsForTask({
-        creditState: settings.creditState,
-        taskId,
-        taskNumber,
-        menuKey,
-        draft,
-        estimatedCredits,
-        createdAt
-      })
-
-      await settingsService.saveSettings({
-        creditState: frozenCreditState
-      })
-    }
-
-    try {
-      await persistTaskAndState({
-        task: queuedTask,
-        formDraftPatch: {
-          [menuKey]: draft
-        },
-        resultsByMenuPatch: {
-          [menuKey]: createDefaultResultsByMenu()[menuKey]
-        },
-        exportItemsByMenuPatch: {
-          [menuKey]: []
-        },
-        productProjectsPatch: nextProductProjects,
-        activeProductProjectId: nextActiveProductProjectId,
-        projectRunsPatch: nextProjectRuns,
-        activeProjectRunId: nextActiveProjectRunId
-      })
-
-      enqueueTaskExecution({
-        menuKey,
-        draft,
-        taskId,
-        taskNumber,
-        createdAt,
-        inputDirectory,
-        outputDirectory,
-        projectRunId: draft.projectId && currentProjectForRun ? projectRunId : ''
-      })
-
-      return queuedTask
-    } catch (error) {
-      if (estimatedCredits > 0) {
-        const refundedCreditState = refundCreditsForTask({
-          creditState: settingsService.getSettings().creditState,
-          taskId,
-          updatedAt: getNow()
-        })
-        await settingsService.saveSettings({
-          creditState: refundedCreditState
-        })
-      }
-
-      throw error
-    }
   }
 
   async function exportProjectBundle({
     projectId = '',
     targetZipPath = ''
   } = {}) {
-    const normalizedProjectId = String(projectId || '').trim()
-    if (!normalizedProjectId) {
-      throw new Error('商品项目 ID 不能为空')
-    }
-
-    if (!targetZipPath) {
-      throw new Error('导出压缩包路径不能为空')
-    }
-
-    const state = getStoredState()
-    const project = normalizeProductProjects(state.productProjects).find((item) => item.id === normalizedProjectId)
-
-    if (!project) {
-      throw new Error('未找到可导出的商品项目')
-    }
-
-    const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'qiuai-project-export-'))
-    const projectDirectory = path.resolve(stagingDirectory, sanitizePathSegment(project.name || 'product-project', 'product-project'))
-
-    try {
-      await ensureDirectoryDependency(projectDirectory)
-
-      const titleText = project.content?.selectedTitle || (project.content?.titleCandidates || []).join('\n')
-      const descriptionText = project.content?.selectedDescription || (project.content?.descriptionCandidates || []).join('\n')
-
-      await writeFile(path.resolve(projectDirectory, 'title.txt'), `${String(titleText || '')}\n`, 'utf8')
-      await writeFile(path.resolve(projectDirectory, 'description.txt'), `${String(descriptionText || '')}\n`, 'utf8')
-
-      if (Array.isArray(project.assets?.generatedImages) && project.assets.generatedImages.length) {
-        const imagesDirectory = path.resolve(projectDirectory, 'images')
-        await ensureDirectoryDependency(imagesDirectory)
-
-        for (const [index, image] of project.assets.generatedImages.entries()) {
-          const sourcePath = image.savedPath || image.path || image.storedPath || ''
-          if (!sourcePath) {
-            continue
-          }
-
-          await copyFile(
-            sourcePath,
-            path.resolve(imagesDirectory, `${String(index + 1).padStart(2, '0')}-${path.basename(sourcePath)}`)
-          )
-        }
-      }
-
-      if (project.assets?.generatedVideo?.savedPath) {
-        const videoPath = project.assets.generatedVideo.savedPath
-        await copyFile(videoPath, path.resolve(projectDirectory, path.basename(videoPath)))
-      }
-
-      const exportedArchive = await exportTaskDirectoryDependency({
-        sourceDirectory: projectDirectory,
-        targetZipPath
-      })
-
-      return {
-        canceled: false,
-        projectId: normalizedProjectId,
-        targetZipPath: exportedArchive.targetZipPath
-      }
-    } finally {
-      await removeDirectory(stagingDirectory).catch(() => {})
-    }
+    return workspaceExportService.exportProjectBundle({
+      projectId,
+      targetZipPath
+    })
   }
 
   async function clearRuntimeState() {
-    await reconcileOrphanedActiveTasks()
-
-    const state = getStoredState()
-    const tasks = getStoredTasks(state)
-    const hasActiveTasks = tasks.some((task) => ['等待中', '进行中'].includes(task.status))
-
-    if (hasActiveTasks) {
-      throw new Error('当前存在进行中的任务，暂不能一键清理')
-    }
-
-    saveState({
-      ...state,
-      formDrafts: createDefaultDrafts(),
-      resultsByMenu: createDefaultResultsByMenu(),
-      exportItemsByMenu: createDefaultExportItemsByMenu(),
-      requestMetrics: createDefaultRequestMetrics()
-    })
-    invalidateExportItemsCache()
-
-    await safeRuntimeLog(runtimeLogger, {
-      level: 'info',
-      scope: 'studio-workspace',
-      message: 'Cleared runtime studio state while preserving exports and settings'
-    })
-
-    return {
-      cleared: true
-    }
-  }
-
-  async function deleteExportItem({
-    menuKey = 'workspace',
-    exportItemId = ''
-  } = {}) {
-    if (!exportItemId) {
-      throw new Error('导出结果编号不能为空')
-    }
-
-    const state = getStoredState()
-    const exportItems = getResolvedExportItemsByMenu(state)[menuKey] || []
-    const exportItem = exportItems.find((item) => item.id === exportItemId)
-
-    if (!exportItem) {
-      throw new Error('未找到对应的导出结果')
-    }
-
-    const candidateDirectory = exportItem.directoryPath ||
-      exportItem.outputDirectory ||
-      (exportItem.savedPath ? path.dirname(exportItem.savedPath) : '')
-
-    if (!candidateDirectory) {
-      throw new Error('未找到可删除的结果目录')
-    }
-
-    if (!isPathInsideDirectory(candidateDirectory, outputRootDirectory)) {
-      throw new Error('结果目录不在允许删除的输出目录范围内')
-    }
-
-    await removeDirectory(candidateDirectory)
-
-    const storedExportItems = state.exportItemsByMenu[menuKey] || []
-
-    saveState({
-      ...state,
-      exportItemsByMenu: {
-        ...state.exportItemsByMenu,
-        [menuKey]: storedExportItems.filter((item) => {
-          const itemDirectory = item.directoryPath || item.outputDirectory || (item.savedPath ? path.dirname(item.savedPath) : '')
-          return item.id !== exportItemId && itemDirectory !== candidateDirectory
-        })
-      }
-    })
-    invalidateExportItemsCache()
-
-    await safeRuntimeLog(runtimeLogger, {
-      level: 'info',
-      scope: 'studio-workspace',
-      message: 'Deleted stored studio export item',
-      details: {
-        menuKey,
-        exportItemId,
-        targetDirectory: candidateDirectory
-      }
-    })
-
-    return {
-      menuKey,
-      exportItemId,
-      deleted: true
-    }
+    return workspaceStateMaintenanceService.clearRuntimeState()
   }
 
   async function exportSelectedResults({
@@ -4553,74 +2611,11 @@ function createStudioWorkspaceService({
     selectedExportIds = [],
     targetZipPath = ''
   } = {}) {
-    if (!targetZipPath) {
-      throw new Error('导出压缩包路径不能为空')
-    }
-
-    const normalizedSelectedIds = Array.isArray(selectedExportIds)
-      ? selectedExportIds.filter(Boolean)
-      : []
-
-    if (!normalizedSelectedIds.length) {
-      throw new Error('请选择至少一个导出结果')
-    }
-
-    const state = getStoredState()
-    const exportItems = getResolvedExportItemsByMenu(state)[menuKey] || []
-    const selectedIdSet = new Set(normalizedSelectedIds)
-    const selectedItems = exportItems.filter((item) => selectedIdSet.has(item.id))
-
-    if (!selectedItems.length) {
-      throw new Error('未找到已选中的导出结果')
-    }
-
-    const estimatedRequiredBytes = estimateExportRequiredBytes(selectedItems)
-    const targetDiskFreeBytes = await getAvailableDiskSpaceBytesDependency(path.dirname(targetZipPath))
-    const tempDiskFreeBytes = await getAvailableDiskSpaceBytesDependency(os.tmpdir())
-    const minimumFreeBytes = estimatedRequiredBytes * EXPORT_FREE_SPACE_MULTIPLIER
-
-    if (targetDiskFreeBytes < minimumFreeBytes || tempDiskFreeBytes < minimumFreeBytes) {
-      throw new Error('导出空间不足，请清理磁盘后重试')
-    }
-
-    const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'qiuai-studio-export-'))
-
-    try {
-      for (const [index, item] of selectedItems.entries()) {
-        const sourceDirectory = item.directoryPath || item.outputDirectory || ''
-        if (sourceDirectory) {
-          const targetDirectory = path.resolve(
-            stagingDirectory,
-            `${String(index).padStart(2, '0')}-${sanitizePathSegment(item.name || item.groupTitle || 'result-group', 'result-group')}`
-          )
-          await copyDirectory(sourceDirectory, targetDirectory)
-          continue
-        }
-
-        const sourcePath = item.savedPath || ''
-        if (!sourcePath) {
-          throw new Error(`结果文件缺失：${item.name || item.id}`)
-        }
-
-        const groupDirectory = path.resolve(stagingDirectory, sanitizePathSegment(item.groupTitle || menuLabelMap[menuKey] || 'result-group', 'result-group'))
-        const targetFilePath = path.resolve(groupDirectory, `${String(index + 1).padStart(2, '0')}-${path.basename(sourcePath)}`)
-        await ensureDirectoryDependency(groupDirectory)
-        await copyFile(sourcePath, targetFilePath)
-      }
-
-      const exportedArchive = await exportTaskDirectoryDependency({
-        sourceDirectory: stagingDirectory,
-        targetZipPath
-      })
-
-      return {
-        menuKey,
-        exportedCount: selectedItems.length,
-        targetZipPath: exportedArchive.targetZipPath
-      }
-    } finally {
-      await removeDirectory(stagingDirectory).catch(() => {})
-    }
+    return workspaceExportService.exportSelectedResults({
+      menuKey,
+      selectedExportIds,
+      targetZipPath
+    })
   }
 
   return {
@@ -4628,14 +2623,11 @@ function createStudioWorkspaceService({
     getDisplaySnapshot,
     getRuntimeSnapshot,
     createProject,
-    createProjectsFromAssets,
     updateProject,
     deleteProject,
-    refreshDashboardCredits,
     saveDraft,
     createTask,
     clearRuntimeState,
-    deleteExportItem,
     exportSelectedResults,
     exportProjectBundle,
     waitForIdle: async () => {

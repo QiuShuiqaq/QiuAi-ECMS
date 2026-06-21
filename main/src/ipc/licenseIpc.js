@@ -1,4 +1,4 @@
-const { dialog, ipcMain } = require('electron')
+const { ipcMain } = require('electron')
 const ipcChannels = require('../../../shared/ipcChannels')
 
 function trimString(value = '') {
@@ -23,6 +23,17 @@ async function getSessionToken(settingsService) {
   return trimString(settings?.authPlatform?.sessionToken)
 }
 
+async function requireSessionToken(settingsService) {
+  const sessionToken = await getSessionToken(settingsService)
+  if (sessionToken) {
+    return sessionToken
+  }
+
+  const error = new Error('Remote authorization is required before using commerce features.')
+  error.code = 'REMOTE_AUTH_REQUIRED'
+  throw error
+}
+
 function registerLicenseIpc({
   authorizationService,
   remoteLicensePlatformClient,
@@ -34,41 +45,6 @@ function registerLicenseIpc({
 
   ipcMain.handle(ipcChannels.LICENSE_GET_DEVICE_CODE, () => {
     return authorizationService.getDeviceCodePayload()
-  })
-
-  ipcMain.handle(ipcChannels.LICENSE_IMPORT_FILE, async (_event, payload = {}) => {
-    const requestedFilePath = typeof payload.filePath === 'string' ? payload.filePath.trim() : ''
-    let filePath = requestedFilePath
-
-    if (!filePath) {
-      const result = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters: [
-          {
-            name: 'QiuAi License',
-            extensions: ['qai']
-          }
-        ]
-      })
-
-      if (result.canceled || !result.filePaths?.[0]) {
-        return {
-          ...(await authorizationService.getActivationStatus()),
-          canceled: true
-        }
-      }
-
-      [filePath] = result.filePaths
-    }
-
-    return {
-      ...(await authorizationService.importLicenseFromFile({ filePath })),
-      canceled: false
-    }
-  })
-
-  ipcMain.handle(ipcChannels.LICENSE_REFRESH, () => {
-    return authorizationService.getActivationStatus()
   })
 
   ipcMain.handle(ipcChannels.LICENSE_REMOTE_ACTIVATE, async (_event, payload = {}) => {
@@ -91,14 +67,14 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.LICENSE_LIST_PACKAGES, async () => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.listSoftwarePackages({
       sessionToken
     })
   })
 
   ipcMain.handle(ipcChannels.LICENSE_CREATE_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.createSoftwareOrder({
       ...payload,
       sessionToken
@@ -106,7 +82,7 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.LICENSE_GET_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.getSoftwareOrder({
       ...payload,
       sessionToken
@@ -114,14 +90,14 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_LIST, async () => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.listComputePackages({
       sessionToken
     })
   })
 
   ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_CREATE_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.createComputePackageOrder({
       ...payload,
       sessionToken
@@ -129,7 +105,7 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_GET_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.getComputePackageOrder({
       ...payload,
       sessionToken
@@ -137,7 +113,7 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.RECHARGE_CREATE_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.createRechargeOrder({
       ...payload,
       sessionToken
@@ -145,7 +121,7 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.RECHARGE_GET_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await getSessionToken(settingsService)
+    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.getRechargeOrder({
       ...payload,
       sessionToken

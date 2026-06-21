@@ -7,7 +7,7 @@ describe('desktopBridge', () => {
     global.window = {}
   })
 
-  it('falls back to browser storage for settings and keeps current upload directories isolated', async () => {
+  it('falls back to browser studio snapshot storage with a reduced settings summary', async () => {
     const storage = new Map()
     window.localStorage = {
       getItem(key) {
@@ -18,28 +18,116 @@ describe('desktopBridge', () => {
       }
     }
 
-    const { getSettings, saveSettings } = await import('../../renderer/src/services/desktopBridge.js')
+    const { getStudioSnapshot, saveStudioDraft } = await import('../../renderer/src/services/desktopBridge.js')
 
-    await saveSettings({
-      uploadDirectories: {
-        workspace: 'E:/QiuAi/Input/Workspace'
+    await saveStudioDraft({
+      menuKey: 'workspace',
+      patch: {
+        productName: 'Desk Lamp'
       }
     })
 
-    const loaded = await getSettings()
+    const loaded = await getStudioSnapshot()
 
-    expect(loaded.uploadDirectories.workspace).toBe('E:/QiuAi/Input/Workspace')
-    expect(loaded.uploadDirectories['series-generate']).toBe('')
-    expect(loaded.dashboardCreditState).toMatchObject({
-      text: { balanceCny: 0 },
-      image: { totalCredits: 0, remainingCredits: 0 },
-      video: { balanceCny: 0 }
+    expect(loaded.formDrafts.workspace).toMatchObject({
+      productName: 'Desk Lamp'
     })
-    expect(loaded.providerApiKeys).toMatchObject({
-      general: '',
-      deepseek: '',
-      minimax: ''
+    expect('themeMode' in loaded).toBe(false)
+    expect(loaded.settingsSummary).toMatchObject({
+      dashboardCreditState: {
+        text: { balanceCny: 0 },
+        image: { totalCredits: 0, remainingCredits: 0 },
+        video: { balanceCny: 0 }
+      },
+      creditState: {
+        remainingCredits: 0,
+        frozenCredits: 0,
+        usedCredits: 0
+      }
     })
+    const activationState = await getStudioSnapshot().then(() => null).catch(() => null)
+    expect(activationState).toBeNull()
+  })
+
+  it('ignores browser draft writes for non-runtime menu pages', async () => {
+    const storage = new Map()
+    window.localStorage = {
+      getItem(key) {
+        return storage.has(key) ? storage.get(key) : null
+      },
+      setItem(key, value) {
+        storage.set(key, value)
+      }
+    }
+
+    const { getStudioSnapshot, saveStudioDraft } = await import('../../renderer/src/services/desktopBridge.js')
+
+    const result = await saveStudioDraft({
+      menuKey: 'purchase-center',
+      patch: {
+        unexpected: 'value'
+      }
+    })
+
+    const loaded = await getStudioSnapshot()
+
+    expect(result).toEqual({})
+    expect(loaded.formDrafts['purchase-center']).toBeUndefined()
+  })
+
+  it('normalizes browser prompt template fallback and migrates legacy 文本 storage', async () => {
+    const storage = new Map()
+    storage.set('qiuai-browser-prompts', JSON.stringify([
+      {
+        id: 'text-temu',
+        name: 'TEMU',
+        category: '文本',
+        prompt: '旧固定模板',
+        source: 'system-fixed'
+      },
+      {
+        id: 'legacy-custom',
+        name: '旧自定义模板',
+        category: '文本',
+        prompt: '旧自定义内容',
+        source: 'custom'
+      }
+    ]))
+    window.localStorage = {
+      getItem(key) {
+        return storage.has(key) ? storage.get(key) : null
+      },
+      setItem(key, value) {
+        storage.set(key, value)
+      }
+    }
+
+    const { listPromptTemplates } = await import('../../renderer/src/services/desktopBridge.js')
+    const templates = await listPromptTemplates()
+
+    expect(templates.find((item) => item.id === 'title-default')?.category).toBe('标题')
+    expect(templates.find((item) => item.id === 'description-default')?.category).toBe('描述')
+    expect(templates.find((item) => item.id === 'title-temu')).toMatchObject({
+      category: '标题',
+      prompt: '旧固定模板',
+      source: 'system-fixed'
+    })
+    expect(templates.find((item) => item.id === 'description-temu')).toMatchObject({
+      category: '描述',
+      prompt: '旧固定模板',
+      source: 'system-fixed'
+    })
+    expect(templates.find((item) => item.id === 'legacy-custom-title')).toMatchObject({
+      category: '标题',
+      prompt: '旧自定义内容',
+      source: 'custom'
+    })
+    expect(templates.find((item) => item.id === 'legacy-custom-description')).toMatchObject({
+      category: '描述',
+      prompt: '旧自定义内容',
+      source: 'custom'
+    })
+    expect(templates.some((item) => item.category === '文本')).toBe(false)
   })
 
   it('serializes reactive studio draft payloads before invoking the bridge', async () => {
@@ -125,31 +213,6 @@ describe('desktopBridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(3, 'studio:clear-runtime-state', undefined)
   })
 
-  it('invokes provider api key save through the dedicated settings channel', async () => {
-    const invoke = vi.fn().mockResolvedValue({ ok: true })
-
-    window.qiuai = {
-      channels: {
-        SETTINGS_SAVE_PROVIDER_API_KEYS: 'settings:save-provider-api-keys'
-      },
-      invoke
-    }
-
-    const { saveProviderApiKeys } = await import('../../renderer/src/services/desktopBridge.js')
-
-    await saveProviderApiKeys({
-      textApiKey: 'sk-text',
-      imageApiKey: 'sk-image',
-      videoApiKey: 'sk-video'
-    })
-
-    expect(invoke).toHaveBeenCalledWith('settings:save-provider-api-keys', {
-      textApiKey: 'sk-text',
-      imageApiKey: 'sk-image',
-      videoApiKey: 'sk-video'
-    })
-  })
-
   it('invokes remote activation and recharge channels through the desktop bridge', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce({ status: 'activated', sessionToken: 'session-1' })
@@ -198,5 +261,39 @@ describe('desktopBridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(3, 'recharge:get-order', {
       id: 'order-1'
     })
+  })
+
+  it('fails fast for activation and commerce actions when the desktop bridge is unavailable', async () => {
+    const {
+      getActivationStatus,
+      activateRemoteLicense,
+      listSoftwarePackages,
+      createRechargeOrder
+    } = await import('../../renderer/src/services/desktopBridge.js')
+
+    await expect(getActivationStatus()).resolves.toMatchObject({
+      status: 'not_logged_in',
+      canUseApp: false,
+      remoteStatus: 'bridge_unavailable'
+    })
+    await expect(activateRemoteLicense({
+      customerName: 'Test'
+    })).rejects.toThrow('QiuAi desktop bridge is unavailable.')
+    await expect(listSoftwarePackages()).rejects.toThrow('QiuAi desktop bridge is unavailable.')
+    await expect(createRechargeOrder({
+      walletType: 'image',
+      amountCny: 100
+    })).rejects.toThrow('QiuAi desktop bridge is unavailable.')
+  })
+
+  it('does not expose dead desktop bridge helpers from the removed shell flows', async () => {
+    const desktopBridge = await import('../../renderer/src/services/desktopBridge.js')
+
+    expect('saveProviderApiKeys' in desktopBridge).toBe(false)
+    expect('createProjectsFromAssets' in desktopBridge).toBe(false)
+    expect('refreshDashboardCredits' in desktopBridge).toBe(false)
+    expect('deleteStudioExportItem' in desktopBridge).toBe(false)
+    expect('importLicenseFile' in desktopBridge).toBe(false)
+    expect('reloadActivation' in desktopBridge).toBe(false)
   })
 })

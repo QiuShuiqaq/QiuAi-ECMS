@@ -3,11 +3,7 @@ import { computed, ref, watch } from 'vue'
 import FormTextControl from './FormTextControl.vue'
 
 const props = defineProps({
-  fixedPromptTemplates: {
-    type: Array,
-    required: true
-  },
-  customPromptTemplates: {
+  promptTemplates: {
     type: Array,
     required: true
   }
@@ -23,9 +19,6 @@ const expandedTemplateId = ref('')
 const draftMap = ref({})
 
 function normalizeCategory(category = '') {
-  if (category === '文本') {
-    return '标题'
-  }
   return String(category || '标题')
 }
 
@@ -41,10 +34,12 @@ function normalizeTemplate(template = {}, fallbackSource = 'custom') {
 }
 
 const allTemplates = computed(() => {
-  return [
-    ...(props.fixedPromptTemplates || []).map((item) => normalizeTemplate(item, 'system-fixed')),
-    ...(props.customPromptTemplates || []).map((item) => normalizeTemplate(item, 'custom'))
-  ]
+  return (props.promptTemplates || []).map((item) => {
+    return normalizeTemplate(
+      item,
+      item?.source === 'system-fixed' ? 'system-fixed' : 'custom'
+    )
+  })
 })
 
 function syncDraftMap(templates, previousDrafts = {}) {

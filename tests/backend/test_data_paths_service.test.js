@@ -13,13 +13,11 @@ describe('dataPathsService', () => {
     } = await import('../../main/src/services/dataPathsService.js')
 
     expect(DATA_ROOT_DIRECTORY.replace(/\\/g, '/')).toContain('/DATA')
-    expect(getFeatureDirectoryKey('single')).toBe('workspace')
     expect(getFeatureDirectoryKey('workspace')).toBe('workspace')
-    expect(getFeatureDirectoryKey('detail-set')).toBe('series-generate')
-    expect(getFeatureDirectoryKey('title-generator')).toBe('title-generator')
-    expect(getFeatureDirectoryKey('description-generator')).toBe('description-generator')
+    expect(getFeatureDirectoryKey('purchase-center')).toBe('workspace')
+    expect(getFeatureDirectoryKey('account-usage')).toBe('workspace')
     expect(getFeatureDirectoryKey('video-generate')).toBe('video-generate')
-    expect(getFeatureDirectoryKey('copywriting')).toBe('workspace')
+    expect(getFeatureDirectoryKey('unknown-feature')).toBe('workspace')
 
     const workspaceDirectories = getTaskDataDirectories({
       featureKey: 'workspace',

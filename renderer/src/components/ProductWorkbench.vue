@@ -1,13 +1,17 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { generatorShortcutOptions } from '../utils/generatorViews'
 
 const props = defineProps({
   productProjects: { type: Array, default: () => [] },
   projectRuns: { type: Array, default: () => [] },
   activeProjectId: { type: String, default: '' },
   focusProjectId: { type: String, default: '' },
-  promptTemplates: { type: Array, default: () => [] },
-  submitButtonState: { type: String, default: 'idle' }
+  submitButtonState: { type: String, default: 'idle' },
+  selectionManifest: { type: Object, default: () => ({ generatedAt: '', boards: [] }) },
+  selectionPlatforms: { type: Array, default: () => [] },
+  selectionSites: { type: Array, default: () => [] },
+  selectionState: { type: Object, default: () => ({ items: [], totalItems: 0, platform: 'temu', boardType: 'hot-sale', siteCode: '', keyword: '', isLoading: false, error: '' }) }
 })
 
 const emit = defineEmits([
@@ -21,7 +25,9 @@ const emit = defineEmits([
   'open-video',
   'open-resource',
   'export-project',
-  'open-generator'
+  'open-generator',
+  'selection-query-change',
+  'selection-import'
 ])
 
 const platformOptions = [
@@ -70,13 +76,6 @@ const stepOptions = [
   { key: 'video', label: '视频' }
 ]
 
-const generatorShortcutOptions = [
-  { key: 'title-generator', label: '标题' },
-  { key: 'description-generator', label: '描述' },
-  { key: 'series-generate', label: '套图' },
-  { key: 'video-generate', label: '视频' }
-]
-
 const expandedProjectIds = ref(new Set())
 const expandedResultIds = ref(new Set())
 const hasInitializedProjectExpansion = ref(false)
@@ -108,6 +107,22 @@ const resultCards = computed(() => {
     const leftTime = left.latestRun?.createdAt || left.project.createdAt ? new Date(left.latestRun?.createdAt || left.project.createdAt).getTime() : 0
     return rightTime - leftTime
   })
+})
+
+const selectionBoardOptions = [
+  { label: '热销商品', value: 'hot-sale' },
+  { label: '热销新品', value: 'hot-sale-new' },
+  { label: '新店热销', value: 'new-mall-hot-sale' },
+  { label: '大卖新品', value: 'big-sale-new' }
+]
+
+const selectionItems = computed(() => Array.isArray(props.selectionState?.items) ? props.selectionState.items : [])
+const selectionBoardSummaryMap = computed(() => {
+  const map = new Map()
+  ;(Array.isArray(props.selectionManifest?.boards) ? props.selectionManifest.boards : []).forEach((board) => {
+    map.set([board.platform, board.boardType, board.siteCode || ''].join('__'), board)
+  })
+  return map
 })
 
 watch(() => props.focusProjectId, (projectId) => {
@@ -224,6 +239,18 @@ function openResource(target) {
   if (!target) return
   emit('open-resource', target)
 }
+
+function emitSelectionQueryPatch(patch) {
+  emit('selection-query-change', patch)
+}
+
+function resolveSelectionBoardSummary(item = {}) {
+  return selectionBoardSummaryMap.value.get([
+    item.platform,
+    item.boardType,
+    item.siteCode || ''
+  ].join('__')) || null
+}
 </script>
 
 <template>
@@ -303,7 +330,7 @@ function openResource(target) {
               </label>
               <label class="project-task-card__field">
                 <span>图片尺寸</span>
-                <select :value="item.project.generationConfig?.imageSize || '1:1'" @change="updateProjectGenerationConfig(item.project, { imageSize: $event.target.value, size: $event.target.value })">
+                <select :value="item.project.generationConfig?.imageSize || '1:1'" @change="updateProjectGenerationConfig(item.project, { imageSize: $event.target.value })">
                   <option v-for="option in imageSizeOptions" :key="`${item.project.id}-image-size-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
@@ -321,7 +348,7 @@ function openResource(target) {
               </label>
               <label class="project-task-card__field">
                 <span>视频动态</span>
-                <select :value="item.project.generationConfig?.videoMotionStrength || 'auto'" @change="updateProjectGenerationConfig(item.project, { videoMotionStrength: $event.target.value, motionStrength: $event.target.value })">
+                <select :value="item.project.generationConfig?.videoMotionStrength || 'auto'" @change="updateProjectGenerationConfig(item.project, { videoMotionStrength: $event.target.value })">
                   <option v-for="option in videoMotionOptions" :key="`${item.project.id}-video-motion-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
@@ -425,16 +452,70 @@ function openResource(target) {
     <section class="workbench-column workbench-column--agent">
       <header class="workbench-column__header">
         <div class="workbench-column__title">
-          <span>电商运营 Agent 助手</span>
-          <strong>Agent</strong>
+          <span>选品助手</span>
+          <strong>素材入口</strong>
         </div>
       </header>
 
-      <div class="workbench-agent-shell">
-        <div class="workbench-agent-card"><strong>任务编排</strong><span>预留</span></div>
-        <div class="workbench-agent-card"><strong>自动上架</strong><span>预留</span></div>
-        <div class="workbench-agent-card"><strong>批量执行</strong><span>预留</span></div>
+      <div class="selection-panel">
+        <div class="selection-panel__filters">
+          <label class="project-task-card__field">
+            <span>平台</span>
+            <select :value="selectionState.platform || 'temu'" @change="emitSelectionQueryPatch({ platform: $event.target.value })">
+              <option v-for="option in selectionPlatforms" :key="`selection-platform-${option.key}`" :value="option.key">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="project-task-card__field">
+            <span>榜单</span>
+            <select :value="selectionState.boardType || 'hot-sale'" @change="emitSelectionQueryPatch({ boardType: $event.target.value })">
+              <option v-for="option in selectionBoardOptions" :key="`selection-board-${option.value}`" :value="option.value">{{ option.label }}</option>
+            </select>
+          </label>
+          <label v-if="(selectionState.platform || '') === 'shopee'" class="project-task-card__field">
+            <span>站点</span>
+            <select :value="selectionState.siteCode || ''" @change="emitSelectionQueryPatch({ siteCode: $event.target.value })">
+              <option value="">请选择</option>
+              <option v-for="option in selectionSites" :key="`selection-site-${option.code}`" :value="option.code">{{ option.label }}</option>
+            </select>
+          </label>
+          <label class="project-task-card__field project-task-card__field--full">
+            <span>关键词</span>
+            <input :value="selectionState.keyword || ''" type="text" placeholder="按标题筛选" @change="emitSelectionQueryPatch({ keyword: $event.target.value })">
+          </label>
+        </div>
+
+        <div class="selection-panel__meta">
+          <span v-if="selectionState.error" class="selection-panel__error">{{ selectionState.error }}</span>
+          <span v-else>{{ selectionState.isLoading ? '正在加载选品数据…' : `共 ${selectionState.totalItems || 0} 条，可导入工作台` }}</span>
+        </div>
+
+        <div class="selection-card-list">
+          <article v-for="item in selectionItems" :key="item.id" class="selection-card">
+            <img class="selection-card__preview" :src="item.primaryImageUrl" :alt="item.title || '选品预览'">
+            <div class="selection-card__copy">
+              <strong>{{ item.title || '未命名条目' }}</strong>
+              <span>{{ item.subtitle || item.categoryText || '暂无副标题' }}</span>
+            </div>
+            <div class="selection-card__chips">
+              <span>{{ item.priceText || '价格待补' }}</span>
+              <span>{{ item.salesVolumeText || '销量待补' }}</span>
+              <span>{{ resolveSelectionBoardSummary(item)?.capturedAt ? `快照 ${resolveSelectionBoardSummary(item).capturedAt.slice(0, 10)}` : '快照待同步' }}</span>
+            </div>
+            <div class="selection-card__tags">
+              <span v-for="tag in (item.extractedKeywords || []).slice(0, 4)" :key="`${item.id}-${tag}`">{{ tag }}</span>
+            </div>
+            <div class="selection-card__actions">
+              <button class="secondary-action" type="button" @click="emit('selection-import', { item, mode: 'create' })">新建项目</button>
+              <button class="primary-action" type="button" :disabled="!activeProjectId" @click="emit('selection-import', { item, mode: 'update' })">覆盖当前项目</button>
+            </div>
+          </article>
+
+          <div v-if="!selectionItems.length && !selectionState.isLoading" class="product-result-empty">
+            <span>当前筛选下暂无选品条目</span>
+          </div>
+        </div>
       </div>
     </section>
+
   </section>
 </template>

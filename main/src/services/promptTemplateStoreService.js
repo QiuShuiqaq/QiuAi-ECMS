@@ -348,44 +348,6 @@ const defaultTemplates = [
   }
 ]
 
-const LEGACY_TEXT_TO_TITLE_IDS = {
-  'text-default': 'title-default',
-  'text-temu': 'title-temu',
-  'text-tk': 'title-tk',
-  'text-taobao': 'title-taobao',
-  'text-tmall': 'title-tmall',
-  'text-jd': 'title-jd',
-  'text-pdd': 'title-pdd',
-  'text-douyin': 'title-douyin',
-  'text-xiaohongshu': 'title-xiaohongshu',
-  'text-ozon': 'title-ozon',
-  'text-amazon': 'title-amazon',
-  'text-aliexpress': 'title-aliexpress',
-  'text-ebay': 'title-ebay',
-  'text-shopee': 'title-shopee',
-  'text-lazada': 'title-lazada',
-  'text-walmart': 'title-walmart'
-}
-
-const LEGACY_TEXT_TO_DESCRIPTION_IDS = {
-  'text-default': 'description-default',
-  'text-temu': 'description-temu',
-  'text-tk': 'description-tk',
-  'text-taobao': 'description-taobao',
-  'text-tmall': 'description-tmall',
-  'text-jd': 'description-jd',
-  'text-pdd': 'description-pdd',
-  'text-douyin': 'description-douyin',
-  'text-xiaohongshu': 'description-xiaohongshu',
-  'text-ozon': 'description-ozon',
-  'text-amazon': 'description-amazon',
-  'text-aliexpress': 'description-aliexpress',
-  'text-ebay': 'description-ebay',
-  'text-shopee': 'description-shopee',
-  'text-lazada': 'description-lazada',
-  'text-walmart': 'description-walmart'
-}
-
 function normalizeTemplateItem(template = {}) {
   return {
     id: String(template.id || ''),
@@ -396,15 +358,33 @@ function normalizeTemplateItem(template = {}) {
   }
 }
 
-function migrateLegacyTemplateItem(template = {}) {
+function resolveLegacyTextCategoryIds(templateId = '') {
+  const normalizedId = String(templateId || '').trim()
+  if (!normalizedId.startsWith('text-')) {
+    return null
+  }
+
+  const suffix = normalizedId.slice('text-'.length).trim()
+  if (!suffix) {
+    return null
+  }
+
+  return {
+    titleId: `title-${suffix}`,
+    descriptionId: `description-${suffix}`
+  }
+}
+
+function migrateLegacyTextTemplateItem(template = {}) {
   const normalized = normalizeTemplateItem(template)
 
   if (normalized.category !== '文本') {
     return [normalized]
   }
 
-  const titleId = LEGACY_TEXT_TO_TITLE_IDS[normalized.id] || ''
-  const descriptionId = LEGACY_TEXT_TO_DESCRIPTION_IDS[normalized.id] || ''
+  const legacyIds = resolveLegacyTextCategoryIds(normalized.id)
+  const titleId = legacyIds?.titleId || ''
+  const descriptionId = legacyIds?.descriptionId || ''
 
   if (normalized.source === 'system-fixed' && titleId && descriptionId) {
     return [
@@ -441,7 +421,7 @@ function migrateLegacyTemplateItem(template = {}) {
 
 function mergeTemplates(templates = []) {
   const normalizedIncoming = Array.isArray(templates)
-    ? templates.flatMap(migrateLegacyTemplateItem)
+    ? templates.flatMap(migrateLegacyTextTemplateItem)
     : []
   const customTemplates = normalizedIncoming.filter((item) => item.source === 'custom' && item.id)
   const fixedTemplateMap = new Map(

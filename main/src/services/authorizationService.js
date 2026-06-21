@@ -1,19 +1,3 @@
-function normalizeLegacyStatus(status = '') {
-  if (status === 'activated') {
-    return 'activated'
-  }
-
-  if (status === 'mismatch') {
-    return 'device_mismatch'
-  }
-
-  if (status === 'invalid') {
-    return 'invalid'
-  }
-
-  return 'not_activated'
-}
-
 function buildNextAction(status = '') {
   if (status === 'activated') {
     return 'enter-app'
@@ -40,9 +24,9 @@ function buildNextAction(status = '') {
 
 function createAuthorizationState(overrides = {}) {
   return {
-    status: 'not_activated',
-    mode: 'legacy-license',
-    authType: 'offline-license',
+    status: 'not_logged_in',
+    mode: 'server-license',
+    authType: 'session-token',
     canUseApp: false,
     customerName: '',
     userId: '',
@@ -57,29 +41,9 @@ function createAuthorizationState(overrides = {}) {
     remoteServiceCapacity: null,
     message: '',
     nextAction: 'activate-license',
-    legacyImportSupported: true,
-    legacyStatus: 'not_found',
     remoteStatus: '',
     ...overrides
   }
-}
-
-function mapLegacyActivationState(legacyStatus = {}) {
-  const normalizedStatus = normalizeLegacyStatus(legacyStatus?.status)
-
-  return createAuthorizationState({
-    status: normalizedStatus,
-    mode: 'legacy-license',
-    authType: 'offline-license',
-    canUseApp: normalizedStatus === 'activated',
-    customerName: String(legacyStatus?.customerName || '').trim(),
-    deviceCode: String(legacyStatus?.deviceCode || '').trim(),
-    activatedAt: String(legacyStatus?.activatedAt || '').trim(),
-    message: String(legacyStatus?.message || '').trim(),
-    nextAction: buildNextAction(normalizedStatus),
-    legacyStatus: String(legacyStatus?.status || 'not_found').trim() || 'not_found',
-    remoteStatus: ''
-  })
 }
 
 function mapRemoteActivationState(remoteStatus = {}) {
@@ -101,34 +65,29 @@ function mapRemoteActivationState(remoteStatus = {}) {
     activePackage: remoteStatus?.activePackage || null,
     message: String(remoteStatus?.message || '').trim(),
     nextAction: String(remoteStatus?.nextAction || buildNextAction(normalizedStatus)).trim(),
-    legacyImportSupported: false,
-    legacyStatus: '',
     remoteStatus: normalizedStatus
   })
 }
 
 function createAuthorizationService({
-  legacyLicenseService,
   remoteLicensePlatformClient,
   settingsService,
   getRemoteConfig = () => ({ enabled: false, baseUrl: '', sessionToken: '' }),
   getDeviceCode = async () => ''
 }) {
-  if (!legacyLicenseService || typeof legacyLicenseService.getActivationStatus !== 'function') {
-    throw new Error('legacyLicenseService is required.')
+  if (!remoteLicensePlatformClient || typeof remoteLicensePlatformClient.getAuthorizationStatus !== 'function') {
+    throw new Error('remoteLicensePlatformClient is required.')
   }
 
   async function getRemoteActivationStatus() {
-    if (!remoteLicensePlatformClient || typeof remoteLicensePlatformClient.getAuthorizationStatus !== 'function') {
-      return null
-    }
-
     const remoteConfig = getRemoteConfig() || {}
     const enabled = remoteConfig.enabled !== false
     const sessionToken = String(remoteConfig.sessionToken || '').trim()
 
     if (!enabled || !sessionToken) {
-      return null
+      return createAuthorizationState({
+        deviceCode: await getDeviceCode()
+      })
     }
 
     try {
@@ -171,8 +130,6 @@ function createAuthorizationService({
         deviceCode: await getDeviceCode(),
         message: String(error?.message || 'remote license platform unavailable').trim(),
         nextAction: 'activate-license',
-        legacyImportSupported: true,
-        legacyStatus: '',
         remoteStatus: 'request_failed',
         remoteServiceCapacity: getRemoteConfig()?.remoteServiceCapacity || null
       })
@@ -180,34 +137,18 @@ function createAuthorizationService({
   }
 
   async function getActivationStatus() {
-    const remoteStatus = await getRemoteActivationStatus()
-    if (remoteStatus && (remoteStatus.canUseApp || remoteStatus.remoteStatus || remoteStatus.status === 'not_logged_in' || remoteStatus.status === 'expired')) {
-      return remoteStatus
-    }
-
-    const legacyStatus = await legacyLicenseService.getActivationStatus()
-    return mapLegacyActivationState(legacyStatus)
+    return getRemoteActivationStatus()
   }
 
   async function getDeviceCodePayload() {
-    const payload = await legacyLicenseService.getDeviceCodePayload()
     return {
-      deviceCode: String(payload?.deviceCode || '').trim()
-    }
-  }
-
-  async function importLicenseFromFile(payload = {}) {
-    const importResult = await legacyLicenseService.importLicenseFromFile(payload)
-    return {
-      ...mapLegacyActivationState(importResult),
-      canceled: Boolean(importResult?.canceled)
+      deviceCode: String(await getDeviceCode()).trim()
     }
   }
 
   return {
     getActivationStatus,
-    getDeviceCodePayload,
-    importLicenseFromFile
+    getDeviceCodePayload
   }
 }
 

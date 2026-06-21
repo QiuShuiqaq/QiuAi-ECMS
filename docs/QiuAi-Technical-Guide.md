@@ -124,17 +124,12 @@ QiuAi 采用典型的 Electron 三层结构：
 - `promptTemplateService`
 - `studioTaskManagerService`
 - `studioWorkspaceService`
-- `taskModeService`
-- `taskRunnerService`
 - `dataTraceService`
 
 然后分别注册：
 
-- `settingsIpc`
 - `licenseIpc`
-- `drawIpc`
 - `promptIpc`
-- `taskIpc`
 - `studioIpc`
 
 这使主进程具备明显的“服务装配层 + IPC 接口层”结构，而不是把逻辑堆在 Electron 入口文件中。

@@ -19,25 +19,17 @@ const LOG_FILE_PATH = path.resolve(DATA_ROOT_DIRECTORY, 'log.txt')
 const TASK_MANAGER_FILE_PATH = path.resolve(DATA_ROOT_DIRECTORY, 'taskmanager.json')
 
 const featureDirectoryMap = {
-  single: 'workspace',
-  'detail-set': 'series-generate',
   'series-generate': 'series-generate',
-  'title-generator': 'title-generator',
-  'description-generator': 'description-generator',
   'video-generate': 'video-generate',
   workspace: 'workspace',
-  'model-pricing': 'model-pricing',
-  'prompt-library': 'prompt-library',
-  'model-config': 'model-config',
-  'data-center': 'data-center',
-  'product-template': 'product-template'
+  'prompt-library': 'prompt-library'
 }
 
-function getFeatureDirectoryKey (featureKey = 'single') {
+function getFeatureDirectoryKey (featureKey = 'workspace') {
   return featureDirectoryMap[featureKey] || 'workspace'
 }
 
-function getTaskDataDirectories ({ featureKey = 'single', taskId = '' } = {}) {
+function getTaskDataDirectories ({ featureKey = 'workspace', taskId = '' } = {}) {
   const normalizedFeatureKey = getFeatureDirectoryKey(featureKey)
   const pathSegments = taskId ? [normalizedFeatureKey, taskId] : [normalizedFeatureKey]
 

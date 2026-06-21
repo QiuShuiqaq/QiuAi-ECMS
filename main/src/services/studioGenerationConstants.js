@@ -1,0 +1,5 @@
+const MAX_SERIES_GENERATE_GROUP_SIZE = 500
+
+module.exports = {
+  MAX_SERIES_GENERATE_GROUP_SIZE
+}
