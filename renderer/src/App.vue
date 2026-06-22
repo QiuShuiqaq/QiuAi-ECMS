@@ -170,7 +170,11 @@ const actionNotice = reactive({
 const runtimePollingIntervalMs = 1500
 let runtimePollingTimer = null
 let runtimePollingInFlight = false
-const publishTaskPollingIntervalMs = 2500
+const publishTaskPollingProfile = {
+  fastMs: 5000,
+  runningMs: 15000,
+  reviewMs: 300000
+}
 let publishTaskPollingTimer = null
 let publishTaskPollingInFlight = false
 let rechargeOrderController = null
@@ -326,11 +330,39 @@ function queueRuntimePolling(delayMs = runtimePollingIntervalMs) {
   }, delayMs)
 }
 
-function queuePublishTaskPolling(delayMs = publishTaskPollingIntervalMs) {
+function queuePublishTaskPolling(delayMs = publishTaskPollingProfile.runningMs) {
   stopPublishTaskPolling()
   publishTaskPollingTimer = window.setTimeout(() => {
     void pollPublishTasks()
   }, delayMs)
+}
+
+function getPublishTaskPollingDelayMs(task = null) {
+  const status = String(task?.status || '').trim().toLowerCase()
+  if (!status) {
+    return publishTaskPollingProfile.runningMs
+  }
+
+  if (status === 'queued' || status === 'running' || status === 'validating') {
+    return publishTaskPollingProfile.runningMs
+  }
+
+  if (status === 'awaiting-platform-review') {
+    return publishTaskPollingProfile.reviewMs
+  }
+
+  return publishTaskPollingProfile.fastMs
+}
+
+function resolvePublishPollingDelayMs(projectEntries = []) {
+  if (!Array.isArray(projectEntries) || !projectEntries.length) {
+    return publishTaskPollingProfile.runningMs
+  }
+
+  return projectEntries.reduce((minDelay, [, state]) => {
+    const nextDelay = getPublishTaskPollingDelayMs(state?.latestTask)
+    return Math.min(minDelay, nextDelay)
+  }, publishTaskPollingProfile.reviewMs)
 }
 
 async function pollStudioRuntimeSnapshot() {
@@ -360,7 +392,9 @@ async function pollStudioRuntimeSnapshot() {
 async function pollPublishTasks() {
   if (!isActivated.value || publishTaskPollingInFlight) {
     if (isActivated.value && hasActivePublishTasks.value) {
-      queuePublishTaskPolling()
+      queuePublishTaskPolling(resolvePublishPollingDelayMs(
+        Object.entries(publishState.value || {}).filter(([, state]) => isPublishTaskActive(state?.latestTask))
+      ))
     }
     return
   }
@@ -396,7 +430,9 @@ async function pollPublishTasks() {
   } finally {
     publishTaskPollingInFlight = false
     if (isActivated.value && hasActivePublishTasks.value) {
-      queuePublishTaskPolling()
+      queuePublishTaskPolling(resolvePublishPollingDelayMs(
+        Object.entries(publishState.value || {}).filter(([, state]) => isPublishTaskActive(state?.latestTask))
+      ))
     } else {
       stopPublishTaskPolling()
     }
