@@ -551,6 +551,7 @@ async function handleReplaceProjectImage(project) {
         }
       }
     })
+    invalidateProjectPublishState(project.id)
     await loadStudioSnapshot()
   } catch (error) {
     showActionFeedback({
@@ -567,6 +568,7 @@ async function handleProjectUpdate({ projectId, patch }) {
       projectId,
       patch
     })
+    invalidateProjectPublishState(projectId)
     await loadStudioSnapshot()
   } catch (error) {
     showActionFeedback({
@@ -652,6 +654,7 @@ async function handleSelectionImport({ item, mode }) {
         patch
       })
       nextProjectId = updatedProject?.id || activeProductProjectId.value
+      invalidateProjectPublishState(nextProjectId)
     } else {
       const createdProject = await createStudioProject({
         productName: detail.title || '',
@@ -753,6 +756,21 @@ function patchProjectPublishState(projectId, patch = {}) {
     }
   }
   return publishState.value[projectId]
+}
+
+function invalidateProjectPublishState(projectId = '', options = {}) {
+  const normalizedProjectId = String(projectId || '').trim()
+  if (!normalizedProjectId) {
+    return null
+  }
+
+  const clearDraftSummary = options.clearDraftSummary !== false
+  return patchProjectPublishState(normalizedProjectId, {
+    preview: null,
+    latestTask: null,
+    error: '',
+    ...(clearDraftSummary ? { draftSummary: null } : {})
+  })
 }
 
 function normalizeProjectPublishDraft(project = {}) {
@@ -886,6 +904,7 @@ async function handlePublishPlatformChange({ project, platform }) {
   }
 
   try {
+    invalidateProjectPublishState(project.id, { clearDraftSummary: false })
     await loadPublishChannelAccounts(project, {
       platform,
       preserveSelection: false
@@ -900,6 +919,7 @@ function handlePublishChannelAccountChange({ project, channelAccountId }) {
     return
   }
 
+  invalidateProjectPublishState(project.id, { clearDraftSummary: false })
   patchProjectPublishState(project.id, {
     selectedChannelAccountId: String(channelAccountId || '').trim(),
     error: ''
