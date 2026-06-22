@@ -878,6 +878,18 @@ function buildWorkspaceSelectionContextLines(selectionSource = null) {
   ]
 }
 
+function buildProjectScopedGenerationContextLines(draft = {}) {
+  const selectionContextLines = buildWorkspaceSelectionContextLines(draft.selectionSource)
+  const selectedTitle = String(draft.selectedTitle || '').trim()
+  const selectedDescription = String(draft.selectedDescription || '').trim()
+
+  return [
+    selectedTitle ? `参考标题：${selectedTitle}` : '',
+    selectedDescription ? `参考描述：${selectedDescription}` : '',
+    ...selectionContextLines
+  ].filter(Boolean)
+}
+
 function resolveWorkspaceProjectDisplayName(draft = {}) {
   const projectName = String(draft.projectName || '').trim()
   if (projectName) {
@@ -1730,9 +1742,23 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   }
 
   if (menuKey === 'series-generate') {
+    const contextLines = buildProjectScopedGenerationContextLines(draft)
+    const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, Math.max(1, Number(draft.generateCount) || 1))
+    const normalizedDraft = {
+      ...draft,
+      promptAssignments: normalizedAssignments.map((assignment) => ({
+        ...assignment,
+        prompt: [
+          `商品名称：${draft.productName || '未提供'}`,
+          ...contextLines,
+          String(assignment.prompt || draft.prompt || '').trim()
+        ].filter(Boolean).join('\n')
+      }))
+    }
+
     return generateImageResults({
       menuKey,
-      draft,
+      draft: normalizedDraft,
       taskId,
       outputDirectory,
       onProgress
@@ -1740,8 +1766,18 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   }
 
   if (menuKey === 'video-generate') {
+    const contextLines = buildProjectScopedGenerationContextLines(draft)
+    const normalizedDraft = {
+      ...draft,
+      prompt: [
+        `商品名称：${draft.productName || '未提供'}`,
+        ...contextLines,
+        String(draft.prompt || '').trim()
+      ].filter(Boolean).join('\n')
+    }
+
     return generateVideoResults({
-      draft,
+      draft: normalizedDraft,
       taskId,
       outputDirectory,
       onProgress

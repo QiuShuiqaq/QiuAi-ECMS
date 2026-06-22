@@ -21,6 +21,9 @@ export function buildSeriesPromptAssignments({
 
 export function buildProjectGeneratorDraft(project, menuKey) {
   const generationConfig = project?.generationConfig || {}
+  const selectionSource = project?.metadata?.selectionSource && typeof project.metadata.selectionSource === 'object'
+    ? project.metadata.selectionSource
+    : null
   const basePatch = {
     projectId: project?.id || '',
     projectName: project?.name || project?.baseInfo?.productName || '',
@@ -29,7 +32,10 @@ export function buildProjectGeneratorDraft(project, menuKey) {
     platformTargetsText: (project?.platformTarget || []).join(', '),
     language: project?.baseInfo?.language || 'zh-CN',
     keywordsText: (project?.baseInfo?.keywords || []).join(', '),
-    sourceImage: project?.assets?.sourceImages?.[0] || null
+    sourceImage: project?.assets?.sourceImages?.[0] || null,
+    selectionSource,
+    selectedTitle: project?.content?.selectedTitle || '',
+    selectedDescription: project?.content?.selectedDescription || ''
   }
 
   const modePatchMap = {

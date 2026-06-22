@@ -807,6 +807,107 @@ describe('studioWorkspaceService', () => {
     expect(project.assets.sourceImages[0].preview).toContain('data:image/png;base64,')
   })
 
+  it('injects project result and selection context into standalone series generation', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const observedAssignmentPrompts = []
+    const settingsService = createSettingsStoreService({ store })
+    await seedCredits(settingsService, 5000)
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateImageResults: async ({ draft }) => {
+        observedAssignmentPrompts.push(...(draft.promptAssignments || []).map((item) => String(item.prompt || '')))
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: { title: '图片结果' }
+        }
+      }
+    })
+
+    const project = await service.createProject({
+      productName: '露营灯',
+      platform: 'temu',
+      language: 'zh-CN',
+      patch: {
+        content: {
+          selectedTitle: '爆款露营灯',
+          selectedDescription: '高亮便携，适合夜间露营'
+        },
+        metadata: {
+          selectionSource: {
+            itemId: 'selection-2',
+            platform: 'temu',
+            boardType: 'hot-sale',
+            boardLabel: '热销商品',
+            title: '便携露营灯',
+            priceText: '¥89',
+            extractedKeywords: ['露营灯', '便携', '户外']
+          }
+        }
+      }
+    })
+
+    await service.saveDraft({
+      menuKey: 'series-generate',
+      patch: {
+        projectId: project.id,
+        taskName: '露营灯套图',
+        productName: '露营灯',
+        selectedTitle: '爆款露营灯',
+        selectedDescription: '高亮便携，适合夜间露营',
+        selectionSource: {
+          itemId: 'selection-2',
+          platform: 'temu',
+          boardType: 'hot-sale',
+          boardLabel: '热销商品',
+          title: '便携露营灯',
+          priceText: '¥89',
+          extractedKeywords: ['露营灯', '便携', '户外']
+        },
+        sourceImage: {
+          name: 'camp-lamp.jpg',
+          path: 'C:/images/camp-lamp.jpg',
+          preview: 'preview-camp-lamp'
+        },
+        model: 'gpt-image-2',
+        generateCount: 1,
+        batchCount: 1,
+        promptAssignments: [
+          {
+            id: 'series-1',
+            imageType: '商品主图',
+            templateId: 'image-main',
+            prompt: '生成商品主图'
+          }
+        ]
+      }
+    })
+
+    await service.createTask({ menuKey: 'series-generate' })
+    await service.waitForIdle()
+
+    expect(observedAssignmentPrompts).toHaveLength(1)
+    expect(observedAssignmentPrompts[0]).toContain('商品名称：露营灯')
+    expect(observedAssignmentPrompts[0]).toContain('参考标题：爆款露营灯')
+    expect(observedAssignmentPrompts[0]).toContain('参考描述：高亮便携，适合夜间露营')
+    expect(observedAssignmentPrompts[0]).toContain('选品榜单：热销商品')
+    expect(observedAssignmentPrompts[0]).toContain('选品关键词：露营灯、便携、户外')
+  })
+
   it('keeps workspace drafts on canonical runtime fields and ignores removed legacy aliases', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()

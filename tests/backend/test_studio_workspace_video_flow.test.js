@@ -122,4 +122,94 @@ describe('studioWorkspaceService video flow', () => {
     expect(snapshot.resultsByMenu['video-generate'].groupedResults).toHaveLength(1)
     expect(snapshot.exportItemsByMenu['video-generate']).toHaveLength(1)
   })
+
+  it('injects project title, description, and selection context into standalone video generation', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const observedPrompts = []
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateVideoResults: async ({ draft }) => {
+        observedPrompts.push(String(draft.prompt || ''))
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: {
+            title: '视频生成结果'
+          }
+        }
+      }
+    })
+
+    const project = await service.createProject({
+      productName: '便携风扇',
+      platform: 'temu',
+      language: 'zh-CN',
+      patch: {
+        content: {
+          selectedTitle: '爆款便携风扇',
+          selectedDescription: '适合夏季户外使用的静音便携风扇'
+        },
+        metadata: {
+          selectionSource: {
+            itemId: 'selection-1',
+            platform: 'temu',
+            boardType: 'hot-sale',
+            boardLabel: '热销商品',
+            title: '露营便携风扇',
+            priceText: '¥59',
+            extractedKeywords: ['风扇', '便携', '户外']
+          }
+        }
+      }
+    })
+
+    await service.saveDraft({
+      menuKey: 'video-generate',
+      patch: {
+        projectId: project.id,
+        taskName: '便携风扇视频',
+        productName: '便携风扇',
+        selectedTitle: '爆款便携风扇',
+        selectedDescription: '适合夏季户外使用的静音便携风扇',
+        selectionSource: {
+          itemId: 'selection-1',
+          platform: 'temu',
+          boardType: 'hot-sale',
+          boardLabel: '热销商品',
+          title: '露营便携风扇',
+          priceText: '¥59',
+          extractedKeywords: ['风扇', '便携', '户外']
+        },
+        sourceImage: {
+          name: 'fan.jpg',
+          path: 'C:/images/fan.jpg',
+          preview: 'preview-fan'
+        },
+        prompt: '生成电商短视频'
+      }
+    })
+
+    await service.createTask({ menuKey: 'video-generate' })
+    await service.waitForIdle()
+
+    expect(observedPrompts).toHaveLength(1)
+    expect(observedPrompts[0]).toContain('参考标题：爆款便携风扇')
+    expect(observedPrompts[0]).toContain('参考描述：适合夏季户外使用的静音便携风扇')
+    expect(observedPrompts[0]).toContain('选品榜单：热销商品')
+    expect(observedPrompts[0]).toContain('选品关键词：风扇、便携、户外')
+  })
 })
