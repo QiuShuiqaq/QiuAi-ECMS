@@ -308,4 +308,78 @@ describe('desktopBridge', () => {
     expect(typeof desktopBridge.getPublishTask).toBe('function')
     expect(typeof desktopBridge.retryPublishTask).toBe('function')
   })
+
+  it('invokes publish bridge channels for preview and task lifecycle actions', async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce([{ id: 'channel-1', platform: 'tiktok' }])
+      .mockResolvedValueOnce({ platforms: [{ key: 'tiktok', label: 'TikTok Shop' }] })
+      .mockResolvedValueOnce({ id: 'draft-1' })
+      .mockResolvedValueOnce({ id: 'draft-1' })
+      .mockResolvedValueOnce({ draftId: 'draft-1', isValid: true })
+      .mockResolvedValueOnce({ id: 'task-1', status: 'queued' })
+      .mockResolvedValueOnce({ id: 'task-1', status: 'running' })
+      .mockResolvedValueOnce({ id: 'task-1', status: 'queued' })
+
+    window.qiuai = {
+      channels: {
+        PUBLISH_LIST_CHANNEL_ACCOUNTS: 'publish:list-channel-accounts',
+        PUBLISH_GET_CONFIG: 'publish:get-config',
+        PUBLISH_UPSERT_DRAFT: 'publish:upsert-draft',
+        PUBLISH_GET_DRAFT: 'publish:get-draft',
+        PUBLISH_GET_DRAFT_PREVIEW: 'publish:get-draft-preview',
+        PUBLISH_CREATE_TASK: 'publish:create-task',
+        PUBLISH_GET_TASK: 'publish:get-task',
+        PUBLISH_RETRY_TASK: 'publish:retry-task'
+      },
+      invoke
+    }
+
+    const {
+      listPublishChannelAccounts,
+      getPublishClientConfig,
+      upsertPublishDraft,
+      getPublishDraft,
+      getPublishDraftPreview,
+      createPublishTask,
+      getPublishTask,
+      retryPublishTask
+    } = await import('../../renderer/src/services/desktopBridge.js')
+
+    await listPublishChannelAccounts({ platform: 'tiktok' })
+    await getPublishClientConfig()
+    await upsertPublishDraft({ workspaceProjectId: 'project-1', title: 'Desk Lamp' })
+    await getPublishDraft({ id: 'draft-1' })
+    await getPublishDraftPreview({ id: 'draft-1', platform: 'tiktok', channelAccountId: 'channel-1' })
+    await createPublishTask({ draftId: 'draft-1', platform: 'tiktok', channelAccountId: 'channel-1' })
+    await getPublishTask({ id: 'task-1' })
+    await retryPublishTask({ id: 'task-1' })
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'publish:list-channel-accounts', {
+      platform: 'tiktok'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'publish:get-config', undefined)
+    expect(invoke).toHaveBeenNthCalledWith(3, 'publish:upsert-draft', {
+      workspaceProjectId: 'project-1',
+      title: 'Desk Lamp'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(4, 'publish:get-draft', {
+      id: 'draft-1'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(5, 'publish:get-draft-preview', {
+      id: 'draft-1',
+      platform: 'tiktok',
+      channelAccountId: 'channel-1'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(6, 'publish:create-task', {
+      draftId: 'draft-1',
+      platform: 'tiktok',
+      channelAccountId: 'channel-1'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(7, 'publish:get-task', {
+      id: 'task-1'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(8, 'publish:retry-task', {
+      id: 'task-1'
+    })
+  })
 })
