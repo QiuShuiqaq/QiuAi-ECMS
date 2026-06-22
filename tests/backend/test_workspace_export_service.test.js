@@ -50,13 +50,36 @@ describe('workspaceExportService', () => {
         {
           id: 'project-1',
           name: 'Portable Lamp',
+          status: 'ready',
           content: {
             selectedTitle: 'Portable Lamp Title',
             selectedDescription: 'Portable Lamp Description'
           },
+          baseInfo: {
+            productName: 'Portable Lamp',
+            brand: 'QiuAi',
+            category: 'Lighting',
+            language: 'en-US',
+            highlights: ['Foldable', 'USB rechargeable'],
+            keywords: ['lamp', 'portable']
+          },
           assets: {
             generatedImages: [{ savedPath: imagePath }],
             generatedVideo: { savedPath: videoPath }
+          },
+          metadata: {
+            resultLanding: {
+              titleRunId: 'run-title-1',
+              descriptionRunId: 'run-description-1',
+              imageRunId: 'run-image-1',
+              videoRunId: 'run-video-1'
+            },
+            selectionSource: {
+              platform: 'temu',
+              boardType: 'hot-sale',
+              boardLabel: '热销商品',
+              title: 'Portable lamp trend item'
+            }
           }
         }
       ]
@@ -67,6 +90,7 @@ describe('workspaceExportService', () => {
     let exportedFiles = []
     let exportedTitle = ''
     let exportedDescription = ''
+    let exportedManifest = null
     const service = createWorkspaceExportService({
       ...state,
       getResolvedExportItemsByMenu: () => state.getStoredState().exportItemsByMenu,
@@ -77,6 +101,7 @@ describe('workspaceExportService', () => {
         exportedFiles = await fs.readdir(sourceDirectory)
         exportedTitle = await fs.readFile(path.resolve(sourceDirectory, 'title.txt'), 'utf8')
         exportedDescription = await fs.readFile(path.resolve(sourceDirectory, 'description.txt'), 'utf8')
+        exportedManifest = JSON.parse(await fs.readFile(path.resolve(sourceDirectory, 'manifest.json'), 'utf8'))
         return { targetZipPath }
       }
     })
@@ -91,10 +116,37 @@ describe('workspaceExportService', () => {
       projectId: 'project-1',
       targetZipPath: path.resolve(outputRootDirectory, 'bundle.zip')
     })
-    expect(exportedFiles).toEqual(expect.arrayContaining(['title.txt', 'description.txt', 'images']))
+    expect(exportedFiles).toEqual(expect.arrayContaining(['title.txt', 'description.txt', 'images', 'manifest.json']))
     expect(exportedFiles.some((item) => item.endsWith('.mp4'))).toBe(true)
     expect(exportedTitle).toContain('Portable Lamp Title')
     expect(exportedDescription).toContain('Portable Lamp Description')
+    expect(exportedManifest).toMatchObject({
+      schemaVersion: 1,
+      project: {
+        id: 'project-1',
+        name: 'Portable Lamp',
+        status: 'ready'
+      },
+      adoptedContent: {
+        title: 'Portable Lamp Title',
+        description: 'Portable Lamp Description',
+        titleRunId: 'run-title-1',
+        descriptionRunId: 'run-description-1'
+      },
+      adoptedMedia: {
+        imageRunId: 'run-image-1',
+        videoRunId: 'run-video-1',
+        imageCount: 1,
+        videoFile: 'result-1.mp4'
+      },
+      selectionSource: {
+        platform: 'temu',
+        boardType: 'hot-sale',
+        boardLabel: '热销商品',
+        title: 'Portable lamp trend item'
+      }
+    })
+    expect(exportedManifest.adoptedMedia.imageFiles).toEqual(['result-1.png'])
   })
 
   it('exports selected result folders into a staging archive', async () => {

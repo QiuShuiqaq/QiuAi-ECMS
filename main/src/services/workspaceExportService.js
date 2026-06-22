@@ -7,6 +7,10 @@ const { exportTaskDirectory: defaultExportTaskDirectory } = require('./taskExpor
 const EXPORT_FREE_SPACE_MULTIPLIER = 3
 const EXPORT_MIN_REQUIRED_BYTES = 1024
 
+function trimString(value = '') {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function sanitizePathSegment(value, fallbackValue = 'result') {
   const sanitizedValue = String(value || fallbackValue)
     .replace(/[<>:"/\\|?*\s]+/g, '-')
@@ -62,6 +66,61 @@ async function safeRuntimeLog(runtimeLogger, payload) {
   }
 }
 
+function buildProjectExportManifest(project = {}, {
+  exportedAt = new Date().toISOString()
+} = {}) {
+  const content = project.content && typeof project.content === 'object' ? project.content : {}
+  const assets = project.assets && typeof project.assets === 'object' ? project.assets : {}
+  const metadata = project.metadata && typeof project.metadata === 'object' ? project.metadata : {}
+  const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
+  const generatedVideo = assets.generatedVideo && typeof assets.generatedVideo === 'object'
+    ? assets.generatedVideo
+    : null
+  const resultLanding = metadata.resultLanding && typeof metadata.resultLanding === 'object'
+    ? metadata.resultLanding
+    : {}
+  const selectionSource = metadata.selectionSource && typeof metadata.selectionSource === 'object'
+    ? metadata.selectionSource
+    : null
+
+  return {
+    schemaVersion: 1,
+    exportedAt,
+    project: {
+      id: trimString(project.id || ''),
+      name: trimString(project.name || ''),
+      status: trimString(project.status || ''),
+      platformTarget: Array.isArray(project.platformTarget) ? project.platformTarget.slice() : [],
+      createdAt: trimString(project.createdAt || ''),
+      updatedAt: trimString(project.updatedAt || '')
+    },
+    adoptedContent: {
+      title: trimString(content.selectedTitle || ''),
+      description: trimString(content.selectedDescription || ''),
+      titleRunId: trimString(resultLanding.titleRunId || ''),
+      descriptionRunId: trimString(resultLanding.descriptionRunId || '')
+    },
+    adoptedMedia: {
+      imageRunId: trimString(resultLanding.imageRunId || ''),
+      videoRunId: trimString(resultLanding.videoRunId || ''),
+      imageCount: generatedImages.length,
+      imageFiles: generatedImages.map((item) => path.basename(trimString(item.savedPath || item.path || item.storedPath || ''))).filter(Boolean),
+      videoFile: generatedVideo ? path.basename(trimString(generatedVideo.savedPath || generatedVideo.path || '')) : ''
+    },
+    selectionSource,
+    baseInfo: project.baseInfo && typeof project.baseInfo === 'object'
+      ? {
+          productName: trimString(project.baseInfo.productName || ''),
+          brand: trimString(project.baseInfo.brand || ''),
+          category: trimString(project.baseInfo.category || ''),
+          language: trimString(project.baseInfo.language || ''),
+          highlights: Array.isArray(project.baseInfo.highlights) ? project.baseInfo.highlights.slice() : [],
+          keywords: Array.isArray(project.baseInfo.keywords) ? project.baseInfo.keywords.slice() : []
+        }
+      : null
+  }
+}
+
 function createWorkspaceExportService({
   getStoredState,
   getResolvedExportItemsByMenu,
@@ -112,9 +171,11 @@ function createWorkspaceExportService({
 
       const titleText = project.content?.selectedTitle || (project.content?.titleCandidates || []).join('\n')
       const descriptionText = project.content?.selectedDescription || (project.content?.descriptionCandidates || []).join('\n')
+      const exportManifest = buildProjectExportManifest(project)
 
       await writeFile(path.resolve(projectDirectory, 'title.txt'), `${String(titleText || '')}\n`, 'utf8')
       await writeFile(path.resolve(projectDirectory, 'description.txt'), `${String(descriptionText || '')}\n`, 'utf8')
+      await writeFile(path.resolve(projectDirectory, 'manifest.json'), `${JSON.stringify(exportManifest, null, 2)}\n`, 'utf8')
 
       if (Array.isArray(project.assets?.generatedImages) && project.assets.generatedImages.length) {
         const imagesDirectory = path.resolve(projectDirectory, 'images')
@@ -249,5 +310,6 @@ function createWorkspaceExportService({
 }
 
 module.exports = {
+  buildProjectExportManifest,
   createWorkspaceExportService
 }
