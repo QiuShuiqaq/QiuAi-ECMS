@@ -891,6 +891,23 @@ function resolvePlatformDraftReadinessMissingLabel(project = {}) {
 
   return `Platform Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
 }
+
+function resolvePlatformDraftReadinessIssues(project = {}) {
+  const readiness = resolvePlatformDraftReadiness(project)
+  const missingFields = Array.isArray(readiness?.missingFieldLabels) ? readiness.missingFieldLabels : []
+  const platformKey = resolveProjectPublishPlatform(project)
+  const rawReadiness = getPublishState(String(project?.id || '').trim()).draftSummary?.platformReadiness
+  const currentPlatformReadiness = rawReadiness && typeof rawReadiness === 'object'
+    ? rawReadiness[platformKey]
+    : null
+  const fields = Array.isArray(currentPlatformReadiness?.missingFields) ? currentPlatformReadiness.missingFields : []
+
+  return fields.map((field, index) => ({
+    field: String(field || '').trim(),
+    code: 'REQUIRED',
+    message: `${missingFields[index] || resolvePublishIssueFieldLabel({ field })} is required before create listing.`
+  })).filter((issue) => issue.field)
+}
 </script>
 
 <template>
@@ -1222,6 +1239,35 @@ function resolvePlatformDraftReadinessMissingLabel(project = {}) {
             >
               <span v-if="resolvePlatformDraftReadiness(item.project)?.message">{{ resolvePlatformDraftReadiness(item.project).message }}</span>
               <span v-if="resolvePlatformDraftReadinessMissingLabel(item.project)">{{ resolvePlatformDraftReadinessMissingLabel(item.project) }}</span>
+            </div>
+
+            <div
+              v-if="resolvePlatformDraftReadinessIssues(item.project).length"
+              class="project-draft-card__publish-preview"
+            >
+              <div class="project-draft-card__publish-preview-summary">
+                <span>Platform Readiness Issues</span>
+              </div>
+
+              <ul class="project-draft-card__publish-issues">
+                <li
+                  v-for="(issue, index) in resolvePlatformDraftReadinessIssues(item.project)"
+                  :key="resolvePublishPreviewIssueKey(issue, index)"
+                >
+                  {{ resolvePublishPreviewIssueLabel(issue) }}
+                  <span v-if="resolvePublishIssueSuggestedFix(issue)">
+                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                  </span>
+                  <button
+                    v-if="canLocatePublishIssue(item.project, issue)"
+                    class="project-draft-card__issue-link"
+                    type="button"
+                    @click="focusPublishIssueField(item.project, issue)"
+                  >
+                    Locate Field
+                  </button>
+                </li>
+              </ul>
             </div>
 
             <div
