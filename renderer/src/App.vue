@@ -755,6 +755,89 @@ function patchProjectPublishState(projectId, patch = {}) {
   return publishState.value[projectId]
 }
 
+function normalizeProjectPublishDraft(project = {}) {
+  const publishDraft = project.publishDraft && typeof project.publishDraft === 'object'
+    ? project.publishDraft
+    : {}
+
+  return {
+    attributes: publishDraft.attributes && typeof publishDraft.attributes === 'object'
+      ? { ...publishDraft.attributes }
+      : {},
+    variants: Array.isArray(publishDraft.variants)
+      ? publishDraft.variants.map((item) => ({ ...(item || {}) }))
+      : [],
+    platformDrafts: publishDraft.platformDrafts && typeof publishDraft.platformDrafts === 'object'
+      ? Object.fromEntries(Object.entries(publishDraft.platformDrafts).map(([platformKey, value]) => [
+          platformKey,
+          value && typeof value === 'object'
+            ? {
+                ...value,
+                attributes: value.attributes && typeof value.attributes === 'object'
+                  ? { ...value.attributes }
+                  : {}
+              }
+            : {}
+        ]))
+      : {}
+  }
+}
+
+function buildProjectPublishDraftPatchFromPreview(project = {}, preview = null, selectedPlatform = '') {
+  const normalizedPlatform = normalizePublishPlatform(selectedPlatform || project.platformTarget?.[0] || '')
+  if (!normalizedPlatform || !preview || typeof preview !== 'object') {
+    return null
+  }
+
+  const currentPublishDraft = normalizeProjectPublishDraft(project)
+  const currentPlatformDraft = currentPublishDraft.platformDrafts[normalizedPlatform] && typeof currentPublishDraft.platformDrafts[normalizedPlatform] === 'object'
+    ? currentPublishDraft.platformDrafts[normalizedPlatform]
+    : {}
+  const currentAttributes = currentPlatformDraft.attributes && typeof currentPlatformDraft.attributes === 'object'
+    ? currentPlatformDraft.attributes
+    : {}
+
+  const previewCategoryId = String(preview?.mappedDraft?.categoryId || '').trim()
+  const previewRuleAttributes = Array.isArray(preview?.platformRule?.requiredAttributes)
+    ? preview.platformRule.requiredAttributes
+      .map((item) => ({
+        key: String(item?.key || '').trim(),
+        label: String(item?.label || item?.key || '').trim()
+      }))
+      .filter((item) => item.key)
+    : []
+
+  const nextAttributes = { ...currentAttributes }
+  let hasAttributePlaceholderUpdate = false
+  previewRuleAttributes.forEach((attribute) => {
+    if (!Object.prototype.hasOwnProperty.call(nextAttributes, attribute.key)) {
+      nextAttributes[attribute.key] = ''
+      hasAttributePlaceholderUpdate = true
+    }
+  })
+
+  const nextCategoryId = previewCategoryId || String(currentPlatformDraft.categoryId || '').trim()
+  const hasCategoryUpdate = previewCategoryId && previewCategoryId !== String(currentPlatformDraft.categoryId || '').trim()
+
+  if (!hasCategoryUpdate && !hasAttributePlaceholderUpdate) {
+    return null
+  }
+
+  return {
+    publishDraft: {
+      ...currentPublishDraft,
+      platformDrafts: {
+        ...currentPublishDraft.platformDrafts,
+        [normalizedPlatform]: {
+          ...currentPlatformDraft,
+          categoryId: nextCategoryId || null,
+          attributes: nextAttributes
+        }
+      }
+    }
+  }
+}
+
 async function loadPublishChannelAccounts(project, { platform, preserveSelection = true } = {}) {
   const projectId = String(project?.id || '').trim()
   if (!projectId) {
@@ -928,6 +1011,20 @@ async function handlePublishPreview(project) {
       platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
       channelAccountId
     })
+
+    const publishDraftPatch = buildProjectPublishDraftPatchFromPreview(
+      project,
+      preview,
+      state.selectedPlatform || project.platformTarget?.[0] || ''
+    )
+
+    if (publishDraftPatch) {
+      await updateStudioProject({
+        projectId: project.id,
+        patch: publishDraftPatch
+      })
+      await loadStudioSnapshot()
+    }
 
     patchProjectPublishState(project.id, {
       preview,
