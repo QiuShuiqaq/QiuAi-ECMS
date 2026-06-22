@@ -228,6 +228,7 @@ function resolveProjectPublishPlatformProfile(project = {}) {
   const platformProfiles = props.publishState?.[project.id]?.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
   return platformProfiles[resolveProjectPublishPlatform(project)] || {
     label: 'Platform',
+    ruleVersion: '',
     requiredAttributes: [],
     manualReviewAttributeKey: ''
   }
@@ -452,6 +453,10 @@ function resolvePublishPreviewMappedCategoryPath(projectId = '') {
     : []
 }
 
+function resolvePublishPreviewRuleVersion(projectId = '') {
+  return String(getPublishState(projectId).preview?.platformRule?.ruleVersion || '').trim()
+}
+
 function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
   return [
     issue.field || 'field',
@@ -476,6 +481,16 @@ function resolveLatestTaskAttemptIssues(projectId = '') {
 
   const lastAttempt = attempts[attempts.length - 1]
   return Array.isArray(lastAttempt?.normalizedErrors) ? lastAttempt.normalizedErrors : []
+}
+
+function resolveLatestTaskRuleVersion(projectId = '') {
+  const attempts = getPublishState(projectId).latestTask?.attempts
+  if (!Array.isArray(attempts) || !attempts.length) {
+    return ''
+  }
+
+  const lastAttempt = attempts[attempts.length - 1]
+  return String(lastAttempt?.requestPayload?.platformRule?.ruleVersion || '').trim()
 }
 
 function resolveProjectManualReviewFlag(project = {}) {
@@ -801,6 +816,9 @@ function canRetryLatestPublishTask(projectId = '') {
 
             <div v-if="getPublishState(item.project.id).preview" class="project-draft-card__publish-preview">
               <div class="project-draft-card__publish-preview-summary">
+                <span v-if="resolvePublishPreviewRuleVersion(item.project.id)">
+                  规则版本：{{ resolvePublishPreviewRuleVersion(item.project.id) }}
+                </span>
                 <span v-if="resolvePublishPreviewMappedTitle(item.project.id)">
                   映射标题：{{ resolvePublishPreviewMappedTitle(item.project.id) }}
                 </span>
@@ -831,6 +849,9 @@ function canRetryLatestPublishTask(projectId = '') {
             >
               <div class="project-draft-card__publish-preview-summary">
                 <span>任务失败明细</span>
+                <span v-if="resolveLatestTaskRuleVersion(item.project.id)">
+                  规则版本：{{ resolveLatestTaskRuleVersion(item.project.id) }}
+                </span>
               </div>
 
               <ul class="project-draft-card__publish-issues">

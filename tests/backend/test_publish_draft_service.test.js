@@ -157,7 +157,8 @@ describe('publishDraftService', () => {
         platforms: [
           {
             key: 'tiktok',
-            label: 'TikTok Shop'
+            label: 'TikTok Shop',
+            ruleVersion: 'phase1-2026-06-22'
           }
         ]
       })
@@ -175,5 +176,6 @@ describe('publishDraftService', () => {
       sessionToken: 'session-1'
     })
     expect(result.platforms[0].key).toBe('tiktok')
+    expect(result.platforms[0].ruleVersion).toBe('phase1-2026-06-22')
   })
 })

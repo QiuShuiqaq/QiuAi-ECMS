@@ -9,6 +9,7 @@ export const supportedPublishPlatforms = publishPlatformOptions.map((item) => it
 export const fallbackPublishPlatformProfiles = {
   tiktok: {
     label: 'TikTok Shop',
+    ruleVersion: 'phase1-2026-06-22',
     requiredAttributes: [
       { key: 'material', label: 'Material' },
       { key: 'product_type', label: 'Product Type' }
@@ -17,6 +18,7 @@ export const fallbackPublishPlatformProfiles = {
   },
   shopee: {
     label: 'Shopee',
+    ruleVersion: 'phase1-2026-06-22',
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'condition', label: 'Condition' }
@@ -25,6 +27,7 @@ export const fallbackPublishPlatformProfiles = {
   },
   aliexpress: {
     label: 'AliExpress',
+    ruleVersion: 'phase1-2026-06-22',
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'shipping_origin', label: 'Shipping Origin' }
@@ -65,6 +68,7 @@ export function normalizePublishPlatformProfiles (platforms = []) {
         key,
         {
           label: String(item?.label || fallbackPublishPlatformProfiles[key]?.label || key).trim(),
+          ruleVersion: String(item?.ruleVersion || fallbackPublishPlatformProfiles[key]?.ruleVersion || '').trim(),
           requiredAttributes: Array.isArray(item?.requiredAttributes)
             ? item.requiredAttributes
               .map((attribute) => ({
