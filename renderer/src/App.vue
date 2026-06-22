@@ -22,6 +22,7 @@ import {
   fallbackPublishPlatformProfiles,
   isRetryNotAllowedError,
   normalizePublishPlatform,
+  normalizeProjectPublishDraft,
   normalizePublishPlatformProfiles,
   publishPlatformOptions
 } from './utils/publishContract'
@@ -771,34 +772,6 @@ function invalidateProjectPublishState(projectId = '', options = {}) {
     error: '',
     ...(clearDraftSummary ? { draftSummary: null } : {})
   })
-}
-
-function normalizeProjectPublishDraft(project = {}) {
-  const publishDraft = project.publishDraft && typeof project.publishDraft === 'object'
-    ? project.publishDraft
-    : {}
-
-  return {
-    attributes: publishDraft.attributes && typeof publishDraft.attributes === 'object'
-      ? { ...publishDraft.attributes }
-      : {},
-    variants: Array.isArray(publishDraft.variants)
-      ? publishDraft.variants.map((item) => ({ ...(item || {}) }))
-      : [],
-    platformDrafts: publishDraft.platformDrafts && typeof publishDraft.platformDrafts === 'object'
-      ? Object.fromEntries(Object.entries(publishDraft.platformDrafts).map(([platformKey, value]) => [
-          platformKey,
-          value && typeof value === 'object'
-            ? {
-                ...value,
-                attributes: value.attributes && typeof value.attributes === 'object'
-                  ? { ...value.attributes }
-                  : {}
-              }
-            : {}
-        ]))
-      : {}
-  }
 }
 
 function buildProjectPublishDraftPatchFromPreview(project = {}, preview = null, selectedPlatform = '') {

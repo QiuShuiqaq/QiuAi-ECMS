@@ -67,6 +67,7 @@ describe('App source', () => {
     expect(source).toContain("import { buildProjectGeneratorDraft, buildWorkspaceRunDraft } from './utils/generatorDraftBuilders'")
     expect(source).toContain("import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'")
     expect(source).toContain("from './utils/workspaceOutputLocators'")
+    expect(source).toContain('normalizeProjectPublishDraft,')
     expect(source).toContain("await persistDraft(menuKey, buildProjectGeneratorDraft(project, menuKey))")
     expect(source).toContain("draft: buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})")
     expect(source).toContain('const validationError = validateGeneratorTaskDraft({')
@@ -114,6 +115,7 @@ describe('App source', () => {
     expect(workbenchSource).toContain("emit('export-project'")
     expect(workbenchSource).toContain("emit('selection-query-change'")
     expect(workbenchSource).toContain("emit('selection-import'")
+    expect(workbenchSource).toContain('normalizeProjectPublishDraft,')
     expect(workbenchSource).toContain('selection-panel')
     expect(workbenchSource).toContain('selection-card')
     expect(workbenchSource).toContain('素材入口')
@@ -150,6 +152,16 @@ describe('App source', () => {
     expect(outputLocatorSource).toContain('export function resolveLatestRun(project, projectRuns = [], run = null) {')
     expect(outputLocatorSource).toContain('export function resolveImageOutputDirectory(project, latestRun) {')
     expect(outputLocatorSource).toContain('export function resolveVideoOutputDirectory(project, latestRun) {')
+  })
+
+  it('shares publish draft normalization through the publish contract helper', () => {
+    const appSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/App.vue'), 'utf8')
+    const workbenchSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/components/ProductWorkbench.vue'), 'utf8')
+    const publishContractSource = fs.readFileSync(path.resolve(process.cwd(), 'renderer/src/utils/publishContract.js'), 'utf8')
+
+    expect(publishContractSource).toContain('export function normalizeProjectPublishDraft (project = {}) {')
+    expect(appSource).not.toContain('function normalizeProjectPublishDraft(project = {}) {')
+    expect(workbenchSource).not.toContain('function normalizeProjectPublishDraft(project = {}) {')
   })
 
   it('keeps only image and video generator pages available as migration routes outside the primary navigation', () => {
