@@ -457,6 +457,25 @@ function resolvePublishPreviewRuleVersion(projectId = '') {
   return String(getPublishState(projectId).preview?.platformRule?.ruleVersion || '').trim()
 }
 
+function resolvePublishPreviewRuleAttributes(projectId = '') {
+  const attributes = getPublishState(projectId).preview?.platformRule?.requiredAttributes
+  return Array.isArray(attributes)
+    ? attributes
+      .map((item) => ({
+        key: String(item?.key || '').trim(),
+        label: String(item?.label || item?.key || '').trim()
+      }))
+      .filter((item) => item.key)
+    : []
+}
+
+function resolvePublishPreviewRuleCategoryPath(projectId = '') {
+  const value = getPublishState(projectId).preview?.platformRule?.resolvedCategoryPath
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+}
+
 function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
   return [
     issue.field || 'field',
@@ -835,6 +854,12 @@ function canRetryLatestPublishTask(projectId = '') {
               <div class="project-draft-card__publish-preview-summary">
                 <span v-if="resolvePublishPreviewRuleVersion(item.project.id)">
                   规则版本：{{ resolvePublishPreviewRuleVersion(item.project.id) }}
+                </span>
+                <span v-if="resolvePublishPreviewRuleAttributes(item.project.id).length">
+                  必填属性：{{ resolvePublishPreviewRuleAttributes(item.project.id).map((item) => item.label).join(' / ') }}
+                </span>
+                <span v-if="resolvePublishPreviewRuleCategoryPath(item.project.id).length">
+                  规则类目路径：{{ resolvePublishPreviewRuleCategoryPath(item.project.id).join(' / ') }}
                 </span>
                 <span v-if="resolvePublishPreviewMappedTitle(item.project.id)">
                   映射标题：{{ resolvePublishPreviewMappedTitle(item.project.id) }}
