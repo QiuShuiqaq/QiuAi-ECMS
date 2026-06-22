@@ -4,11 +4,23 @@ function trimString (value = '') {
   return String(value || '').trim()
 }
 
+function isRemotePublishMediaUrl (value = '') {
+  return /^https?:\/\//i.test(trimString(value))
+}
+
 function hasNonEmptyMedia (project = {}) {
   const assets = project?.assets && typeof project.assets === 'object' ? project.assets : {}
   const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
   const sourceImages = Array.isArray(assets.sourceImages) ? assets.sourceImages : []
   return generatedImages.length > 0 || sourceImages.length > 0
+}
+
+function hasRemotePublishReadyMedia (project = {}) {
+  const assets = project?.assets && typeof project.assets === 'object' ? project.assets : {}
+  const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
+  return generatedImages.some((item) => {
+    return isRemotePublishMediaUrl(item?.publishReadyUrl || item?.downloadUrl || item?.sourceUrl || '')
+  })
 }
 
 function buildLocalValidationError ({
@@ -76,6 +88,15 @@ export function validatePublishDraftBeforeRemote ({
       message: '璇峰厛涓哄綋鍓嶉」鐩ˉ鍏呰嚦灏戜竴寮犲浘鐗囩礌鏉愩€?',
       missingFields: ['media'],
       missingFieldLabels: ['Media']
+    })
+  }
+
+  if (requiresCreateFields && !hasRemotePublishReadyMedia(project)) {
+    return buildLocalValidationError({
+      title: 'Publish media is not ready',
+      message: 'At least one generated media asset needs a server-accessible publish URL before create-listing.',
+      missingFields: ['media[0].publishReadyUrl'],
+      missingFieldLabels: ['Primary Media Publish URL']
     })
   }
 

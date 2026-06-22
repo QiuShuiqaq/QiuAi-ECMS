@@ -21,7 +21,11 @@ describe('publishDraftValidation', () => {
           selectedDescription: 'Compact metal desk lamp'
         },
         assets: {
-          sourceImages: [{ id: 'image-1', path: 'F:/output/image-1.png' }]
+          generatedImages: [{
+            id: 'image-1',
+            savedPath: 'F:/output/image-1.png',
+            publishReadyUrl: 'https://cdn.qiuaihub.com/generated/image-1.png'
+          }]
         },
         publishDraft: {
           variants: [
@@ -65,7 +69,11 @@ describe('publishDraftValidation', () => {
           selectedDescription: 'Compact metal desk lamp'
         },
         assets: {
-          sourceImages: [{ id: 'image-1', path: 'F:/output/image-1.png' }]
+          generatedImages: [{
+            id: 'image-1',
+            savedPath: 'F:/output/image-1.png',
+            publishReadyUrl: 'https://cdn.qiuaihub.com/generated/image-1.png'
+          }]
         },
         publishDraft: {
           variants: [],
@@ -119,5 +127,48 @@ describe('publishDraftValidation', () => {
     })
 
     expect(result).toBeNull()
+  })
+
+  it('requires a remote publish-ready media URL before create-listing calls', async () => {
+    const { validatePublishDraftBeforeRemote } = await import('../../renderer/src/utils/publishDraftValidation.js')
+
+    const result = validatePublishDraftBeforeRemote({
+      platform: 'tiktok',
+      profile: {
+        requiredAttributes: []
+      },
+      project: {
+        name: 'Desk Lamp',
+        content: {
+          selectedTitle: 'Modern Desk Lamp',
+          selectedDescription: 'Compact metal desk lamp'
+        },
+        assets: {
+          sourceImages: [{ id: 'image-1', path: 'F:/output/image-1.png' }]
+        },
+        publishDraft: {
+          variants: [
+            {
+              sellerSkuCode: 'SKU-1',
+              priceAmount: 19.99,
+              stockQuantity: 10
+            }
+          ],
+          platformDrafts: {
+            tiktok: {
+              categoryId: 'category-1',
+              attributes: {}
+            }
+          }
+        }
+      }
+    })
+
+    expect(result).toEqual({
+      title: 'Publish media is not ready',
+      message: 'At least one generated media asset needs a server-accessible publish URL before create-listing.',
+      missingFields: ['media[0].publishReadyUrl'],
+      missingFieldLabels: ['Primary Media Publish URL']
+    })
   })
 })

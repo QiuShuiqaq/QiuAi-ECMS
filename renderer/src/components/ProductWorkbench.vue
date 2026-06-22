@@ -571,6 +571,7 @@ function registerPublishFieldRef(projectId = '', fieldKey = '') {
 function resolvePublishIssueTargetFieldKey(issue = {}) {
   const field = String(issue.field || '').trim()
   if (!field) return ''
+  if (field === 'media' || field === 'media[0]' || field === 'media[0].publishReadyUrl') return 'media'
   if (field === 'platformDraft.categoryId') return 'categoryId'
   if (field.startsWith('platformDraft.attributes.')) {
     return `attribute:${field.slice('platformDraft.attributes.'.length).trim()}`
@@ -615,6 +616,7 @@ function resolvePublishIssueFieldLabel(issue = {}) {
   if (field === 'bulletPoints') return 'Bullet Points'
   if (field === 'media') return 'Media'
   if (field === 'media[0]') return 'Primary Media'
+  if (field === 'media[0].publishReadyUrl') return 'Primary Media Publish URL'
   if (field === 'variants') return 'SKU Variants'
   if (field === 'platformDraft.categoryId') return 'Category ID'
   if (field.startsWith('platformDraft.attributes.')) {
@@ -636,6 +638,7 @@ function resolvePublishIssueSuggestedFix(issue = {}) {
   if (field === 'bulletPoints') return 'Add at least one bullet point in the product copy section.'
   if (field === 'media') return 'Add at least one image or video asset to the project.'
   if (field === 'media[0]') return 'Place an image asset first so the primary media is an image.'
+  if (field === 'media[0].publishReadyUrl') return 'Use a generated media asset that includes a server-accessible publish URL before creating the publish task.'
   if (field === 'variants') return 'Add at least one SKU variant before publishing.'
   if (field === 'platformDraft.categoryId') return 'Fill the Category ID field in the publish draft section.'
   if (field.startsWith('platformDraft.attributes.')) {
@@ -976,7 +979,12 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               </select>
             </div>
 
-            <button class="project-draft-card__media" type="button" @click="emit('replace-project-image', item.project)">
+            <button
+              class="project-draft-card__media"
+              :ref="registerPublishFieldRef(item.project.id, 'media')"
+              type="button"
+              @click="emit('replace-project-image', item.project)"
+            >
               <img
                 v-if="item.project.assets?.sourceImages?.[0]?.preview"
                 :src="item.project.assets.sourceImages[0].preview"

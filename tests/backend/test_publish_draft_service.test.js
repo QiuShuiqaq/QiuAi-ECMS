@@ -23,6 +23,7 @@ describe('publishDraftService', () => {
           {
             id: 'image-1',
             savedPath: 'F:/output/image-1.png',
+            downloadUrl: 'https://cdn.qiuaihub.com/generated/image-1.png',
             width: 1200,
             height: 1200
           }
@@ -61,6 +62,10 @@ describe('publishDraftService', () => {
       tags: ['lamp', 'desk', 'lighting']
     })
     expect(payload.media).toHaveLength(1)
+    expect(payload.media[0]).toMatchObject({
+      sourceUrl: 'https://cdn.qiuaihub.com/generated/image-1.png',
+      publishReadyUrl: 'https://cdn.qiuaihub.com/generated/image-1.png'
+    })
     expect(payload.variants).toHaveLength(1)
     expect(payload.platformDrafts.tiktok.categoryId).toBe('1001')
   })

@@ -236,7 +236,9 @@ function createWorkspaceProjectRunService({
       .map((item) => ({
         ...item,
         path: item.savedPath || item.path || '',
-        savedPath: item.savedPath || item.path || ''
+        savedPath: item.savedPath || item.path || '',
+        sourceUrl: item.sourceUrl || item.downloadUrl || '',
+        publishReadyUrl: item.publishReadyUrl || item.downloadUrl || ''
       }))
   }
 
@@ -315,7 +317,9 @@ function createWorkspaceProjectRunService({
         nextOutputs.video = {
           ...videoOutput,
           path: videoOutput.savedPath || videoOutput.path || '',
-          savedPath: videoOutput.savedPath || videoOutput.path || ''
+          savedPath: videoOutput.savedPath || videoOutput.path || '',
+          sourceUrl: videoOutput.sourceUrl || videoOutput.downloadUrl || '',
+          publishReadyUrl: videoOutput.publishReadyUrl || videoOutput.downloadUrl || ''
         }
         nextStorage.videoDirectory = nextOutputs.video.savedPath
           ? path.dirname(nextOutputs.video.savedPath)

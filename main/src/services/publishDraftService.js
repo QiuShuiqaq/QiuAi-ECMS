@@ -8,17 +8,32 @@ function normalizeStringArray (value = []) {
     : []
 }
 
+function isRemotePublishMediaUrl (value = '') {
+  return /^https?:\/\//i.test(trimString(value))
+}
+
 function normalizePublishMediaItem (item = {}, index = 0) {
-  const savedPath = trimString(item.savedPath || item.path || item.preview || '')
-  if (!savedPath) {
+  const publishReadyUrl = trimString(item.publishReadyUrl || item.downloadUrl || '')
+  const sourceUrl = trimString(item.sourceUrl || '')
+  const fallbackPath = trimString(item.savedPath || item.path || item.preview || '')
+  const resolvedPublishUrl = isRemotePublishMediaUrl(publishReadyUrl)
+    ? publishReadyUrl
+    : isRemotePublishMediaUrl(sourceUrl)
+      ? sourceUrl
+      : ''
+  const resolvedSourceUrl = isRemotePublishMediaUrl(sourceUrl)
+    ? sourceUrl
+    : resolvedPublishUrl
+
+  if (!resolvedPublishUrl && !fallbackPath) {
     return null
   }
 
   return {
     mediaType: 'IMAGE',
     sourceAssetId: trimString(item.id || ''),
-    sourceUrl: savedPath,
-    publishReadyUrl: savedPath,
+    sourceUrl: resolvedSourceUrl || fallbackPath,
+    publishReadyUrl: resolvedPublishUrl || null,
     sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : index,
     width: Number.isFinite(Number(item.width)) ? Number(item.width) : null,
     height: Number.isFinite(Number(item.height)) ? Number(item.height) : null,

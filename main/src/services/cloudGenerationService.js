@@ -263,6 +263,9 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
               model: trimString(artifact.metadata?.providerModel || item.providerModel || ''),
               savedPath: artifact.savedPath,
               path: artifact.savedPath,
+              downloadUrl: trimString(artifact.downloadUrl || ''),
+              sourceUrl: trimString(artifact.downloadUrl || ''),
+              publishReadyUrl: trimString(artifact.downloadUrl || ''),
               sourceTag: 'generated'
             }
           }
@@ -372,6 +375,9 @@ function buildVideoPayload({ draft, sessionToken }) {
                     model: trimString(videoArtifact.metadata?.providerModel || '') || trimString(draft.model || ''),
                     savedPath: videoArtifact.savedPath,
                     path: videoArtifact.savedPath,
+                    downloadUrl: trimString(videoArtifact.downloadUrl || ''),
+                    sourceUrl: trimString(videoArtifact.downloadUrl || ''),
+                    publishReadyUrl: trimString(videoArtifact.downloadUrl || ''),
                     sourceTag: 'generated',
                     duration: trimString(draft.duration || '6s'),
                     resolution: trimString(draft.resolution || '768P'),

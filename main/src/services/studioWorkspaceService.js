@@ -835,7 +835,9 @@ function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt 
     return (group.outputs || []).map((item) => ({
       ...item,
       path: item.savedPath || item.path || '',
-      savedPath: item.savedPath || item.path || ''
+      savedPath: item.savedPath || item.path || '',
+      sourceUrl: item.sourceUrl || item.downloadUrl || '',
+      publishReadyUrl: item.publishReadyUrl || item.downloadUrl || ''
     }))
   })
 
@@ -866,7 +868,9 @@ function applyVideoResultsToProject(project = {}, resultPayload = {}, updatedAt 
         ? {
             ...generatedVideo,
             path: generatedVideo.savedPath || generatedVideo.path || '',
-            savedPath: generatedVideo.savedPath || generatedVideo.path || ''
+            savedPath: generatedVideo.savedPath || generatedVideo.path || '',
+            sourceUrl: generatedVideo.sourceUrl || generatedVideo.downloadUrl || '',
+            publishReadyUrl: generatedVideo.publishReadyUrl || generatedVideo.downloadUrl || ''
           }
         : project.assets?.generatedVideo || null
     },
