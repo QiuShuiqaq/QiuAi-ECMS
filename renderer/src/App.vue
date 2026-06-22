@@ -1098,16 +1098,30 @@ function resolveSelectedPublishChannelAccount(project = {}) {
   return channelAccounts.find((item) => String(item?.id || '').trim() === selectedChannelAccountId) || null
 }
 
+function isPublishChannelAccountReadyForSubmission(account = null) {
+  if (!account || typeof account !== 'object') {
+    return true
+  }
+
+  if (typeof account.isReadyForSubmission === 'boolean') {
+    return account.isReadyForSubmission
+  }
+
+  return String(account.status || '').trim().toLowerCase() === 'active'
+}
+
 function assertPublishChannelAccountUsable(project = {}) {
   const account = resolveSelectedPublishChannelAccount(project)
   const status = String(account?.status || '').trim().toLowerCase()
 
-  if (!account || status === 'active') {
+  if (!account || isPublishChannelAccountReadyForSubmission(account)) {
     return
   }
 
   const sellerName = String(account?.sellerName || account?.sellerExternalIdMasked || account?.id || 'selected account').trim()
-  throw new Error(`Selected publish account is not usable for task submission: ${sellerName} (${status || 'unknown'}).`)
+  const readinessMessage = String(account?.readinessMessage || '').trim()
+  const readinessReason = String(account?.readinessReason || status || 'unknown').trim()
+  throw new Error(`Selected publish account is not usable for task submission: ${sellerName} (${readinessReason}).${readinessMessage ? ` ${readinessMessage}` : ''}`)
 }
 
 async function ensurePublishDraftReady(project) {

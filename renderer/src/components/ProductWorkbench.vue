@@ -216,6 +216,27 @@ function resolveSelectedChannelAccountStatus(project = {}) {
   return String(resolveSelectedChannelAccount(project)?.status || '').trim().toLowerCase()
 }
 
+function resolveSelectedChannelAccountReadiness(project = {}) {
+  const account = resolveSelectedChannelAccount(project)
+  if (!account || typeof account !== 'object') {
+    return {
+      isReadyForSubmission: true,
+      readinessReason: '',
+      readinessMessage: ''
+    }
+  }
+
+  const explicitReady = typeof account.isReadyForSubmission === 'boolean'
+    ? account.isReadyForSubmission
+    : resolveSelectedChannelAccountStatus(project) === 'active'
+
+  return {
+    isReadyForSubmission: explicitReady,
+    readinessReason: String(account.readinessReason || '').trim(),
+    readinessMessage: String(account.readinessMessage || '').trim()
+  }
+}
+
 function resolveSelectedChannelAccountStatusLabel(project = {}) {
   const status = resolveSelectedChannelAccountStatus(project)
   if (status === 'active') return 'Active'
@@ -226,7 +247,7 @@ function resolveSelectedChannelAccountStatusLabel(project = {}) {
 }
 
 function isSelectedChannelAccountUsable(project = {}) {
-  return resolveSelectedChannelAccountStatus(project) === 'active'
+  return resolveSelectedChannelAccountReadiness(project).isReadyForSubmission
 }
 
 function hasServerPublishConfig(project = {}) {
@@ -833,6 +854,12 @@ function canRetryLatestPublishTask(projectId = '') {
               <span>Account Status: {{ resolveSelectedChannelAccountStatusLabel(item.project) }}</span>
               <span v-if="resolveSelectedChannelAccount(item.project)?.lastValidatedAt">
                 Last Validated: {{ resolveSelectedChannelAccount(item.project).lastValidatedAt }}
+              </span>
+              <span v-if="!resolveSelectedChannelAccountReadiness(item.project).isReadyForSubmission">
+                Submission Readiness: {{ resolveSelectedChannelAccountReadiness(item.project).readinessReason || 'NOT_READY' }}
+              </span>
+              <span v-if="resolveSelectedChannelAccountReadiness(item.project).readinessMessage">
+                {{ resolveSelectedChannelAccountReadiness(item.project).readinessMessage }}
               </span>
             </div>
 
