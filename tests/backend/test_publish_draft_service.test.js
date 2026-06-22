@@ -229,7 +229,22 @@ describe('publishDraftService', () => {
           recommendedIntervalMs: 15000,
           minIntervalMs: 5000,
           reason: 'RUNNING'
-        }
+        },
+        attempts: [
+          {
+            id: 'attempt-1',
+            attemptNumber: 1,
+            requestSummary: {
+              executionMode: 'official',
+              ruleVersion: 'phase1-2026-06-22'
+            },
+            responseSummary: {
+              executionMode: 'official',
+              remoteReviewStatus: 'UNDER_REVIEW'
+            },
+            normalizedErrors: []
+          }
+        ]
       }),
       retryPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
@@ -280,6 +295,8 @@ describe('publishDraftService', () => {
     expect(createdTask.pollingAdvice.recommendedIntervalMs).toBe(15000)
     expect(loadedTask.status).toBe('running')
     expect(loadedTask.pollingAdvice.reason).toBe('RUNNING')
+    expect(loadedTask.attempts[0].requestSummary.ruleVersion).toBe('phase1-2026-06-22')
+    expect(loadedTask.attempts[0].responseSummary.remoteReviewStatus).toBe('UNDER_REVIEW')
     expect(retriedTask.status).toBe('queued')
     expect(retriedTask.pollingAdvice.minIntervalMs).toBe(5000)
   })

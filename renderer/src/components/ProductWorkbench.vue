@@ -540,7 +540,11 @@ function resolveLatestTaskRuleVersion(projectId = '') {
   }
 
   const lastAttempt = attempts[attempts.length - 1]
-  return String(lastAttempt?.requestPayload?.platformRule?.ruleVersion || '').trim()
+  return String(
+    lastAttempt?.requestSummary?.ruleVersion ||
+    lastAttempt?.requestPayload?.platformRule?.ruleVersion ||
+    ''
+  ).trim()
 }
 
 function resolveLatestTaskExecutionMode(projectId = '') {
@@ -564,7 +568,18 @@ function resolveLatestTaskRemoteListingId(projectId = '') {
 }
 
 function resolveLatestTaskRemoteReviewStatus(projectId = '') {
-  return String(getPublishState(projectId).latestTask?.remoteReviewStatus || '').trim()
+  const latestTask = getPublishState(projectId).latestTask
+  const attempts = latestTask?.attempts
+  const lastAttempt = Array.isArray(attempts) && attempts.length
+    ? attempts[attempts.length - 1]
+    : null
+
+  return String(
+    latestTask?.remoteReviewStatus ||
+    lastAttempt?.responseSummary?.remoteReviewStatus ||
+    lastAttempt?.responsePayload?.remoteReviewStatus ||
+    ''
+  ).trim()
 }
 
 function resolveLatestTaskOutcome(projectId = '') {

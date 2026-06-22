@@ -63,6 +63,8 @@ describe('component sources', () => {
     expect(workbenchSource).toContain('resolveLatestTaskPollingAdvice')
     expect(workbenchSource).toContain('resolveLatestTaskPollingIntervalLabel')
     expect(workbenchSource).toContain('resolveLatestTaskPollingAdviceText')
+    expect(workbenchSource).toContain('lastAttempt?.requestSummary?.ruleVersion')
+    expect(workbenchSource).toContain('lastAttempt?.responseSummary?.remoteReviewStatus')
     expect(workbenchSource).toContain('resolveSelectedChannelAccountStatusLabel')
     expect(workbenchSource).toContain('isSelectedChannelAccountUsable')
     expect(workbenchSource).toContain('Account Status:')
