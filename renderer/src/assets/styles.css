@@ -480,6 +480,28 @@ select optgroup {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.project-draft-card__publish-editor {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.project-draft-card__publish-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.project-draft-card__publish-editor-header strong {
+  color: #f5efff;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .project-draft-card__publish-preview-summary {
   display: flex;
   flex-wrap: wrap;
@@ -598,6 +620,17 @@ select optgroup {
 .project-task-card__field textarea {
   min-height: 88px;
   resize: vertical;
+}
+
+.project-task-card__field--checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-task-card__field--checkbox input {
+  width: auto;
+  margin: 0;
 }
 
 .project-draft-card__media img {

@@ -91,6 +91,33 @@ const selectionBoardOptions = [
   { label: '大卖新品', value: 'big-sale-new' }
 ]
 
+const publishPlatformProfiles = {
+  tiktok: {
+    label: 'TikTok Shop',
+    requiredAttributes: [
+      { key: 'material', label: 'Material' },
+      { key: 'product_type', label: 'Product Type' }
+    ],
+    manualReviewAttributeKey: 'tiktokManualReviewRequired'
+  },
+  shopee: {
+    label: 'Shopee',
+    requiredAttributes: [
+      { key: 'brand', label: 'Brand' },
+      { key: 'condition', label: 'Condition' }
+    ],
+    manualReviewAttributeKey: 'shopeeManualReviewRequired'
+  },
+  aliexpress: {
+    label: 'AliExpress',
+    requiredAttributes: [
+      { key: 'brand', label: 'Brand' },
+      { key: 'shipping_origin', label: 'Shipping Origin' }
+    ],
+    manualReviewAttributeKey: 'aliexpressManualReviewRequired'
+  }
+}
+
 const expandedProjectIds = ref(new Set())
 const expandedResultIds = ref(new Set())
 const hasInitializedProjectExpansion = ref(false)
@@ -185,6 +212,148 @@ function updateProjectGenerationConfig(project, patch) {
         }
       }
     }
+  })
+}
+
+function normalizeProjectPublishDraft(project = {}) {
+  const publishDraft = project.publishDraft && typeof project.publishDraft === 'object'
+    ? project.publishDraft
+    : {}
+
+  return {
+    attributes: publishDraft.attributes && typeof publishDraft.attributes === 'object'
+      ? { ...publishDraft.attributes }
+      : {},
+    variants: Array.isArray(publishDraft.variants)
+      ? publishDraft.variants.map((item) => ({ ...(item || {}) }))
+      : [],
+    platformDrafts: publishDraft.platformDrafts && typeof publishDraft.platformDrafts === 'object'
+      ? Object.fromEntries(Object.entries(publishDraft.platformDrafts).map(([platformKey, value]) => [
+          platformKey,
+          value && typeof value === 'object' ? { ...value } : {}
+        ]))
+      : {}
+  }
+}
+
+function resolveProjectPublishPlatform(project = {}) {
+  return String(getPublishState(project.id).selectedPlatform || project.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+}
+
+function resolveProjectPublishPlatformProfile(project = {}) {
+  return publishPlatformProfiles[resolveProjectPublishPlatform(project)] || {
+    label: 'Platform',
+    requiredAttributes: [],
+    manualReviewAttributeKey: ''
+  }
+}
+
+function resolveProjectPlatformDraft(project = {}) {
+  const platform = resolveProjectPublishPlatform(project)
+  const publishDraft = normalizeProjectPublishDraft(project)
+  const platformDraft = publishDraft.platformDrafts[platform]
+  return platformDraft && typeof platformDraft === 'object' ? platformDraft : {}
+}
+
+function resolveProjectPlatformDraftCategoryId(project = {}) {
+  return String(resolveProjectPlatformDraft(project).categoryId || '').trim()
+}
+
+function resolveProjectPlatformDraftAttribute(project = {}, key = '') {
+  return String(resolveProjectPlatformDraft(project).attributes?.[key] || '').trim()
+}
+
+function resolveProjectPublishVariant(project = {}, index = 0) {
+  const publishDraft = normalizeProjectPublishDraft(project)
+  return publishDraft.variants[index] && typeof publishDraft.variants[index] === 'object'
+    ? publishDraft.variants[index]
+    : {}
+}
+
+function updateProjectPublishDraft(project, patch = {}) {
+  const current = normalizeProjectPublishDraft(project)
+  const patchPlatformDrafts = patch.platformDrafts && typeof patch.platformDrafts === 'object'
+    ? patch.platformDrafts
+    : {}
+  const nextPlatformDrafts = {
+    ...current.platformDrafts
+  }
+
+  Object.entries(patchPlatformDrafts).forEach(([platformKey, value]) => {
+    const currentPlatformDraft = current.platformDrafts[platformKey] && typeof current.platformDrafts[platformKey] === 'object'
+      ? current.platformDrafts[platformKey]
+      : {}
+    const patchPlatformDraft = value && typeof value === 'object' ? value : {}
+
+    nextPlatformDrafts[platformKey] = {
+      ...currentPlatformDraft,
+      ...patchPlatformDraft,
+      attributes: {
+        ...(currentPlatformDraft.attributes && typeof currentPlatformDraft.attributes === 'object' ? currentPlatformDraft.attributes : {}),
+        ...(patchPlatformDraft.attributes && typeof patchPlatformDraft.attributes === 'object' ? patchPlatformDraft.attributes : {})
+      }
+    }
+  })
+
+  emit('update-project', {
+    projectId: project.id,
+    patch: {
+      publishDraft: {
+        ...current,
+        ...patch,
+        attributes: {
+          ...current.attributes,
+          ...(patch.attributes && typeof patch.attributes === 'object' ? patch.attributes : {})
+        },
+        variants: Array.isArray(patch.variants) ? patch.variants : current.variants,
+        platformDrafts: nextPlatformDrafts
+      }
+    }
+  })
+}
+
+function updateProjectPlatformDraftField(project, field, value) {
+  const platform = resolveProjectPublishPlatform(project)
+  updateProjectPublishDraft(project, {
+    platformDrafts: {
+      [platform]: {
+        [field]: value
+      }
+    }
+  })
+}
+
+function updateProjectPlatformDraftAttribute(project, key, value) {
+  const platform = resolveProjectPublishPlatform(project)
+  updateProjectPublishDraft(project, {
+    platformDrafts: {
+      [platform]: {
+        attributes: {
+          [key]: value
+        }
+      }
+    }
+  })
+}
+
+function updateProjectPublishVariantField(project, index, field, value) {
+  const current = normalizeProjectPublishDraft(project)
+  const nextVariants = current.variants.slice()
+  while (nextVariants.length <= index) {
+    nextVariants.push({
+      sellerSkuCode: '',
+      variant: {},
+      stockQuantity: 0
+    })
+  }
+
+  nextVariants[index] = {
+    ...(nextVariants[index] || {}),
+    [field]: value
+  }
+
+  updateProjectPublishDraft(project, {
+    variants: nextVariants
   })
 }
 
@@ -317,6 +486,16 @@ function resolveLatestTaskAttemptIssues(projectId = '') {
 
   const lastAttempt = attempts[attempts.length - 1]
   return Array.isArray(lastAttempt?.normalizedErrors) ? lastAttempt.normalizedErrors : []
+}
+
+function resolveProjectManualReviewFlag(project = {}) {
+  const profile = resolveProjectPublishPlatformProfile(project)
+  const key = String(profile.manualReviewAttributeKey || '').trim()
+  if (!key) {
+    return false
+  }
+
+  return resolveProjectPlatformDraft(project).attributes?.[key] === true
 }
 
 function getPublishState(projectId = '') {
@@ -490,6 +669,91 @@ function getPublishState(projectId = '') {
                   </option>
                 </select>
               </label>
+            </div>
+
+            <div
+              v-if="['tiktok', 'shopee', 'aliexpress'].includes(resolveProjectPublishPlatform(item.project))"
+              class="project-draft-card__publish-editor"
+            >
+              <div class="project-draft-card__publish-editor-header">
+                <strong>{{ resolveProjectPublishPlatformProfile(item.project).label }} Publish Draft</strong>
+              </div>
+
+              <div class="project-task-card__config-grid">
+                <label class="project-task-card__field project-task-card__field--full">
+                  <span>Category ID</span>
+                  <input
+                    :value="resolveProjectPlatformDraftCategoryId(item.project)"
+                    type="text"
+                    placeholder="platform category id"
+                    @input="updateProjectPlatformDraftField(item.project, 'categoryId', $event.target.value)"
+                  >
+                </label>
+
+                <label
+                  v-for="attribute in resolveProjectPublishPlatformProfile(item.project).requiredAttributes"
+                  :key="`${item.project.id}-publish-attribute-${attribute.key}`"
+                  class="project-task-card__field"
+                >
+                  <span>{{ attribute.label }}</span>
+                  <input
+                    :value="resolveProjectPlatformDraftAttribute(item.project, attribute.key)"
+                    type="text"
+                    :placeholder="attribute.key"
+                    @input="updateProjectPlatformDraftAttribute(item.project, attribute.key, $event.target.value)"
+                  >
+                </label>
+
+                <label class="project-task-card__field project-task-card__field--full project-task-card__field--checkbox">
+                  <input
+                    :checked="resolveProjectManualReviewFlag(item.project)"
+                    type="checkbox"
+                    @change="updateProjectPlatformDraftAttribute(item.project, resolveProjectPublishPlatformProfile(item.project).manualReviewAttributeKey, $event.target.checked)"
+                  >
+                  <span>Manual Review Required</span>
+                </label>
+              </div>
+
+              <div class="project-task-card__config-grid">
+                <label class="project-task-card__field">
+                  <span>Seller SKU</span>
+                  <input
+                    :value="resolveProjectPublishVariant(item.project, 0).sellerSkuCode || ''"
+                    type="text"
+                    placeholder="SKU-001"
+                    @input="updateProjectPublishVariantField(item.project, 0, 'sellerSkuCode', $event.target.value)"
+                  >
+                </label>
+                <label class="project-task-card__field">
+                  <span>Price</span>
+                  <input
+                    :value="resolveProjectPublishVariant(item.project, 0).priceAmount ?? ''"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    @input="updateProjectPublishVariantField(item.project, 0, 'priceAmount', $event.target.value === '' ? null : Number($event.target.value))"
+                  >
+                </label>
+                <label class="project-task-card__field">
+                  <span>Stock</span>
+                  <input
+                    :value="resolveProjectPublishVariant(item.project, 0).stockQuantity ?? 0"
+                    type="number"
+                    min="0"
+                    step="1"
+                    @input="updateProjectPublishVariantField(item.project, 0, 'stockQuantity', Number($event.target.value) || 0)"
+                  >
+                </label>
+                <label class="project-task-card__field">
+                  <span>Barcode</span>
+                  <input
+                    :value="resolveProjectPublishVariant(item.project, 0).barcode || ''"
+                    type="text"
+                    placeholder="optional"
+                    @input="updateProjectPublishVariantField(item.project, 0, 'barcode', $event.target.value)"
+                  >
+                </label>
+              </div>
             </div>
 
             <div class="project-draft-card__flow-actions">
