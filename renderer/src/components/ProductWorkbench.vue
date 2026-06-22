@@ -1633,9 +1633,17 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               <span class="product-result-card__detail-label">标题</span>
               <button class="product-result-card__copy" type="button" @click="emit('copy-text', resolveProjectCurrentTitle(item.project, item.latestRun))">{{ resolveTextPreview(resolveProjectCurrentTitle(item.project, item.latestRun), '点击复制') }}</button>
             </div>
+            <div class="product-result-card__detail-row">
+              <span class="product-result-card__detail-label">标题来源</span>
+              <strong>{{ resolveResultLandingRunLabel(item.project, 'titleRunId') }}</strong>
+            </div>
             <div class="product-result-card__detail-row product-result-card__detail-row--copy">
               <span class="product-result-card__detail-label">描述</span>
               <button class="product-result-card__copy" type="button" @click="emit('copy-text', resolveProjectCurrentDescription(item.project, item.latestRun))">{{ resolveTextPreview(resolveProjectCurrentDescription(item.project, item.latestRun), '点击复制') }}</button>
+            </div>
+            <div class="product-result-card__detail-row">
+              <span class="product-result-card__detail-label">描述来源</span>
+              <strong>{{ resolveResultLandingRunLabel(item.project, 'descriptionRunId') }}</strong>
             </div>
             <div class="product-result-card__detail-row">
               <span class="product-result-card__detail-label">套图</span>
@@ -1645,11 +1653,19 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               </div>
             </div>
             <div class="product-result-card__detail-row">
+              <span class="product-result-card__detail-label">图片采用</span>
+              <strong>{{ resolveProjectMediaLandingLabel(item.project, 'imageRunId') }}</strong>
+            </div>
+            <div class="product-result-card__detail-row">
               <span class="product-result-card__detail-label">视频</span>
               <div class="product-result-card__inline-actions">
                 <button class="secondary-action" type="button" @click="openResource(resolveProjectCurrentVideo(item.project, item.latestRun)?.savedPath)">预览</button>
                 <button class="secondary-action" type="button" @click="emit('open-video', { project: item.project, run: resolveProjectRunById(resolveResultLanding(item.project).videoRunId) || item.latestRun })">打开位置</button>
               </div>
+            </div>
+            <div class="product-result-card__detail-row">
+              <span class="product-result-card__detail-label">视频采用</span>
+              <strong>{{ resolveProjectMediaLandingLabel(item.project, 'videoRunId') }}</strong>
             </div>
             <div class="product-result-card__detail-row">
               <span class="product-result-card__detail-label">项目</span>
