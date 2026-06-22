@@ -559,6 +559,57 @@ function resolveLatestTaskOutcome(projectId = '') {
   return String(attempts[attempts.length - 1]?.outcome || '').trim()
 }
 
+function resolveLatestTaskPollingAdvice(projectId = '') {
+  const advice = getPublishState(projectId).latestTask?.pollingAdvice
+  return advice && typeof advice === 'object' ? advice : null
+}
+
+function resolveLatestTaskPollingIntervalLabel(projectId = '') {
+  const advice = resolveLatestTaskPollingAdvice(projectId)
+  const recommendedIntervalMs = Number(advice?.recommendedIntervalMs)
+  if (!Number.isFinite(recommendedIntervalMs) || recommendedIntervalMs <= 0) {
+    return ''
+  }
+
+  if (recommendedIntervalMs >= 60000) {
+    const minutes = Math.round(recommendedIntervalMs / 60000)
+    return `${minutes} min`
+  }
+
+  const seconds = Math.round(recommendedIntervalMs / 1000)
+  return `${seconds} s`
+}
+
+function resolveLatestTaskPollingAdviceText(projectId = '') {
+  const advice = resolveLatestTaskPollingAdvice(projectId)
+  const reason = String(advice?.reason || '').trim().toUpperCase()
+  const intervalLabel = resolveLatestTaskPollingIntervalLabel(projectId)
+
+  if (reason === 'PLATFORM_REVIEW') {
+    return intervalLabel
+      ? `平台审核中，建议 ${intervalLabel} 后自动同步，必要时可手动刷新。`
+      : '平台审核中，建议稍后再同步。'
+  }
+
+  if (reason === 'QUEUED') {
+    return intervalLabel
+      ? `任务已入队，客户端将按约 ${intervalLabel} 节奏自动刷新。`
+      : '任务已入队，客户端将自动刷新状态。'
+  }
+
+  if (reason === 'RUNNING') {
+    return intervalLabel
+      ? `任务执行中，客户端将按约 ${intervalLabel} 节奏自动刷新。`
+      : '任务执行中，客户端将自动刷新状态。'
+  }
+
+  if (reason === 'TERMINAL') {
+    return '任务已结束自动轮询，可按需手动刷新查看最终状态。'
+  }
+
+  return ''
+}
+
 function resolveProjectManualReviewFlag(project = {}) {
   const profile = resolveProjectPublishPlatformProfile(project)
   const key = String(profile.manualReviewAttributeKey || '').trim()
@@ -889,7 +940,15 @@ function canRetryLatestPublishTask(projectId = '') {
               <span v-if="resolveLatestTaskOutcome(item.project.id)">Attempt Outcome: {{ resolveLatestTaskOutcome(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteListingId(item.project.id)">Remote Listing ID: {{ resolveLatestTaskRemoteListingId(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteReviewStatus(item.project.id)">Review Status: {{ resolveLatestTaskRemoteReviewStatus(item.project.id) }}</span>
+              <span v-if="resolveLatestTaskPollingIntervalLabel(item.project.id)">Polling Advice: {{ resolveLatestTaskPollingIntervalLabel(item.project.id) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.lastErrorMessage">失败原因: {{ getPublishState(item.project.id).latestTask.lastErrorMessage }}</span>
+            </div>
+
+            <div
+              v-if="resolveLatestTaskPollingAdviceText(item.project.id)"
+              class="project-draft-card__meta"
+            >
+              <span>{{ resolveLatestTaskPollingAdviceText(item.project.id) }}</span>
             </div>
 
             <div v-if="getPublishState(item.project.id).preview || getPublishState(item.project.id).error" class="project-draft-card__meta">
