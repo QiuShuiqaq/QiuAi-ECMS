@@ -718,7 +718,9 @@ async function handleReplaceProjectImage(project) {
         }
       }
     })
-    invalidateProjectPublishState(project.id)
+    invalidateProjectPublishState(project.id, {
+      markDraftSummaryStale: true
+    })
     await loadStudioSnapshot()
   } catch (error) {
     showActionFeedback({
@@ -735,7 +737,11 @@ async function handleProjectUpdate({ projectId, patch }) {
       projectId,
       patch
     })
-    invalidateProjectPublishState(projectId)
+    const affectsPublishDraft = doesPatchAffectPublishDraft(patch)
+    invalidateProjectPublishState(projectId, {
+      clearDraftSummary: affectsPublishDraft ? false : true,
+      markDraftSummaryStale: affectsPublishDraft
+    })
     await loadStudioSnapshot()
   } catch (error) {
     showActionFeedback({
@@ -821,7 +827,9 @@ async function handleSelectionImport({ item, mode }) {
         patch
       })
       nextProjectId = updatedProject?.id || activeProductProjectId.value
-      invalidateProjectPublishState(nextProjectId)
+      invalidateProjectPublishState(nextProjectId, {
+        markDraftSummaryStale: true
+      })
     } else {
       const createdProject = await createStudioProject({
         productName: detail.title || '',
@@ -992,6 +1000,26 @@ function buildLocalPublishValidationMessage(validationError = null) {
   return `${message} Missing Fields: ${missingFieldLabels.join(', ')}`
 }
 
+function buildPublishDraftSummaryStaleMessage() {
+  return 'Publish draft summary is outdated. Sync publish draft again to refresh readiness.'
+}
+
+function doesPatchAffectPublishDraft(patch = {}) {
+  if (!patch || typeof patch !== 'object') {
+    return false
+  }
+
+  return [
+    'name',
+    'platformTarget',
+    'baseInfo',
+    'content',
+    'assets',
+    'publishDraft',
+    'metadata'
+  ].some((key) => Object.prototype.hasOwnProperty.call(patch, key))
+}
+
 function patchProjectPublishState(projectId, patch = {}) {
   const currentState = publishState.value[projectId] || {}
   publishState.value = {
@@ -1004,6 +1032,30 @@ function patchProjectPublishState(projectId, patch = {}) {
   return publishState.value[projectId]
 }
 
+function markProjectPublishDraftSummaryStale(projectId = '', message = buildPublishDraftSummaryStaleMessage()) {
+  const normalizedProjectId = String(projectId || '').trim()
+  if (!normalizedProjectId) {
+    return null
+  }
+
+  const currentState = publishState.value[normalizedProjectId] || {}
+  const currentDraftSummary = currentState.draftSummary && typeof currentState.draftSummary === 'object'
+    ? currentState.draftSummary
+    : null
+
+  if (!currentDraftSummary) {
+    return currentState
+  }
+
+  return patchProjectPublishState(normalizedProjectId, {
+    draftSummary: {
+      ...currentDraftSummary,
+      isStale: true,
+      staleMessage: String(message || '').trim() || buildPublishDraftSummaryStaleMessage()
+    }
+  })
+}
+
 function invalidateProjectPublishState(projectId = '', options = {}) {
   const normalizedProjectId = String(projectId || '').trim()
   if (!normalizedProjectId) {
@@ -1011,11 +1063,27 @@ function invalidateProjectPublishState(projectId = '', options = {}) {
   }
 
   const clearDraftSummary = options.clearDraftSummary !== false
+  const markDraftSummaryStale = options.markDraftSummaryStale === true
+  const staleMessage = String(options.staleMessage || '').trim()
+  const currentState = publishState.value[normalizedProjectId] || {}
+  const currentDraftSummary = currentState.draftSummary && typeof currentState.draftSummary === 'object'
+    ? currentState.draftSummary
+    : null
   return patchProjectPublishState(normalizedProjectId, {
     preview: null,
     latestTask: null,
     error: '',
-    ...(clearDraftSummary ? { draftSummary: null } : {})
+    ...(clearDraftSummary
+      ? { draftSummary: null }
+      : markDraftSummaryStale && currentDraftSummary
+        ? {
+            draftSummary: {
+              ...currentDraftSummary,
+              isStale: true,
+              staleMessage: staleMessage || buildPublishDraftSummaryStaleMessage()
+            }
+          }
+        : {})
   })
 }
 

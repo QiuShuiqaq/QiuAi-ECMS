@@ -818,6 +818,7 @@ function canRetryLatestPublishTask(projectId = '') {
 }
 
 function resolveDraftReadiness(projectId = '') {
+  const draftSummary = getPublishState(projectId).draftSummary
   const draftReadiness = getPublishState(projectId).draftSummary?.draftReadiness
   if (!draftReadiness || typeof draftReadiness !== 'object') {
     return null
@@ -825,6 +826,8 @@ function resolveDraftReadiness(projectId = '') {
 
   return {
     isReady: draftReadiness.isReady === true,
+    isStale: draftSummary?.isStale === true,
+    staleMessage: String(draftSummary?.staleMessage || '').trim(),
     message: String(draftReadiness.message || '').trim(),
     missingFieldLabels: Array.isArray(draftReadiness.missingFieldLabels)
       ? draftReadiness.missingFieldLabels.map((item) => String(item || '').trim()).filter(Boolean)
@@ -838,6 +841,10 @@ function resolveDraftReadinessLabel(projectId = '') {
     return ''
   }
 
+  if (readiness.isStale) {
+    return 'Draft Readiness: STALE'
+  }
+
   return readiness.isReady ? 'Draft Readiness: READY' : 'Draft Readiness: INCOMPLETE'
 }
 
@@ -848,6 +855,15 @@ function resolveDraftReadinessMissingLabel(projectId = '') {
   }
 
   return `Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
+}
+
+function resolveDraftReadinessStaleMessage(projectId = '') {
+  const readiness = resolveDraftReadiness(projectId)
+  if (!readiness?.isStale) {
+    return ''
+  }
+
+  return readiness.staleMessage || 'Publish draft summary is outdated.'
 }
 
 function resolvePlatformDraftReadiness(project = {}) {
@@ -1231,6 +1247,13 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
             >
               <span v-if="resolveDraftReadiness(item.project.id)?.message">{{ resolveDraftReadiness(item.project.id).message }}</span>
               <span v-if="resolveDraftReadinessMissingLabel(item.project.id)">{{ resolveDraftReadinessMissingLabel(item.project.id) }}</span>
+            </div>
+
+            <div
+              v-if="resolveDraftReadinessStaleMessage(item.project.id)"
+              class="project-draft-card__meta"
+            >
+              <span>{{ resolveDraftReadinessStaleMessage(item.project.id) }}</span>
             </div>
 
             <div
