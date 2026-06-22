@@ -115,6 +115,8 @@ describe('App source', () => {
     expect(source).toContain('const publishDraftPatch = buildProjectPublishDraftPatchFromPreview(')
     expect(source).toContain("const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, 'create-listing')")
     expect(source).toContain('const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, operationType)')
+    expect(source).toContain('function buildLocalPublishValidationMessage(validationError = null) {')
+    expect(source).toContain("Missing Fields: ${missingFieldLabels.join(', ')}")
     expect(source).toContain("title: localValidationError.title")
     expect(source).toContain('await updateStudioProject({')
     expect(source).toContain('const operationType = resolveProjectPublishTaskOperation(project)')

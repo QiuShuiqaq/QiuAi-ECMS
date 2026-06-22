@@ -979,6 +979,19 @@ function validateProjectPublishDraftBeforeRemote(project = {}, selectedPlatform 
   })
 }
 
+function buildLocalPublishValidationMessage(validationError = null) {
+  const message = String(validationError?.message || '').trim()
+  const missingFieldLabels = Array.isArray(validationError?.missingFieldLabels)
+    ? validationError.missingFieldLabels.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
+  if (!missingFieldLabels.length) {
+    return message
+  }
+
+  return `${message} Missing Fields: ${missingFieldLabels.join(', ')}`
+}
+
 function patchProjectPublishState(projectId, patch = {}) {
   const currentState = publishState.value[projectId] || {}
   publishState.value = {
@@ -1274,14 +1287,15 @@ async function handlePublishPreview(project) {
     const { selectedPlatform, profile } = assertProjectPublishPlatformReady(project)
     const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, 'create-listing')
     if (localValidationError) {
+      const localValidationMessage = buildLocalPublishValidationMessage(localValidationError)
       patchProjectPublishState(project.id, {
         isPreviewLoading: false,
-        error: localValidationError.message
+        error: localValidationMessage
       })
       return showActionFeedback({
         type: 'error',
         title: localValidationError.title,
-        message: localValidationError.message
+        message: localValidationMessage
       })
     }
     const draftId = await ensurePublishDraftReady(project)
@@ -1344,14 +1358,15 @@ async function handlePublishCreateTask(project) {
     const { selectedPlatform, profile } = assertProjectPublishPlatformReady(project, operationType)
     const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, operationType)
     if (localValidationError) {
+      const localValidationMessage = buildLocalPublishValidationMessage(localValidationError)
       patchProjectPublishState(project.id, {
         isTaskLoading: false,
-        error: localValidationError.message
+        error: localValidationMessage
       })
       return showActionFeedback({
         type: 'error',
         title: localValidationError.title,
-        message: localValidationError.message
+        message: localValidationMessage
       })
     }
     const draftId = await ensurePublishDraftReady(project)

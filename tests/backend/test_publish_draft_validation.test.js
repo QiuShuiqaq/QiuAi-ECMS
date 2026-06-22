@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 describe('publishDraftValidation', () => {
-  it('requires category id before remote publish calls', async () => {
+  it('requires category id before remote publish calls and returns aligned missing field metadata', async () => {
     const { validatePublishDraftBeforeRemote } = await import('../../renderer/src/utils/publishDraftValidation.js')
 
     const result = validatePublishDraftBeforeRemote({
@@ -43,8 +43,47 @@ describe('publishDraftValidation', () => {
     })
 
     expect(result).toEqual({
-      title: '类目未填写',
-      message: '请先填写 Category ID，再进行发布预览或创建任务。'
+      title: '绫荤洰鏈～鍐?',
+      message: '璇峰厛濉啓 Category ID锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      missingFields: ['platformDraft.categoryId'],
+      missingFieldLabels: ['Category ID']
+    })
+  })
+
+  it('requires a variant before create-listing style remote calls', async () => {
+    const { validatePublishDraftBeforeRemote } = await import('../../renderer/src/utils/publishDraftValidation.js')
+
+    const result = validatePublishDraftBeforeRemote({
+      platform: 'tiktok',
+      profile: {
+        requiredAttributes: []
+      },
+      project: {
+        name: 'Desk Lamp',
+        content: {
+          selectedTitle: 'Modern Desk Lamp',
+          selectedDescription: 'Compact metal desk lamp'
+        },
+        assets: {
+          sourceImages: [{ id: 'image-1', path: 'F:/output/image-1.png' }]
+        },
+        publishDraft: {
+          variants: [],
+          platformDrafts: {
+            tiktok: {
+              categoryId: 'category-1',
+              attributes: {}
+            }
+          }
+        }
+      }
+    })
+
+    expect(result).toEqual({
+      title: 'SKU 鏈～鍐?',
+      message: '璇峰厛涓哄綋鍓嶅彂甯冭崏绋垮姞鍏ヨ嚦灏戜竴涓?SKU锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      missingFields: ['variants'],
+      missingFieldLabels: ['Variants']
     })
   })
 
