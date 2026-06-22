@@ -904,12 +904,21 @@ async function handlePublishCreateTask(project) {
   try {
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
-    const task = await createPublishTask({
+    const createdTask = await createPublishTask({
       draftId,
       platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu',
       channelAccountId,
       operationType: 'create-listing'
     })
+    let task = createdTask
+
+    try {
+      task = await getPublishTask({
+        id: createdTask.id
+      })
+    } catch {
+      task = createdTask
+    }
 
     patchProjectPublishState(project.id, {
       latestTask: task,

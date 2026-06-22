@@ -309,6 +309,16 @@ function resolvePublishPreviewIssueLabel(issue = {}) {
   return prefix ? `${prefix}: ${message || 'Unknown issue'}` : (message || 'Unknown issue')
 }
 
+function resolveLatestTaskAttemptIssues(projectId = '') {
+  const attempts = getPublishState(projectId).latestTask?.attempts
+  if (!Array.isArray(attempts) || !attempts.length) {
+    return []
+  }
+
+  const lastAttempt = attempts[attempts.length - 1]
+  return Array.isArray(lastAttempt?.normalizedErrors) ? lastAttempt.normalizedErrors : []
+}
+
 function getPublishState(projectId = '') {
   const state = props.publishState && typeof props.publishState === 'object'
     ? props.publishState[projectId]
@@ -521,6 +531,7 @@ function getPublishState(projectId = '') {
               <span v-if="getPublishState(item.project.id).draftSummary?.id">草稿ID: {{ getPublishState(item.project.id).draftSummary.id }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.status">任务状态: {{ resolvePublishStatusLabel(getPublishState(item.project.id).latestTask.status) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.platformLabel">{{ getPublishState(item.project.id).latestTask.platformLabel }}</span>
+              <span v-if="getPublishState(item.project.id).latestTask?.lastErrorMessage">失败原因: {{ getPublishState(item.project.id).latestTask.lastErrorMessage }}</span>
             </div>
 
             <div v-if="getPublishState(item.project.id).preview || getPublishState(item.project.id).error" class="project-draft-card__meta">
@@ -549,6 +560,24 @@ function getPublishState(projectId = '') {
               >
                 <li
                   v-for="(issue, index) in resolvePublishPreviewIssues(item.project.id)"
+                  :key="resolvePublishPreviewIssueKey(issue, index)"
+                >
+                  {{ resolvePublishPreviewIssueLabel(issue) }}
+                </li>
+              </ul>
+            </div>
+
+            <div
+              v-if="resolveLatestTaskAttemptIssues(item.project.id).length"
+              class="project-draft-card__publish-preview"
+            >
+              <div class="project-draft-card__publish-preview-summary">
+                <span>任务失败明细</span>
+              </div>
+
+              <ul class="project-draft-card__publish-issues">
+                <li
+                  v-for="(issue, index) in resolveLatestTaskAttemptIssues(item.project.id)"
                   :key="resolvePublishPreviewIssueKey(issue, index)"
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
