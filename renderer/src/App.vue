@@ -1188,6 +1188,9 @@ async function ensurePublishDraftReady(project) {
       status: draft.status,
       draftReadiness: draft.draftReadiness && typeof draft.draftReadiness === 'object'
         ? draft.draftReadiness
+        : null,
+      platformReadiness: draft.platformReadiness && typeof draft.platformReadiness === 'object'
+        ? draft.platformReadiness
         : null
     }
   })
@@ -1241,6 +1244,9 @@ async function handleSyncPublishDraftFlow(project) {
         status: draft.status,
         draftReadiness: draft.draftReadiness && typeof draft.draftReadiness === 'object'
           ? draft.draftReadiness
+          : null,
+        platformReadiness: draft.platformReadiness && typeof draft.platformReadiness === 'object'
+          ? draft.platformReadiness
           : null
       },
       preview: null,

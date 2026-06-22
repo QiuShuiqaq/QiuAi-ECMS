@@ -849,6 +849,48 @@ function resolveDraftReadinessMissingLabel(projectId = '') {
 
   return `Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
 }
+
+function resolvePlatformDraftReadiness(project = {}) {
+  const projectId = String(project?.id || '').trim()
+  const platformKey = resolveProjectPublishPlatform(project)
+  const platformReadiness = getPublishState(projectId).draftSummary?.platformReadiness
+  const readiness = platformReadiness && typeof platformReadiness === 'object'
+    ? platformReadiness[platformKey]
+    : null
+
+  if (!readiness || typeof readiness !== 'object') {
+    return null
+  }
+
+  return {
+    platformLabel: String(readiness.platformLabel || platformKey || 'Platform').trim(),
+    isReadyForCreateListing: readiness.isReadyForCreateListing === true,
+    message: String(readiness.message || '').trim(),
+    missingFieldLabels: Array.isArray(readiness.missingFieldLabels)
+      ? readiness.missingFieldLabels.map((item) => String(item || '').trim()).filter(Boolean)
+      : []
+  }
+}
+
+function resolvePlatformDraftReadinessLabel(project = {}) {
+  const readiness = resolvePlatformDraftReadiness(project)
+  if (!readiness) {
+    return ''
+  }
+
+  return readiness.isReadyForCreateListing
+    ? `${readiness.platformLabel} Create Listing: READY`
+    : `${readiness.platformLabel} Create Listing: INCOMPLETE`
+}
+
+function resolvePlatformDraftReadinessMissingLabel(project = {}) {
+  const readiness = resolvePlatformDraftReadiness(project)
+  if (!readiness || !readiness.missingFieldLabels.length) {
+    return ''
+  }
+
+  return `Platform Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
+}
 </script>
 
 <template>
@@ -1158,6 +1200,7 @@ function resolveDraftReadinessMissingLabel(projectId = '') {
               <span v-if="getPublishState(item.project.id).latestTask?.platformLabel">{{ getPublishState(item.project.id).latestTask.platformLabel }}</span>
               <span v-if="resolveLatestTaskExecutionMode(item.project.id)">执行模式: {{ resolveLatestTaskExecutionMode(item.project.id) }}</span>
               <span v-if="resolveDraftReadinessLabel(item.project.id)">{{ resolveDraftReadinessLabel(item.project.id) }}</span>
+              <span v-if="resolvePlatformDraftReadinessLabel(item.project)">{{ resolvePlatformDraftReadinessLabel(item.project) }}</span>
               <span v-if="resolveLatestTaskOutcome(item.project.id)">Attempt Outcome: {{ resolveLatestTaskOutcome(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteListingId(item.project.id)">Remote Listing ID: {{ resolveLatestTaskRemoteListingId(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteReviewStatus(item.project.id)">Review Status: {{ resolveLatestTaskRemoteReviewStatus(item.project.id) }}</span>
@@ -1171,6 +1214,14 @@ function resolveDraftReadinessMissingLabel(projectId = '') {
             >
               <span v-if="resolveDraftReadiness(item.project.id)?.message">{{ resolveDraftReadiness(item.project.id).message }}</span>
               <span v-if="resolveDraftReadinessMissingLabel(item.project.id)">{{ resolveDraftReadinessMissingLabel(item.project.id) }}</span>
+            </div>
+
+            <div
+              v-if="resolvePlatformDraftReadiness(item.project)?.message || resolvePlatformDraftReadinessMissingLabel(item.project)"
+              class="project-draft-card__meta"
+            >
+              <span v-if="resolvePlatformDraftReadiness(item.project)?.message">{{ resolvePlatformDraftReadiness(item.project).message }}</span>
+              <span v-if="resolvePlatformDraftReadinessMissingLabel(item.project)">{{ resolvePlatformDraftReadinessMissingLabel(item.project) }}</span>
             </div>
 
             <div
