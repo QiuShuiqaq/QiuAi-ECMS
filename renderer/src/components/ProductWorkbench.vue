@@ -536,11 +536,54 @@ function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
   ].join('__')
 }
 
+function resolvePublishIssueFieldLabel(issue = {}) {
+  const field = String(issue.field || '').trim()
+  if (!field) return 'Unknown Field'
+  if (field === 'title') return 'Title'
+  if (field === 'descriptionHtml') return 'Description'
+  if (field === 'brandText') return 'Brand'
+  if (field === 'bulletPoints') return 'Bullet Points'
+  if (field === 'media') return 'Media'
+  if (field === 'media[0]') return 'Primary Media'
+  if (field === 'variants') return 'SKU Variants'
+  if (field === 'platformDraft.categoryId') return 'Category ID'
+  if (field.startsWith('platformDraft.attributes.')) {
+    const attributeKey = field.slice('platformDraft.attributes.'.length).trim()
+    return `Platform Attribute: ${attributeKey || 'unknown'}`
+  }
+  if (field.includes('.priceAmount')) return 'Variant Price'
+  if (field.includes('.stockQuantity')) return 'Variant Stock'
+  if (field.includes('.barcode')) return 'Variant Barcode'
+  return field
+}
+
+function resolvePublishIssueSuggestedFix(issue = {}) {
+  const field = String(issue.field || '').trim()
+  if (!field) return ''
+  if (field === 'title') return 'Update the project title or mapped publish title before retrying.'
+  if (field === 'descriptionHtml') return 'Generate or edit the description so the publish draft has body content.'
+  if (field === 'brandText') return 'Fill the brand field in the project base info.'
+  if (field === 'bulletPoints') return 'Add at least one bullet point in the product copy section.'
+  if (field === 'media') return 'Add at least one image or video asset to the project.'
+  if (field === 'media[0]') return 'Place an image asset first so the primary media is an image.'
+  if (field === 'variants') return 'Add at least one SKU variant before publishing.'
+  if (field === 'platformDraft.categoryId') return 'Fill the Category ID field in the publish draft section.'
+  if (field.startsWith('platformDraft.attributes.')) {
+    const attributeKey = field.slice('platformDraft.attributes.'.length).trim()
+    return `Fill the ${attributeKey || 'required'} platform attribute in the publish draft section.`
+  }
+  if (field.includes('.priceAmount')) return 'Set a valid price for the first SKU variant.'
+  if (field.includes('.stockQuantity')) return 'Set stock greater than zero for the first SKU variant.'
+  if (field.includes('.barcode')) return 'Fill or correct the variant barcode if the platform requires it.'
+  return ''
+}
+
 function resolvePublishPreviewIssueLabel(issue = {}) {
+  const fieldLabel = resolvePublishIssueFieldLabel(issue)
   const field = String(issue.field || '').trim()
   const code = String(issue.code || '').trim()
   const message = String(issue.message || '').trim()
-  const prefix = [field, code].filter(Boolean).join(' / ')
+  const prefix = [fieldLabel, code].filter(Boolean).join(' / ')
   return prefix ? `${prefix}: ${message || 'Unknown issue'}` : (message || 'Unknown issue')
 }
 
@@ -1057,6 +1100,9 @@ function canRetryLatestPublishTask(projectId = '') {
                   :key="resolvePublishPreviewIssueKey(issue, index)"
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
+                  <span v-if="resolvePublishIssueSuggestedFix(issue)">
+                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                  </span>
                 </li>
               </ul>
             </div>
@@ -1081,6 +1127,9 @@ function canRetryLatestPublishTask(projectId = '') {
                   :key="resolvePublishPreviewIssueKey(issue, index)"
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
+                  <span v-if="resolvePublishIssueSuggestedFix(issue)">
+                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                  </span>
                 </li>
               </ul>
             </div>
