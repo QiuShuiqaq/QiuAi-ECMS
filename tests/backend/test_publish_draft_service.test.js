@@ -215,11 +215,18 @@ describe('publishDraftService', () => {
     const remoteLicensePlatformClient = {
       createPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
-        status: 'queued',
+        status: 'blocked',
+        blockingIssues: [
+          {
+            field: 'platformDraft.attributes.power_source',
+            code: 'REQUIRED',
+            message: 'Power Source is required.'
+          }
+        ],
         pollingAdvice: {
-          recommendedIntervalMs: 15000,
-          minIntervalMs: 5000,
-          reason: 'QUEUED'
+          recommendedIntervalMs: 0,
+          minIntervalMs: 0,
+          reason: 'TERMINAL'
         }
       }),
       getPublishTask: vi.fn().mockResolvedValue({
@@ -291,8 +298,9 @@ describe('publishDraftService', () => {
       id: 'task-1',
       sessionToken: 'session-1'
     })
-    expect(createdTask.status).toBe('queued')
-    expect(createdTask.pollingAdvice.recommendedIntervalMs).toBe(15000)
+    expect(createdTask.status).toBe('blocked')
+    expect(createdTask.blockingIssues[0].field).toBe('platformDraft.attributes.power_source')
+    expect(createdTask.pollingAdvice.recommendedIntervalMs).toBe(0)
     expect(loadedTask.status).toBe('running')
     expect(loadedTask.pollingAdvice.reason).toBe('RUNNING')
     expect(loadedTask.attempts[0].requestSummary.ruleVersion).toBe('phase1-2026-06-22')

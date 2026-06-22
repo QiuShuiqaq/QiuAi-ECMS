@@ -545,6 +545,11 @@ function resolvePublishPreviewIssueLabel(issue = {}) {
 }
 
 function resolveLatestTaskAttemptIssues(projectId = '') {
+  const blockingIssues = getPublishState(projectId).latestTask?.blockingIssues
+  if (Array.isArray(blockingIssues) && blockingIssues.length) {
+    return blockingIssues
+  }
+
   const attempts = getPublishState(projectId).latestTask?.attempts
   if (!Array.isArray(attempts) || !attempts.length) {
     return []

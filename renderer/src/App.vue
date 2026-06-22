@@ -306,6 +306,36 @@ function isPublishTaskActive(task = null) {
   return Boolean(status) && !publishTaskTerminalStatuses.has(status)
 }
 
+function resolvePublishTaskBlockingIssues(task = null) {
+  if (Array.isArray(task?.blockingIssues)) {
+    return task.blockingIssues
+  }
+
+  const attempts = Array.isArray(task?.attempts) ? task.attempts : []
+  const lastAttempt = attempts.length ? attempts[attempts.length - 1] : null
+  return Array.isArray(lastAttempt?.normalizedErrors) ? lastAttempt.normalizedErrors : []
+}
+
+function buildPublishTaskFeedback(task = null, fallbackTitle = '发布任务已创建') {
+  const status = String(task?.status || '').trim()
+  if (status === 'blocked') {
+    const blockingIssues = resolvePublishTaskBlockingIssues(task)
+    return {
+      type: 'error',
+      title: '发布任务已阻塞',
+      message: blockingIssues.length
+        ? `检测到 ${blockingIssues.length} 项待处理问题，请先修正发布草稿后重试。`
+        : (String(task?.lastErrorMessage || '').trim() || '发布任务已被阻塞，请检查当前发布草稿。')
+    }
+  }
+
+  return {
+    type: 'success',
+    title: fallbackTitle,
+    message: `发布任务状态：${status || 'queued'}`
+  }
+}
+
 const hasActivePublishTasks = computed(() => {
   return Object.values(publishState.value || {}).some((state) => isPublishTaskActive(state?.latestTask))
 })
@@ -1309,6 +1339,7 @@ async function handlePublishCreateTask(project) {
     if (isPublishTaskActive(task)) {
       queuePublishTaskPolling(0)
     }
+    return showActionFeedback(buildPublishTaskFeedback(task, '发布任务已创建'))
     showActionFeedback({
       type: 'success',
       title: '任务已创建',
@@ -1365,6 +1396,7 @@ async function handlePublishSyncTask(project) {
     if (isPublishTaskActive(task)) {
       queuePublishTaskPolling(0)
     }
+    return showActionFeedback(buildPublishTaskFeedback(task, '同步任务已创建'))
     showActionFeedback({
       type: 'success',
       title: '鐘舵€佸悓姝ュ凡鍒涘缓',
