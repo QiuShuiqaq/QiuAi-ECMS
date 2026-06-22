@@ -25,7 +25,14 @@ describe('desktop-server contract source', () => {
     const computePackageOrderDetailRouteSource = readPlatformFile('src/app/api/compute-package-orders/[id]/route.ts')
     const rechargeOrdersRouteSource = readPlatformFile('src/app/api/recharge/orders/route.ts')
     const rechargeOrderDetailRouteSource = readPlatformFile('src/app/api/recharge/orders/[id]/route.ts')
+    const publishChannelAccountsRouteSource = readPlatformFile('src/app/api/client/publish/channel-accounts/route.ts')
     const publishConfigRouteSource = readPlatformFile('src/app/api/client/publish/config/route.ts')
+    const publishDraftsRouteSource = readPlatformFile('src/app/api/client/publish/drafts/route.ts')
+    const publishDraftDetailRouteSource = readPlatformFile('src/app/api/client/publish/drafts/[id]/route.ts')
+    const publishDraftPreviewRouteSource = readPlatformFile('src/app/api/client/publish/drafts/[id]/preview/route.ts')
+    const publishTasksRouteSource = readPlatformFile('src/app/api/client/publish/tasks/route.ts')
+    const publishTaskDetailRouteSource = readPlatformFile('src/app/api/client/publish/tasks/[id]/route.ts')
+    const publishTaskRetryRouteSource = readPlatformFile('src/app/api/client/publish/tasks/[id]/retry/route.ts')
     const generationJobsRouteSource = readPlatformFile('src/app/api/generation/jobs/route.ts')
     const generationJobDetailRouteSource = readPlatformFile('src/app/api/generation/jobs/[id]/route.ts')
     const generationArtifactDownloadRouteSource = readPlatformFile('src/app/api/generation/artifacts/[id]/download/route.ts')
@@ -61,8 +68,21 @@ describe('desktop-server contract source', () => {
     expect(rechargeOrdersRouteSource).toContain('export async function POST')
     expect(rechargeOrderDetailRouteSource).toContain('export async function GET')
 
+    expect(desktopClientSource).toContain("'/api/client/publish/channel-accounts'")
+    expect(publishChannelAccountsRouteSource).toContain('export async function GET')
+
     expect(desktopClientSource).toContain("'/api/client/publish/config'")
     expect(publishConfigRouteSource).toContain('export async function GET')
+
+    expect(desktopClientSource).toContain("'/api/client/publish/drafts'")
+    expect(publishDraftsRouteSource).toContain('export async function POST')
+    expect(publishDraftDetailRouteSource).toContain('export async function GET')
+    expect(publishDraftPreviewRouteSource).toContain('export async function POST')
+
+    expect(desktopClientSource).toContain("'/api/client/publish/tasks'")
+    expect(publishTasksRouteSource).toContain('export async function POST')
+    expect(publishTaskDetailRouteSource).toContain('export async function GET')
+    expect(publishTaskRetryRouteSource).toContain('export async function POST')
 
     expect(desktopClientSource).toContain("'/api/generation/jobs'")
     expect(generationJobsRouteSource).toContain('export async function POST')
@@ -80,6 +100,7 @@ describe('desktop-server contract source', () => {
     const cloudGenerationSource = readDesktopFile('main/src/services/cloudGenerationService.js')
     const platformSchemasSource = readPlatformFile('src/modules/platform-api/schemas.ts')
     const generationSchemasSource = readPlatformFile('src/modules/generation/schemas.ts')
+    const publishSchemasSource = readPlatformFile('src/modules/publish/schemas.ts')
 
     expect(platformSchemasSource).toContain('deviceFingerprint: z.string().trim().min(1)')
     expect(platformSchemasSource).toContain('durationDays: z.coerce.number().int().positive().optional()')
@@ -95,5 +116,12 @@ describe('desktop-server contract source', () => {
     expect(cloudGenerationSource).toContain("mode: 'full'")
     expect(desktopClientSource).toContain('function normalizeGenerationJobPayload(payload = {})')
     expect(desktopClientSource).toContain('items: Array.isArray(payload.items) ? payload.items.map((item) => normalizeGenerationJobItem(item)) : []')
+
+    expect(publishSchemasSource).toContain('export const publishDraftPreviewSchema = z.object({')
+    expect(publishSchemasSource).toContain('export const createPublishTaskSchema = z.object({')
+    expect(publishSchemasSource).toContain('"create-listing"')
+    expect(desktopClientSource).toContain("return request('post', `/api/client/publish/drafts/${trimString(id)}/preview`")
+    expect(desktopClientSource).toContain("return request('post', '/api/client/publish/tasks'")
+    expect(desktopClientSource).toContain("operationType: trimString(payload.operationType || 'create-listing') || 'create-listing'")
   })
 })
