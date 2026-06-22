@@ -10,6 +10,7 @@ export const fallbackPublishPlatformProfiles = {
   tiktok: {
     label: 'TikTok Shop',
     ruleVersion: 'phase1-2026-06-22',
+    supportedOperations: ['create-listing'],
     requiredAttributes: [
       { key: 'material', label: 'Material' },
       { key: 'product_type', label: 'Product Type' }
@@ -19,6 +20,7 @@ export const fallbackPublishPlatformProfiles = {
   shopee: {
     label: 'Shopee',
     ruleVersion: 'phase1-2026-06-22',
+    supportedOperations: ['create-listing'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'condition', label: 'Condition' }
@@ -28,6 +30,7 @@ export const fallbackPublishPlatformProfiles = {
   aliexpress: {
     label: 'AliExpress',
     ruleVersion: 'phase1-2026-06-22',
+    supportedOperations: ['create-listing'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'shipping_origin', label: 'Shipping Origin' }
@@ -69,6 +72,9 @@ export function normalizePublishPlatformProfiles (platforms = []) {
         {
           label: String(item?.label || fallbackPublishPlatformProfiles[key]?.label || key).trim(),
           ruleVersion: String(item?.ruleVersion || fallbackPublishPlatformProfiles[key]?.ruleVersion || '').trim(),
+          supportedOperations: Array.isArray(item?.supportedOperations) && item.supportedOperations.length
+            ? item.supportedOperations.map((operation) => String(operation || '').trim()).filter(Boolean)
+            : (fallbackPublishPlatformProfiles[key]?.supportedOperations || []),
           requiredAttributes: Array.isArray(item?.requiredAttributes)
             ? item.requiredAttributes
               .map((attribute) => ({
@@ -84,6 +90,18 @@ export function normalizePublishPlatformProfiles (platforms = []) {
       ]
     })
   )
+}
+
+export function resolvePublishTaskOperation (profile = null) {
+  const supportedOperations = Array.isArray(profile?.supportedOperations)
+    ? profile.supportedOperations.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
+  if (supportedOperations.includes('create-listing')) {
+    return 'create-listing'
+  }
+
+  return supportedOperations[0] || 'create-listing'
 }
 
 export function normalizeProjectPublishDraft (project = {}) {

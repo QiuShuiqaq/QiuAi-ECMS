@@ -24,7 +24,8 @@ import {
   normalizePublishPlatform,
   normalizeProjectPublishDraft,
   normalizePublishPlatformProfiles,
-  publishPlatformOptions
+  publishPlatformOptions,
+  resolvePublishTaskOperation
 } from './utils/publishContract'
 import {
   resolveImageOutputDirectory,
@@ -747,6 +748,15 @@ function getProjectPublishState(project = {}) {
   return publishState.value[projectId]
 }
 
+function resolveProjectPublishTaskOperation(project = {}) {
+  const state = getProjectPublishState(project)
+  const selectedPlatform = normalizePublishPlatform(
+    state.selectedPlatform || project?.platformTarget?.[0] || ''
+  )
+  const platformProfiles = state.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
+  return resolvePublishTaskOperation(platformProfiles[selectedPlatform] || null)
+}
+
 function patchProjectPublishState(projectId, patch = {}) {
   const currentState = publishState.value[projectId] || {}
   publishState.value = {
@@ -1054,7 +1064,7 @@ async function handlePublishCreateTask(project) {
       draftId,
       platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
       channelAccountId,
-      operationType: 'create-listing'
+      operationType: resolveProjectPublishTaskOperation(project)
     })
     let task = createdTask
 
