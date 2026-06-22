@@ -784,6 +784,22 @@ function resolveLatestTaskPollingAdviceText(projectId = '') {
   return ''
 }
 
+function resolveLatestTaskOperatorGuidance(projectId = '') {
+  const guidance = getPublishState(projectId).latestTask?.operatorGuidance
+  return guidance && typeof guidance === 'object' ? guidance : null
+}
+
+function resolveLatestTaskOperatorGuidanceSummary(projectId = '') {
+  return String(resolveLatestTaskOperatorGuidance(projectId)?.summary || '').trim()
+}
+
+function resolveLatestTaskOperatorGuidanceActions(projectId = '') {
+  const actions = resolveLatestTaskOperatorGuidance(projectId)?.actions
+  return Array.isArray(actions)
+    ? actions.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+}
+
 function resolveProjectManualReviewFlag(project = {}) {
   const profile = resolveProjectPublishPlatformProfile(project)
   const key = String(profile.manualReviewAttributeKey || '').trim()
@@ -1356,6 +1372,31 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               class="project-draft-card__meta"
             >
               <span>{{ resolveLatestTaskPollingAdviceText(item.project.id) }}</span>
+            </div>
+
+            <div
+              v-if="resolveLatestTaskOperatorGuidanceSummary(item.project.id)"
+              class="project-draft-card__meta"
+            >
+              <span>Operator Guidance: {{ resolveLatestTaskOperatorGuidanceSummary(item.project.id) }}</span>
+            </div>
+
+            <div
+              v-if="resolveLatestTaskOperatorGuidanceActions(item.project.id).length"
+              class="project-draft-card__publish-preview"
+            >
+              <div class="project-draft-card__publish-preview-summary">
+                <span>Recovery Checklist</span>
+              </div>
+
+              <ul class="project-draft-card__publish-issues">
+                <li
+                  v-for="(action, index) in resolveLatestTaskOperatorGuidanceActions(item.project.id)"
+                  :key="`${item.project.id}-guidance-${index}`"
+                >
+                  {{ action }}
+                </li>
+              </ul>
             </div>
 
             <div v-if="getPublishState(item.project.id).preview || getPublishState(item.project.id).error" class="project-draft-card__meta">

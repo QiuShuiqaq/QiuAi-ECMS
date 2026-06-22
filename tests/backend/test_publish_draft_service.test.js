@@ -256,7 +256,18 @@ describe('publishDraftService', () => {
             },
             normalizedErrors: []
           }
-        ]
+        ],
+        operatorGuidance: {
+          stage: 'execution-in-progress',
+          summary: 'Task is still in progress. Do not treat it as failed yet.',
+          actions: [
+            'Refresh no faster than 5 sec.',
+            'Only force retry if the worker is clearly stalled and no upstream side effect was created.'
+          ],
+          evidence: [
+            'Task status: running'
+          ]
+        }
       }),
       retryPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
@@ -310,6 +321,7 @@ describe('publishDraftService', () => {
     expect(loadedTask.pollingAdvice.reason).toBe('RUNNING')
     expect(loadedTask.attempts[0].requestSummary.ruleVersion).toBe('phase1-2026-06-22')
     expect(loadedTask.attempts[0].responseSummary.remoteReviewStatus).toBe('UNDER_REVIEW')
+    expect(loadedTask.operatorGuidance.summary).toContain('still in progress')
     expect(retriedTask.status).toBe('queued')
     expect(retriedTask.pollingAdvice.minIntervalMs).toBe(5000)
   })
