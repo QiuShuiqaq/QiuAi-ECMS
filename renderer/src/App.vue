@@ -17,6 +17,7 @@ import {
 } from './utils/purchaseControllerConfigs'
 import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'
 import { resolveGeneratorView } from './utils/generatorViews'
+import { validatePublishDraftBeforeRemote } from './utils/publishDraftValidation'
 import {
   canRetryPublishTask,
   fallbackPublishPlatformProfiles,
@@ -969,6 +970,15 @@ function assertProjectPublishPlatformReady(project = {}, operationType = '') {
   }
 }
 
+function validateProjectPublishDraftBeforeRemote(project = {}, selectedPlatform = '', profile = null, operationType = 'create-listing') {
+  return validatePublishDraftBeforeRemote({
+    project,
+    platform: selectedPlatform,
+    profile,
+    operationType
+  })
+}
+
 function patchProjectPublishState(projectId, patch = {}) {
   const currentState = publishState.value[projectId] || {}
   publishState.value = {
@@ -1255,7 +1265,19 @@ async function handlePublishPreview(project) {
   })
 
   try {
-    const { selectedPlatform } = assertProjectPublishPlatformReady(project)
+    const { selectedPlatform, profile } = assertProjectPublishPlatformReady(project)
+    const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, 'create-listing')
+    if (localValidationError) {
+      patchProjectPublishState(project.id, {
+        isPreviewLoading: false,
+        error: localValidationError.message
+      })
+      return showActionFeedback({
+        type: 'error',
+        title: localValidationError.title,
+        message: localValidationError.message
+      })
+    }
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const preview = await getPublishDraftPreview({
@@ -1313,7 +1335,19 @@ async function handlePublishCreateTask(project) {
 
   try {
     const operationType = resolveProjectPublishTaskOperation(project)
-    const { selectedPlatform } = assertProjectPublishPlatformReady(project, operationType)
+    const { selectedPlatform, profile } = assertProjectPublishPlatformReady(project, operationType)
+    const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, operationType)
+    if (localValidationError) {
+      patchProjectPublishState(project.id, {
+        isTaskLoading: false,
+        error: localValidationError.message
+      })
+      return showActionFeedback({
+        type: 'error',
+        title: localValidationError.title,
+        message: localValidationError.message
+      })
+    }
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const createdTask = await createPublishTask({
