@@ -113,6 +113,7 @@ const publishState = ref({})
 const publishConfigState = ref({
   platformOptions: publishPlatformOptions,
   platformProfiles: fallbackPublishPlatformProfiles,
+  source: 'fallback',
   isLoading: false,
   error: ''
 })
@@ -509,12 +510,14 @@ async function loadPublishConfigState() {
           }))
         : publishPlatformOptions,
       platformProfiles: normalizePublishPlatformProfiles(platformRows),
+      source: 'server',
       isLoading: false,
       error: ''
     }
   } catch (error) {
     publishConfigState.value = {
       ...publishConfigState.value,
+      source: 'fallback',
       isLoading: false,
       error: buildErrorMessage(error, '发布平台配置加载失败')
     }
@@ -880,12 +883,60 @@ function getProjectPublishState(project = {}) {
 }
 
 function resolveProjectPublishTaskOperation(project = {}) {
+  const profile = resolveProjectServerPublishPlatformProfile(project)
+  if (!profile) {
+    return ''
+  }
+
+  return resolvePublishTaskOperation(profile)
+}
+
+function resolveProjectServerPublishPlatformProfile(project = {}) {
   const state = getProjectPublishState(project)
   const selectedPlatform = normalizePublishPlatform(
     state.selectedPlatform || project?.platformTarget?.[0] || ''
   )
-  const platformProfiles = state.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
-  return resolvePublishTaskOperation(platformProfiles[selectedPlatform] || null)
+  const publishConfig = state.publishConfig && typeof state.publishConfig === 'object'
+    ? state.publishConfig
+    : null
+
+  if (String(publishConfig?.source || '').trim().toLowerCase() !== 'server') {
+    return null
+  }
+
+  const platformProfiles = publishConfig?.platformProfiles && typeof publishConfig.platformProfiles === 'object'
+    ? publishConfig.platformProfiles
+    : null
+
+  return platformProfiles?.[selectedPlatform] || null
+}
+
+function assertProjectPublishPlatformReady(project = {}, operationType = '') {
+  const state = getProjectPublishState(project)
+  const selectedPlatform = normalizePublishPlatform(
+    state.selectedPlatform || project?.platformTarget?.[0] || ''
+  )
+  const profile = resolveProjectServerPublishPlatformProfile(project)
+
+  if (!profile) {
+    throw new Error('Server publish config is not loaded yet. Refresh publish config before previewing or creating tasks.')
+  }
+
+  const normalizedOperationType = String(operationType || '').trim()
+  const supportedOperations = Array.isArray(profile.supportedOperations)
+    ? profile.supportedOperations.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
+  if (normalizedOperationType && !supportedOperations.includes(normalizedOperationType)) {
+    throw new Error(
+      `Server publish config does not enable ${normalizedOperationType} for ${profile.label || selectedPlatform}.`
+    )
+  }
+
+  return {
+    selectedPlatform,
+    profile
+  }
 }
 
 function patchProjectPublishState(projectId, patch = {}) {
@@ -1160,11 +1211,12 @@ async function handlePublishPreview(project) {
   })
 
   try {
+    const { selectedPlatform } = assertProjectPublishPlatformReady(project)
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const preview = await getPublishDraftPreview({
       id: draftId,
-      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
+      platform: selectedPlatform,
       channelAccountId
     })
 
@@ -1216,13 +1268,15 @@ async function handlePublishCreateTask(project) {
   })
 
   try {
+    const operationType = resolveProjectPublishTaskOperation(project)
+    const { selectedPlatform } = assertProjectPublishPlatformReady(project, operationType)
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const createdTask = await createPublishTask({
       draftId,
-      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
+      platform: selectedPlatform,
       channelAccountId,
-      operationType: resolveProjectPublishTaskOperation(project)
+      operationType
     })
     let task = createdTask
 
@@ -1271,11 +1325,12 @@ async function handlePublishSyncTask(project) {
   })
 
   try {
+    const { selectedPlatform } = assertProjectPublishPlatformReady(project, 'sync-status')
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const createdTask = await createPublishTask({
       draftId,
-      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
+      platform: selectedPlatform,
       channelAccountId,
       operationType: 'sync-status'
     })

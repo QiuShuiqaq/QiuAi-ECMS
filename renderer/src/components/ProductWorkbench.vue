@@ -229,14 +229,31 @@ function isSelectedChannelAccountUsable(project = {}) {
   return resolveSelectedChannelAccountStatus(project) === 'active'
 }
 
+function hasServerPublishConfig(project = {}) {
+  return String(props.publishState?.[project.id]?.publishConfig?.source || '').trim().toLowerCase() === 'server'
+}
+
 function resolveProjectPublishPlatformProfile(project = {}) {
   const platformProfiles = props.publishState?.[project.id]?.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
   return platformProfiles[resolveProjectPublishPlatform(project)] || {
     label: 'Platform',
     ruleVersion: '',
+    supportedOperations: [],
     requiredAttributes: [],
     manualReviewAttributeKey: ''
   }
+}
+
+function isPublishOperationEnabled(project = {}, operationType = '') {
+  if (!hasServerPublishConfig(project)) {
+    return false
+  }
+
+  const supportedOperations = Array.isArray(resolveProjectPublishPlatformProfile(project).supportedOperations)
+    ? resolveProjectPublishPlatformProfile(project).supportedOperations.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
+  return supportedOperations.includes(String(operationType || '').trim())
 }
 
 function resolveProjectPublishEditorAttributes(project = {}) {
@@ -812,6 +829,10 @@ function canRetryLatestPublishTask(projectId = '') {
                 <strong>{{ resolveProjectPublishPlatformProfile(item.project).label }} Publish Draft</strong>
               </div>
 
+              <div v-if="!hasServerPublishConfig(item.project)" class="project-draft-card__meta">
+                <span>Server publish config is required before previewing or creating publish tasks.</span>
+              </div>
+
               <div class="project-task-card__config-grid">
                 <label class="project-task-card__field project-task-card__field--full">
                   <span>Category ID</span>
@@ -893,7 +914,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="getPublishState(item.project.id).isPreviewLoading || !isSelectedChannelAccountUsable(item.project)"
+                :disabled="getPublishState(item.project.id).isPreviewLoading || !isSelectedChannelAccountUsable(item.project) || !hasServerPublishConfig(item.project)"
                 @click="emit('publish-preview', item.project)"
               >
                 发布预览
@@ -901,7 +922,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="getPublishState(item.project.id).isTaskLoading || !isSelectedChannelAccountUsable(item.project)"
+                :disabled="getPublishState(item.project.id).isTaskLoading || !isSelectedChannelAccountUsable(item.project) || !isPublishOperationEnabled(item.project, 'create-listing')"
                 @click="emit('publish-create-task', item.project)"
               >
                 创建任务
@@ -909,7 +930,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="!resolveLatestTaskRemoteListingId(item.project.id) || getPublishState(item.project.id).isTaskLoading"
+                :disabled="!resolveLatestTaskRemoteListingId(item.project.id) || getPublishState(item.project.id).isTaskLoading || !isPublishOperationEnabled(item.project, 'sync-status')"
                 @click="emit('publish-sync-task', item.project)"
               >
                 鍚屾瀹℃牳鐘舵€�
