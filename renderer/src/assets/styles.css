@@ -471,6 +471,41 @@ select optgroup {
   gap: 12px;
 }
 
+.project-draft-card__publish-preview {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.project-draft-card__publish-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-draft-card__publish-preview-summary span,
+.project-draft-card__publish-issues li {
+  color: #d9d4eb;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.project-draft-card__publish-preview-summary span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.project-draft-card__publish-issues {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .project-task-card__switches {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

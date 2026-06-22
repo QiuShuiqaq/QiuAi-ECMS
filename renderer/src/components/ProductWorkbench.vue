@@ -273,6 +273,35 @@ function resolveSelectionBoardSummary(item = {}) {
   ].join('__')) || null
 }
 
+function resolvePublishPreviewIssues(projectId = '') {
+  const preview = getPublishState(projectId).preview
+  return Array.isArray(preview?.validationIssues) ? preview.validationIssues : []
+}
+
+function resolvePublishPreviewMappedTitle(projectId = '') {
+  return String(getPublishState(projectId).preview?.mappedDraft?.title || '').trim()
+}
+
+function resolvePublishPreviewMappedCategory(projectId = '') {
+  return String(getPublishState(projectId).preview?.mappedDraft?.categoryId || '').trim()
+}
+
+function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
+  return [
+    issue.field || 'field',
+    issue.code || 'code',
+    index
+  ].join('__')
+}
+
+function resolvePublishPreviewIssueLabel(issue = {}) {
+  const field = String(issue.field || '').trim()
+  const code = String(issue.code || '').trim()
+  const message = String(issue.message || '').trim()
+  const prefix = [field, code].filter(Boolean).join(' / ')
+  return prefix ? `${prefix}: ${message || 'Unknown issue'}` : (message || 'Unknown issue')
+}
+
 function getPublishState(projectId = '') {
   const state = props.publishState && typeof props.publishState === 'object'
     ? props.publishState[projectId]
@@ -492,6 +521,29 @@ function getPublishState(projectId = '') {
                 {{ getPublishState(item.project.id).preview.isValid ? '预览校验通过' : `预览未通过：${(getPublishState(item.project.id).preview.validationIssues || []).length} 项` }}
               </span>
               <span v-if="getPublishState(item.project.id).error">{{ getPublishState(item.project.id).error }}</span>
+            </div>
+
+            <div v-if="getPublishState(item.project.id).preview" class="project-draft-card__publish-preview">
+              <div class="project-draft-card__publish-preview-summary">
+                <span v-if="resolvePublishPreviewMappedTitle(item.project.id)">
+                  映射标题：{{ resolvePublishPreviewMappedTitle(item.project.id) }}
+                </span>
+                <span v-if="resolvePublishPreviewMappedCategory(item.project.id)">
+                  映射类目：{{ resolvePublishPreviewMappedCategory(item.project.id) }}
+                </span>
+              </div>
+
+              <ul
+                v-if="resolvePublishPreviewIssues(item.project.id).length"
+                class="project-draft-card__publish-issues"
+              >
+                <li
+                  v-for="(issue, index) in resolvePublishPreviewIssues(item.project.id)"
+                  :key="resolvePublishPreviewIssueKey(issue, index)"
+                >
+                  {{ resolvePublishPreviewIssueLabel(issue) }}
+                </li>
+              </ul>
             </div>
           </div>
 
