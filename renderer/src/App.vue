@@ -338,6 +338,21 @@ function queuePublishTaskPolling(delayMs = publishTaskPollingProfile.runningMs) 
 }
 
 function getPublishTaskPollingDelayMs(task = null) {
+  const advice = task && typeof task.pollingAdvice === 'object'
+    ? task.pollingAdvice
+    : null
+  const recommendedIntervalMs = Number(advice?.recommendedIntervalMs)
+  const minIntervalMs = Number(advice?.minIntervalMs)
+
+  if (Number.isFinite(recommendedIntervalMs) && recommendedIntervalMs > 0) {
+    const safeMinimum = Number.isFinite(minIntervalMs) && minIntervalMs > 0 ? minIntervalMs : 1000
+    return Math.max(safeMinimum, recommendedIntervalMs)
+  }
+
+  if (Number.isFinite(recommendedIntervalMs) && recommendedIntervalMs === 0) {
+    return 0
+  }
+
   const status = String(task?.status || '').trim().toLowerCase()
   if (!status) {
     return publishTaskPollingProfile.runningMs

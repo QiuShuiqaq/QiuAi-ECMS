@@ -215,15 +215,30 @@ describe('publishDraftService', () => {
     const remoteLicensePlatformClient = {
       createPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
-        status: 'queued'
+        status: 'queued',
+        pollingAdvice: {
+          recommendedIntervalMs: 15000,
+          minIntervalMs: 5000,
+          reason: 'QUEUED'
+        }
       }),
       getPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
-        status: 'running'
+        status: 'running',
+        pollingAdvice: {
+          recommendedIntervalMs: 15000,
+          minIntervalMs: 5000,
+          reason: 'RUNNING'
+        }
       }),
       retryPublishTask: vi.fn().mockResolvedValue({
         id: 'task-1',
-        status: 'queued'
+        status: 'queued',
+        pollingAdvice: {
+          recommendedIntervalMs: 15000,
+          minIntervalMs: 5000,
+          reason: 'QUEUED'
+        }
       })
     }
 
@@ -262,7 +277,10 @@ describe('publishDraftService', () => {
       sessionToken: 'session-1'
     })
     expect(createdTask.status).toBe('queued')
+    expect(createdTask.pollingAdvice.recommendedIntervalMs).toBe(15000)
     expect(loadedTask.status).toBe('running')
+    expect(loadedTask.pollingAdvice.reason).toBe('RUNNING')
     expect(retriedTask.status).toBe('queued')
+    expect(retriedTask.pollingAdvice.minIntervalMs).toBe(5000)
   })
 })
