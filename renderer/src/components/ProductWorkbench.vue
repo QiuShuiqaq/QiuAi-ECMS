@@ -816,6 +816,39 @@ function getPublishState(projectId = '') {
 function canRetryLatestPublishTask(projectId = '') {
   return canRetryPublishTask(getPublishState(projectId).latestTask?.status)
 }
+
+function resolveDraftReadiness(projectId = '') {
+  const draftReadiness = getPublishState(projectId).draftSummary?.draftReadiness
+  if (!draftReadiness || typeof draftReadiness !== 'object') {
+    return null
+  }
+
+  return {
+    isReady: draftReadiness.isReady === true,
+    message: String(draftReadiness.message || '').trim(),
+    missingFieldLabels: Array.isArray(draftReadiness.missingFieldLabels)
+      ? draftReadiness.missingFieldLabels.map((item) => String(item || '').trim()).filter(Boolean)
+      : []
+  }
+}
+
+function resolveDraftReadinessLabel(projectId = '') {
+  const readiness = resolveDraftReadiness(projectId)
+  if (!readiness) {
+    return ''
+  }
+
+  return readiness.isReady ? 'Draft Readiness: READY' : 'Draft Readiness: INCOMPLETE'
+}
+
+function resolveDraftReadinessMissingLabel(projectId = '') {
+  const readiness = resolveDraftReadiness(projectId)
+  if (!readiness || !readiness.missingFieldLabels.length) {
+    return ''
+  }
+
+  return `Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
+}
 </script>
 
 <template>
@@ -1124,11 +1157,20 @@ function canRetryLatestPublishTask(projectId = '') {
               <span v-if="getPublishState(item.project.id).latestTask?.status">任务状态: {{ resolvePublishStatusLabel(getPublishState(item.project.id).latestTask.status) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.platformLabel">{{ getPublishState(item.project.id).latestTask.platformLabel }}</span>
               <span v-if="resolveLatestTaskExecutionMode(item.project.id)">执行模式: {{ resolveLatestTaskExecutionMode(item.project.id) }}</span>
+              <span v-if="resolveDraftReadinessLabel(item.project.id)">{{ resolveDraftReadinessLabel(item.project.id) }}</span>
               <span v-if="resolveLatestTaskOutcome(item.project.id)">Attempt Outcome: {{ resolveLatestTaskOutcome(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteListingId(item.project.id)">Remote Listing ID: {{ resolveLatestTaskRemoteListingId(item.project.id) }}</span>
               <span v-if="resolveLatestTaskRemoteReviewStatus(item.project.id)">Review Status: {{ resolveLatestTaskRemoteReviewStatus(item.project.id) }}</span>
               <span v-if="resolveLatestTaskPollingIntervalLabel(item.project.id)">Polling Advice: {{ resolveLatestTaskPollingIntervalLabel(item.project.id) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.lastErrorMessage">失败原因: {{ getPublishState(item.project.id).latestTask.lastErrorMessage }}</span>
+            </div>
+
+            <div
+              v-if="resolveDraftReadiness(item.project.id)?.message || resolveDraftReadinessMissingLabel(item.project.id)"
+              class="project-draft-card__meta"
+            >
+              <span v-if="resolveDraftReadiness(item.project.id)?.message">{{ resolveDraftReadiness(item.project.id).message }}</span>
+              <span v-if="resolveDraftReadinessMissingLabel(item.project.id)">{{ resolveDraftReadinessMissingLabel(item.project.id) }}</span>
             </div>
 
             <div

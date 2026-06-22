@@ -99,6 +99,7 @@ describe('App source', () => {
     expect(source).toContain("if (!account || isPublishChannelAccountReadyForSubmission(account)) {")
     expect(source).toContain("const readinessMessage = String(account?.readinessMessage || '').trim()")
     expect(source).toContain("const draft = await upsertPublishDraft({")
+    expect(source).toContain('draftReadiness: draft.draftReadiness && typeof draft.draftReadiness === \'object\'')
     expect(source).toContain("function invalidateProjectPublishState(projectId = '', options = {}) {")
     expect(source).toContain("function resolveProjectPublishTaskOperation(project = {}) {")
     expect(source).toContain('const profile = resolveProjectServerPublishPlatformProfile(project)')

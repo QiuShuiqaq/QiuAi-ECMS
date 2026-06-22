@@ -1172,7 +1172,10 @@ async function ensurePublishDraftReady(project) {
     draftSummary: {
       id: draft.id,
       title: draft.title,
-      status: draft.status
+      status: draft.status,
+      draftReadiness: draft.draftReadiness && typeof draft.draftReadiness === 'object'
+        ? draft.draftReadiness
+        : null
     }
   })
   return draft.id
@@ -1222,7 +1225,10 @@ async function handleSyncPublishDraftFlow(project) {
       draftSummary: {
         id: draft.id,
         title: draft.title,
-        status: draft.status
+        status: draft.status,
+        draftReadiness: draft.draftReadiness && typeof draft.draftReadiness === 'object'
+          ? draft.draftReadiness
+          : null
       },
       preview: null,
       latestTask: null,
