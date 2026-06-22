@@ -142,6 +142,45 @@ function normalizeGenerationJobPayload(payload = {}) {
   }
 }
 
+function normalizePublishDraftPayload (payload = {}) {
+  return {
+    sessionToken: trimString(payload.sessionToken),
+    workspaceProjectId: trimString(payload.workspaceProjectId),
+    title: trimString(payload.title),
+    shortTitle: trimString(payload.shortTitle),
+    descriptionHtml: trimString(payload.descriptionHtml),
+    bulletPoints: Array.isArray(payload.bulletPoints)
+      ? payload.bulletPoints.map((item) => trimString(item)).filter(Boolean)
+      : [],
+    brandText: trimString(payload.brandText),
+    categoryHint: trimString(payload.categoryHint),
+    tags: Array.isArray(payload.tags)
+      ? payload.tags.map((item) => trimString(item)).filter(Boolean)
+      : [],
+    sourceSelectionMetadata: payload.sourceSelectionMetadata && typeof payload.sourceSelectionMetadata === 'object'
+      ? payload.sourceSelectionMetadata
+      : null,
+    attributes: payload.attributes && typeof payload.attributes === 'object'
+      ? payload.attributes
+      : {},
+    variants: Array.isArray(payload.variants) ? payload.variants : [],
+    media: Array.isArray(payload.media) ? payload.media : [],
+    platformDrafts: payload.platformDrafts && typeof payload.platformDrafts === 'object'
+      ? payload.platformDrafts
+      : {}
+  }
+}
+
+function normalizePublishTaskPayload (payload = {}) {
+  return {
+    sessionToken: trimString(payload.sessionToken),
+    draftId: trimString(payload.draftId),
+    platform: trimString(payload.platform),
+    channelAccountId: trimString(payload.channelAccountId),
+    operationType: trimString(payload.operationType || 'create-listing') || 'create-listing'
+  }
+}
+
 function createServiceError(code, message, details = {}) {
   const error = new Error(message)
   error.code = code
@@ -355,6 +394,53 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function upsertPublishDraft (payload = {}) {
+    return request('post', '/api/client/publish/drafts', {
+      data: normalizePublishDraftPayload(payload)
+    })
+  }
+
+  async function getPublishDraft ({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/client/publish/drafts/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function getPublishDraftPreview ({ id = '', sessionToken = '', platform = '', channelAccountId = '' } = {}) {
+    return request('post', `/api/client/publish/drafts/${trimString(id)}/preview`, {
+      data: {
+        sessionToken: trimString(sessionToken),
+        platform: trimString(platform),
+        channelAccountId: trimString(channelAccountId)
+      }
+    })
+  }
+
+  async function createPublishTask (payload = {}) {
+    return request('post', '/api/client/publish/tasks', {
+      data: normalizePublishTaskPayload(payload)
+    })
+  }
+
+  async function getPublishTask ({ id = '', sessionToken = '' } = {}) {
+    return request('get', `/api/client/publish/tasks/${trimString(id)}`, {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function retryPublishTask ({ id = '', sessionToken = '' } = {}) {
+    return request('post', `/api/client/publish/tasks/${trimString(id)}/retry`, {
+      data: {
+        id: trimString(id),
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
   async function getGenerationJob({ id = '', sessionToken = '', mode = 'full' } = {}) {
     return request('get', `/api/generation/jobs/${trimString(id)}`, {
       params: {
@@ -394,6 +480,9 @@ function createQiuAiLicensePlatformClientService({
     getAuthorizationStatus,
     getComputePackageOrder,
     getGenerationJob,
+    getPublishDraft,
+    getPublishDraftPreview,
+    getPublishTask,
     getRechargeOrder,
     getSelectionItemDetail,
     getSelectionManifest,
@@ -405,6 +494,10 @@ function createQiuAiLicensePlatformClientService({
     listSelectionSites,
     listComputePackages,
     listSoftwarePackages
+    ,
+    retryPublishTask,
+    upsertPublishDraft,
+    createPublishTask
   }
 }
 

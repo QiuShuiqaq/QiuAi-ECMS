@@ -35,6 +35,8 @@ import {
   exportStudioProjectBundle,
   getActivationStatus,
   getComputePackageOrder,
+  getPublishDraft,
+  getPublishDraftPreview,
   getRechargeOrder,
   getSoftwareOrder,
   getSelectionItemDetail,
@@ -50,9 +52,12 @@ import {
   openOutputDirectory,
   openExternalResource,
   pickStudioInputAssets,
+  createPublishTask,
   removePromptTemplate,
+  retryPublishTask,
   savePromptTemplate,
   saveStudioDraft,
+  upsertPublishDraft,
   updateStudioProject
 } from './services/desktopBridge'
 
@@ -626,6 +631,30 @@ async function handleSelectionImport({ item, mode }) {
   }
 }
 
+async function handleSyncPublishDraft(project) {
+  if (!project?.id) {
+    return
+  }
+
+  try {
+    const draft = await upsertPublishDraft({
+      projectId: project.id
+    })
+
+    showActionFeedback({
+      type: 'success',
+      title: '已同步',
+      message: `发布草稿已同步到服务端：${draft.title || project.name || project.id}`
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '同步失败',
+      message: buildErrorMessage(error, '发布草稿同步失败')
+    })
+  }
+}
+
 async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
   if (!menuKey) {
     return
@@ -1109,6 +1138,7 @@ onUnmounted(() => {
           @open-resource="handleOpenResource"
           @export-project="handleExportProject"
           @open-generator="handleOpenProjectGenerator"
+          @sync-publish-draft="handleSyncPublishDraft"
           @selection-query-change="handleSelectionQueryChange"
           @selection-import="handleSelectionImport"
         />

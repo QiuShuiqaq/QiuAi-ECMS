@@ -1,6 +1,7 @@
 const Store = require('electron-store')
 const registerLicenseIpc = require('../ipc/licenseIpc')
 const registerPromptIpc = require('../ipc/promptIpc')
+const registerPublishIpc = require('../ipc/publishIpc')
 const registerSelectionIpc = require('../ipc/selectionIpc')
 const registerStudioIpc = require('../ipc/studioIpc')
 const { createDeviceFingerprintService } = require('../services/deviceFingerprintService')
@@ -10,6 +11,7 @@ const { createSelectionCacheService } = require('../services/selectionCacheServi
 const { createActivationGuardService } = require('../services/activationGuardService')
 const { createSettingsStoreService } = require('../services/settingsStoreService')
 const { createPromptTemplateStoreService } = require('../services/promptTemplateStoreService')
+const { createPublishDraftService } = require('../services/publishDraftService')
 const { createStudioWorkspaceService } = require('../services/studioWorkspaceService')
 const { createCloudGenerationService } = require('../services/cloudGenerationService')
 const { createStudioTaskManagerService } = require('../services/studioTaskManagerService')
@@ -42,6 +44,11 @@ function registerIpc() {
     remoteLicensePlatformClient,
     getSessionToken: async () => settingsService.getSettings().authPlatform.sessionToken
   })
+  const publishDraftService = createPublishDraftService({
+    remoteLicensePlatformClient,
+    getSessionToken: async () => settingsService.getSettings().authPlatform.sessionToken,
+    getStoredState: () => studioWorkspaceService.getRuntimeSnapshot()
+  })
   const activationGuard = createActivationGuardService({
     authorizationService
   })
@@ -72,6 +79,9 @@ function registerIpc() {
     settingsService
   })
   registerPromptIpc({ promptTemplateService })
+  registerPublishIpc({
+    publishDraftService
+  })
   registerSelectionIpc({
     selectionCacheService
   })

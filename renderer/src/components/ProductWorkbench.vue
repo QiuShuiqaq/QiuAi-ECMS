@@ -26,6 +26,7 @@ const emit = defineEmits([
   'open-resource',
   'export-project',
   'open-generator',
+  'sync-publish-draft',
   'selection-query-change',
   'selection-import'
 ])
@@ -363,6 +364,13 @@ function resolveSelectionBoardSummary(item = {}) {
                 @click="emit('open-generator', { project: item.project, menuKey: generator.key })"
               >
                 {{ generator.label }}
+              </button>
+              <button
+                class="secondary-action"
+                type="button"
+                @click="emit('sync-publish-draft', item.project)"
+              >
+                同步发布草稿
               </button>
             </div>
           </div>

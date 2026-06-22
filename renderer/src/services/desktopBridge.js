@@ -615,6 +615,54 @@ export function getSelectionItemDetail (payload) {
   return invoke(getChannel('SELECTION_GET_ITEM_DETAIL'), payload)
 }
 
+export function upsertPublishDraft (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_UPSERT_DRAFT'), payload)
+}
+
+export function getPublishDraft (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_GET_DRAFT'), payload)
+}
+
+export function getPublishDraftPreview (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_GET_DRAFT_PREVIEW'), payload)
+}
+
+export function createPublishTask (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_CREATE_TASK'), payload)
+}
+
+export function getPublishTask (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_GET_TASK'), payload)
+}
+
+export function retryPublishTask (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_RETRY_TASK'), payload)
+}
+
 export function pickStudioInputAssets (payload) {
   if (!hasBridge()) {
     return Promise.resolve({

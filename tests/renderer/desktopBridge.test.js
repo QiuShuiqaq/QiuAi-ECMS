@@ -296,4 +296,15 @@ describe('desktopBridge', () => {
     expect('importLicenseFile' in desktopBridge).toBe(false)
     expect('reloadActivation' in desktopBridge).toBe(false)
   })
+
+  it('exposes publish bridge helpers for the new publish-center flow', async () => {
+    const desktopBridge = await import('../../renderer/src/services/desktopBridge.js')
+
+    expect(typeof desktopBridge.upsertPublishDraft).toBe('function')
+    expect(typeof desktopBridge.getPublishDraft).toBe('function')
+    expect(typeof desktopBridge.getPublishDraftPreview).toBe('function')
+    expect(typeof desktopBridge.createPublishTask).toBe('function')
+    expect(typeof desktopBridge.getPublishTask).toBe('function')
+    expect(typeof desktopBridge.retryPublishTask).toBe('function')
+  })
 })

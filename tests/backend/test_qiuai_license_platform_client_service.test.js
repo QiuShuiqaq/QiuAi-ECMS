@@ -87,6 +87,12 @@ describe('qiuAiLicensePlatformClientService', () => {
       .mockResolvedValueOnce({ data: { ok: true, data: [{ code: 'my', label: '马来西亚' }] } })
       .mockResolvedValueOnce({ data: { ok: true, data: { items: [{ id: 'selection-1' }], page: 1, pageSize: 20, totalItems: 1 } } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'selection-1', title: 'Desk Lamp' } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-draft-1', title: 'Desk Lamp' } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-draft-1', title: 'Desk Lamp' } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { draftId: 'publish-draft-1', platform: 'tiktok', isValid: false, validationIssues: [] } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-task-1', status: 'queued' } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-task-1', status: 'queued' } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-task-1', status: 'queued' } } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'job-1', status: 'PENDING' } } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'job-1', status: 'RUNNING' } } })
 
@@ -112,6 +118,12 @@ describe('qiuAiLicensePlatformClientService', () => {
     await service.listSelectionSites({ sessionToken: 'session-1', platform: 'shopee' })
     await service.listSelectionItems({ sessionToken: 'session-1', platform: 'temu', boardType: 'hot-sale', page: 1, pageSize: 20 })
     await service.getSelectionItemDetail({ id: 'selection-1', sessionToken: 'session-1' })
+    await service.upsertPublishDraft({ sessionToken: 'session-1', workspaceProjectId: 'project-1', title: 'Desk Lamp', descriptionHtml: '<p>desc</p>' })
+    await service.getPublishDraft({ id: 'publish-draft-1', sessionToken: 'session-1' })
+    await service.getPublishDraftPreview({ id: 'publish-draft-1', sessionToken: 'session-1', platform: 'tiktok', channelAccountId: 'channel-1' })
+    await service.createPublishTask({ sessionToken: 'session-1', draftId: 'publish-draft-1', platform: 'tiktok', channelAccountId: 'channel-1', operationType: 'create-listing' })
+    await service.getPublishTask({ id: 'publish-task-1', sessionToken: 'session-1' })
+    await service.retryPublishTask({ id: 'publish-task-1', sessionToken: 'session-1' })
     await service.createGenerationJob({ sessionToken: 'session-1', jobType: 'TEXT', items: [{ slotIndex: 1 }] })
     await service.getGenerationJob({ id: 'job-1', sessionToken: 'session-1', mode: 'compact' })
 
@@ -200,6 +212,53 @@ describe('qiuAiLicensePlatformClientService', () => {
     }))
     expect(request).toHaveBeenNthCalledWith(16, expect.objectContaining({
       method: 'post',
+      url: 'https://qiuaihub.com/api/client/publish/drafts',
+      data: expect.objectContaining({
+        sessionToken: 'session-1',
+        workspaceProjectId: 'project-1',
+        title: 'Desk Lamp'
+      })
+    }))
+    expect(request).toHaveBeenNthCalledWith(17, expect.objectContaining({
+      method: 'get',
+      url: 'https://qiuaihub.com/api/client/publish/drafts/publish-draft-1',
+      params: { sessionToken: 'session-1' }
+    }))
+    expect(request).toHaveBeenNthCalledWith(18, expect.objectContaining({
+      method: 'post',
+      url: 'https://qiuaihub.com/api/client/publish/drafts/publish-draft-1/preview',
+      data: {
+        sessionToken: 'session-1',
+        platform: 'tiktok',
+        channelAccountId: 'channel-1'
+      }
+    }))
+    expect(request).toHaveBeenNthCalledWith(19, expect.objectContaining({
+      method: 'post',
+      url: 'https://qiuaihub.com/api/client/publish/tasks',
+      data: {
+        sessionToken: 'session-1',
+        draftId: 'publish-draft-1',
+        platform: 'tiktok',
+        channelAccountId: 'channel-1',
+        operationType: 'create-listing'
+      }
+    }))
+    expect(request).toHaveBeenNthCalledWith(20, expect.objectContaining({
+      method: 'get',
+      url: 'https://qiuaihub.com/api/client/publish/tasks/publish-task-1',
+      params: { sessionToken: 'session-1' }
+    }))
+    expect(request).toHaveBeenNthCalledWith(21, expect.objectContaining({
+      method: 'post',
+      url: 'https://qiuaihub.com/api/client/publish/tasks/publish-task-1/retry',
+      data: {
+        id: 'publish-task-1',
+        sessionToken: 'session-1'
+      }
+    }))
+    expect(request).toHaveBeenNthCalledWith(22, expect.objectContaining({
+      method: 'post',
       url: 'https://qiuaihub.com/api/generation/jobs',
       data: {
         sessionToken: 'session-1',
@@ -209,7 +268,7 @@ describe('qiuAiLicensePlatformClientService', () => {
         items: [{ slotIndex: 1, inputSnapshot: {} }]
       }
     }))
-    expect(request).toHaveBeenNthCalledWith(17, expect.objectContaining({
+    expect(request).toHaveBeenNthCalledWith(23, expect.objectContaining({
       method: 'get',
       url: 'https://qiuaihub.com/api/generation/jobs/job-1',
       params: {
