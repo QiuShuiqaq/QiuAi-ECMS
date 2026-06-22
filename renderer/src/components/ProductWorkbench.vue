@@ -869,6 +869,45 @@ function resolveDraftReadinessStaleMessage(projectId = '') {
   return readiness.staleMessage || 'Publish draft summary is outdated.'
 }
 
+function isRemotePublishMediaUrl(value = '') {
+  return /^https?:\/\//i.test(String(value || '').trim())
+}
+
+function resolveProjectPublishMediaStatus(project = {}) {
+  const assets = project?.assets && typeof project.assets === 'object' ? project.assets : {}
+  const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
+  const sourceImages = Array.isArray(assets.sourceImages) ? assets.sourceImages : []
+  const totalMediaCount = generatedImages.length + sourceImages.length
+  const remoteReadyCount = generatedImages.filter((item) => {
+    return isRemotePublishMediaUrl(item?.publishReadyUrl || item?.downloadUrl || item?.sourceUrl || '')
+  }).length
+
+  if (remoteReadyCount > 0) {
+    return {
+      status: 'READY_REMOTE',
+      label: 'Publish Media: READY_REMOTE',
+      message: `Remote publish-ready assets: ${remoteReadyCount}. Create-listing can use server-accessible media.`,
+      suggestion: ''
+    }
+  }
+
+  if (totalMediaCount > 0) {
+    return {
+      status: 'LOCAL_ONLY',
+      label: 'Publish Media: LOCAL_ONLY',
+      message: 'Current media exists, but no generated asset has a server-accessible publish URL yet.',
+      suggestion: 'Generate or sync a remote media asset before previewing or creating the publish task.'
+    }
+  }
+
+  return {
+    status: 'MISSING',
+    label: 'Publish Media: MISSING',
+    message: 'No media asset is attached to the current project.',
+    suggestion: 'Add a source image or generate media before previewing or creating the publish task.'
+  }
+}
+
 function resolvePlatformDraftReadiness(project = {}) {
   const projectId = String(project?.id || '').trim()
   const platformKey = resolveProjectPublishPlatform(project)
@@ -1190,6 +1229,17 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                   >
                 </label>
               </div>
+            </div>
+
+            <div
+              v-if="supportedPublishPlatforms.includes(resolveProjectPublishPlatform(item.project))"
+              class="project-draft-card__meta"
+            >
+              <span>{{ resolveProjectPublishMediaStatus(item.project).label }}</span>
+              <span>{{ resolveProjectPublishMediaStatus(item.project).message }}</span>
+              <span v-if="resolveProjectPublishMediaStatus(item.project).suggestion">
+                {{ resolveProjectPublishMediaStatus(item.project).suggestion }}
+              </span>
             </div>
 
             <div class="project-draft-card__flow-actions">
