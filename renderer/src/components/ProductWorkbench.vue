@@ -234,6 +234,15 @@ function resolveProjectPublishPlatformProfile(project = {}) {
   }
 }
 
+function resolveProjectPublishEditorAttributes(project = {}) {
+  const previewAttributes = resolvePublishPreviewRuleAttributes(project.id)
+  if (previewAttributes.length) {
+    return previewAttributes
+  }
+
+  return resolveProjectPublishPlatformProfile(project).requiredAttributes
+}
+
 function resolvePublishPlatformOptions(project = {}) {
   const rows = props.publishState?.[project.id]?.publishConfig?.platformOptions
   return Array.isArray(rows) && rows.length ? rows : publishPlatformOptions
@@ -735,7 +744,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 </label>
 
                 <label
-                  v-for="attribute in resolveProjectPublishPlatformProfile(item.project).requiredAttributes"
+                  v-for="attribute in resolveProjectPublishEditorAttributes(item.project)"
                   :key="`${item.project.id}-publish-attribute-${attribute.key}`"
                   class="project-task-card__field"
                 >
