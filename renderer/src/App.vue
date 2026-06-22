@@ -907,11 +907,6 @@ function handlePublishChannelAccountChange({ project, channelAccountId }) {
 }
 
 async function ensurePublishDraftReady(project) {
-  const state = getProjectPublishState(project)
-  if (state.draftSummary?.id) {
-    return state.draftSummary.id
-  }
-
   const draft = await upsertPublishDraft({
     projectId: project.id
   })

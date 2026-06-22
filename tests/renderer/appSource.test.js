@@ -90,6 +90,8 @@ describe('App source', () => {
     expect(source).toContain("function buildProjectPublishDraftPatchFromPreview(project = {}, preview = null, selectedPlatform = '') {")
     expect(source).toContain('const previewRuleAttributes = Array.isArray(preview?.platformRule?.requiredAttributes)')
     expect(source).toContain("if (!Object.prototype.hasOwnProperty.call(nextAttributes, attribute.key)) {")
+    expect(source).toContain("async function ensurePublishDraftReady(project) {")
+    expect(source).toContain("const draft = await upsertPublishDraft({")
     expect(source).toContain('const publishDraftPatch = buildProjectPublishDraftPatchFromPreview(')
     expect(source).toContain('await updateStudioProject({')
     expect(source).toContain('activeProductProjectId')
