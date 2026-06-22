@@ -460,6 +460,50 @@ function resolvePrimaryPreview(item) {
     ''
 }
 
+function resolveProjectRunById(runId = '') {
+  return projectRunMap.value.get(String(runId || '').trim()) || null
+}
+
+function resolveResultLanding(project = {}) {
+  const resultLanding = project?.metadata?.resultLanding
+  return resultLanding && typeof resultLanding === 'object'
+    ? resultLanding
+    : {
+        titleRunId: '',
+        descriptionRunId: '',
+        imageRunId: '',
+        videoRunId: ''
+      }
+}
+
+function resolveResultLandingRunLabel(project = {}, fieldKey = '') {
+  const resultLanding = resolveResultLanding(project)
+  const runId = String(resultLanding?.[fieldKey] || '').trim()
+  if (!runId) {
+    return '未采用'
+  }
+
+  const run = resolveProjectRunById(runId)
+  if (!run) {
+    return runId
+  }
+
+  return run.taskNumber || run.id
+}
+
+function resolveProjectCurrentTitle(project = {}, latestRun = null) {
+  return String(project?.content?.selectedTitle || latestRun?.outputs?.selectedTitle || latestRun?.outputs?.title || '').trim()
+}
+
+function resolveProjectCurrentDescription(project = {}, latestRun = null) {
+  return String(project?.content?.selectedDescription || latestRun?.outputs?.selectedDescription || latestRun?.outputs?.description || '').trim()
+}
+
+function resolveProjectMediaLandingLabel(project = {}, fieldKey = '') {
+  const runLabel = resolveResultLandingRunLabel(project, fieldKey)
+  return runLabel === '未采用' ? '未采用' : `采用自 ${runLabel}`
+}
+
 function toggleProjectExpanded(projectId) {
   const next = new Set(expandedProjectIds.value)
   if (next.has(projectId)) next.delete(projectId)
@@ -1060,6 +1104,21 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               </label>
             </div>
 
+            <div class="project-draft-card__meta">
+              <span>当前标题：{{ resolveTextPreview(resolveProjectCurrentTitle(item.project, item.latestRun), '未生成') }}</span>
+              <span>标题来源：{{ resolveResultLandingRunLabel(item.project, 'titleRunId') }}</span>
+            </div>
+
+            <div class="project-draft-card__meta">
+              <span>当前描述：{{ resolveTextPreview(resolveProjectCurrentDescription(item.project, item.latestRun), '未生成') }}</span>
+              <span>描述来源：{{ resolveResultLandingRunLabel(item.project, 'descriptionRunId') }}</span>
+            </div>
+
+            <div class="project-draft-card__meta">
+              <span>图片采用：{{ resolveProjectMediaLandingLabel(item.project, 'imageRunId') }}</span>
+              <span>视频采用：{{ resolveProjectMediaLandingLabel(item.project, 'videoRunId') }}</span>
+            </div>
+
             <div class="project-task-card__config-grid">
               <label class="project-task-card__field">
                 <span>标题字数</span>
@@ -1550,11 +1609,11 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
             </div>
             <div class="product-result-card__detail-row product-result-card__detail-row--copy">
               <span class="product-result-card__detail-label">标题</span>
-              <button class="product-result-card__copy" type="button" @click="emit('copy-text', item.latestRun?.outputs?.title || '')">{{ resolveTextPreview(item.latestRun?.outputs?.title, '点击复制') }}</button>
+              <button class="product-result-card__copy" type="button" @click="emit('copy-text', resolveProjectCurrentTitle(item.project, item.latestRun))">{{ resolveTextPreview(resolveProjectCurrentTitle(item.project, item.latestRun), '点击复制') }}</button>
             </div>
             <div class="product-result-card__detail-row product-result-card__detail-row--copy">
               <span class="product-result-card__detail-label">描述</span>
-              <button class="product-result-card__copy" type="button" @click="emit('copy-text', item.latestRun?.outputs?.description || '')">{{ resolveTextPreview(item.latestRun?.outputs?.description, '点击复制') }}</button>
+              <button class="product-result-card__copy" type="button" @click="emit('copy-text', resolveProjectCurrentDescription(item.project, item.latestRun))">{{ resolveTextPreview(resolveProjectCurrentDescription(item.project, item.latestRun), '点击复制') }}</button>
             </div>
             <div class="product-result-card__detail-row">
               <span class="product-result-card__detail-label">套图</span>
