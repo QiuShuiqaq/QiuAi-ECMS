@@ -164,6 +164,7 @@ describe('publishDraftService', () => {
             key: 'tiktok',
             label: 'TikTok Shop',
             ruleVersion: 'phase1-2026-06-22',
+            automationStatus: 'pending-development',
             supportedOperations: ['create-listing', 'sync-status']
           }
         ]
@@ -183,6 +184,7 @@ describe('publishDraftService', () => {
     })
     expect(result.platforms[0].key).toBe('tiktok')
     expect(result.platforms[0].ruleVersion).toBe('phase1-2026-06-22')
+    expect(result.platforms[0].automationStatus).toBe('pending-development')
     expect(result.platforms[0].supportedOperations).toEqual(['create-listing', 'sync-status'])
   })
 

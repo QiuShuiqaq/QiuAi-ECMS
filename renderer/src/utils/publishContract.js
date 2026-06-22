@@ -10,6 +10,7 @@ export const fallbackPublishPlatformProfiles = {
   tiktok: {
     label: 'TikTok Shop',
     ruleVersion: 'phase1-2026-06-22',
+    automationStatus: 'pending-development',
     supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'material', label: 'Material' },
@@ -20,6 +21,7 @@ export const fallbackPublishPlatformProfiles = {
   shopee: {
     label: 'Shopee',
     ruleVersion: 'phase1-2026-06-22',
+    automationStatus: 'pending-development',
     supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
@@ -30,6 +32,7 @@ export const fallbackPublishPlatformProfiles = {
   aliexpress: {
     label: 'AliExpress',
     ruleVersion: 'phase1-2026-06-22',
+    automationStatus: 'pending-development',
     supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
@@ -72,6 +75,9 @@ export function normalizePublishPlatformProfiles (platforms = []) {
         {
           label: String(item?.label || fallbackPublishPlatformProfiles[key]?.label || key).trim(),
           ruleVersion: String(item?.ruleVersion || fallbackPublishPlatformProfiles[key]?.ruleVersion || '').trim(),
+          automationStatus: String(
+            item?.automationStatus || fallbackPublishPlatformProfiles[key]?.automationStatus || 'pending-development'
+          ).trim(),
           supportedOperations: Array.isArray(item?.supportedOperations) && item.supportedOperations.length
             ? item.supportedOperations.map((operation) => String(operation || '').trim()).filter(Boolean)
             : (fallbackPublishPlatformProfiles[key]?.supportedOperations || []),

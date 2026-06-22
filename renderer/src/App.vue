@@ -1430,6 +1430,17 @@ async function handlePublishCreateTask(project) {
   try {
     const operationType = resolveProjectPublishTaskOperation(project)
     const { selectedPlatform, profile } = assertProjectPublishPlatformReady(project, operationType)
+    if (String(profile?.automationStatus || '').trim() === 'pending-development') {
+      patchProjectPublishState(project.id, {
+        isTaskLoading: false,
+        error: 'Automatic marketplace publishing is pending development. Use draft sync, account checks, preview validation, and status diagnostics for now.'
+      })
+      return showActionFeedback({
+        type: 'error',
+        title: 'Auto Publish Pending',
+        message: 'Automatic marketplace publishing is pending development. Use draft sync, account checks, preview validation, and status diagnostics for now.'
+      })
+    }
     const localValidationError = validateProjectPublishDraftBeforeRemote(project, selectedPlatform, profile, operationType)
     if (localValidationError) {
       const localValidationMessage = buildLocalPublishValidationMessage(localValidationError)

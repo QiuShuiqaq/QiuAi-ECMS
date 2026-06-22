@@ -260,10 +260,15 @@ function resolveProjectPublishPlatformProfile(project = {}) {
   return platformProfiles[resolveProjectPublishPlatform(project)] || {
     label: 'Platform',
     ruleVersion: '',
+    automationStatus: 'pending-development',
     supportedOperations: [],
     requiredAttributes: [],
     manualReviewAttributeKey: ''
   }
+}
+
+function isPublishAutomationPending(project = {}) {
+  return String(resolveProjectPublishPlatformProfile(project).automationStatus || '').trim() === 'pending-development'
 }
 
 function isPublishOperationEnabled(project = {}, operationType = '') {
@@ -1258,6 +1263,14 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               </span>
             </div>
 
+            <div
+              v-if="isPublishAutomationPending(item.project)"
+              class="project-draft-card__meta"
+            >
+              <span>Automation Status: PENDING_DEVELOPMENT</span>
+              <span>Automatic marketplace publishing is not enabled yet. Use draft sync, account checks, preview validation, and status diagnostics for now.</span>
+            </div>
+
             <div class="project-draft-card__flow-actions">
               <button
                 class="secondary-action"
@@ -1270,10 +1283,10 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="getPublishState(item.project.id).isTaskLoading || !isSelectedChannelAccountUsable(item.project) || !isPublishOperationEnabled(item.project, 'create-listing')"
+                :disabled="true"
                 @click="emit('publish-create-task', item.project)"
               >
-                创建任务
+                Auto Publish Pending
               </button>
               <button
                 class="secondary-action"
