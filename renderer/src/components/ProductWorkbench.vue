@@ -286,6 +286,13 @@ function resolvePublishPreviewMappedCategory(projectId = '') {
   return String(getPublishState(projectId).preview?.mappedDraft?.categoryId || '').trim()
 }
 
+function resolvePublishPreviewMappedCategoryPath(projectId = '') {
+  const value = getPublishState(projectId).preview?.mappedDraft?.categoryPath
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+}
+
 function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
   return [
     issue.field || 'field',
@@ -530,6 +537,9 @@ function getPublishState(projectId = '') {
                 </span>
                 <span v-if="resolvePublishPreviewMappedCategory(item.project.id)">
                   映射类目：{{ resolvePublishPreviewMappedCategory(item.project.id) }}
+                </span>
+                <span v-if="resolvePublishPreviewMappedCategoryPath(item.project.id).length">
+                  类目路径：{{ resolvePublishPreviewMappedCategoryPath(item.project.id).join(' / ') }}
                 </span>
               </div>
 
