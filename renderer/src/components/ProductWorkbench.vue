@@ -493,6 +493,22 @@ function resolveLatestTaskRuleVersion(projectId = '') {
   return String(lastAttempt?.requestPayload?.platformRule?.ruleVersion || '').trim()
 }
 
+function resolveLatestTaskExecutionMode(projectId = '') {
+  const attempts = getPublishState(projectId).latestTask?.attempts
+  if (!Array.isArray(attempts) || !attempts.length) {
+    return ''
+  }
+
+  const lastAttempt = attempts[attempts.length - 1]
+  return String(
+    lastAttempt?.requestSummary?.executionMode ||
+    lastAttempt?.responseSummary?.executionMode ||
+    lastAttempt?.requestPayload?.executionMode ||
+    lastAttempt?.responsePayload?.executionMode ||
+    ''
+  ).trim()
+}
+
 function resolveProjectManualReviewFlag(project = {}) {
   const profile = resolveProjectPublishPlatformProfile(project)
   const key = String(profile.manualReviewAttributeKey || '').trim()
@@ -804,6 +820,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <span v-if="getPublishState(item.project.id).draftSummary?.id">草稿ID: {{ getPublishState(item.project.id).draftSummary.id }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.status">任务状态: {{ resolvePublishStatusLabel(getPublishState(item.project.id).latestTask.status) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.platformLabel">{{ getPublishState(item.project.id).latestTask.platformLabel }}</span>
+              <span v-if="resolveLatestTaskExecutionMode(item.project.id)">执行模式: {{ resolveLatestTaskExecutionMode(item.project.id) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.lastErrorMessage">失败原因: {{ getPublishState(item.project.id).latestTask.lastErrorMessage }}</span>
             </div>
 
@@ -849,6 +866,9 @@ function canRetryLatestPublishTask(projectId = '') {
             >
               <div class="project-draft-card__publish-preview-summary">
                 <span>任务失败明细</span>
+                <span v-if="resolveLatestTaskExecutionMode(item.project.id)">
+                  执行模式：{{ resolveLatestTaskExecutionMode(item.project.id) }}
+                </span>
                 <span v-if="resolveLatestTaskRuleVersion(item.project.id)">
                   规则版本：{{ resolveLatestTaskRuleVersion(item.project.id) }}
                 </span>
