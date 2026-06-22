@@ -118,4 +118,36 @@ describe('publishDraftService', () => {
     }))
     expect(result.id).toBe('draft-1')
   })
+
+  it('lists publish channel accounts with the current session token', async () => {
+    const remoteLicensePlatformClient = {
+      listPublishChannelAccounts: vi.fn().mockResolvedValue([
+        {
+          id: 'channel-1',
+          platform: 'tiktok'
+        }
+      ])
+    }
+
+    const { createPublishDraftService } = await import('../../main/src/services/publishDraftService.js')
+    const service = createPublishDraftService({
+      remoteLicensePlatformClient,
+      getSessionToken: async () => 'session-1'
+    })
+
+    const result = await service.listChannelAccounts({
+      platform: 'tiktok'
+    })
+
+    expect(remoteLicensePlatformClient.listPublishChannelAccounts).toHaveBeenCalledWith({
+      platform: 'tiktok',
+      sessionToken: 'session-1'
+    })
+    expect(result).toEqual([
+      {
+        id: 'channel-1',
+        platform: 'tiktok'
+      }
+    ])
+  })
 })

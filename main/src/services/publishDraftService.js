@@ -114,6 +114,14 @@ function createPublishDraftService ({
     })
   }
 
+  async function listChannelAccounts (payload = {}) {
+    const sessionToken = await requireSessionToken()
+    return remoteLicensePlatformClient.listPublishChannelAccounts({
+      platform: trimString(payload.platform || ''),
+      sessionToken
+    })
+  }
+
   async function getDraft (payload = {}) {
     const sessionToken = await requireSessionToken()
     return remoteLicensePlatformClient.getPublishDraft({
@@ -165,6 +173,7 @@ function createPublishDraftService ({
     getDraft,
     getDraftPreview,
     getTask,
+    listChannelAccounts,
     retryTask,
     upsertDraft
   }

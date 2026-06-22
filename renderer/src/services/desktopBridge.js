@@ -615,6 +615,14 @@ export function getSelectionItemDetail (payload) {
   return invoke(getChannel('SELECTION_GET_ITEM_DETAIL'), payload)
 }
 
+export function listPublishChannelAccounts (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_LIST_CHANNEL_ACCOUNTS'), payload)
+}
+
 export function upsertPublishDraft (payload) {
   if (!hasBridge()) {
     return Promise.reject(createBridgeUnavailableError())

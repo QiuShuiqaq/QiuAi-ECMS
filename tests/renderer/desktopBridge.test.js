@@ -300,6 +300,7 @@ describe('desktopBridge', () => {
   it('exposes publish bridge helpers for the new publish-center flow', async () => {
     const desktopBridge = await import('../../renderer/src/services/desktopBridge.js')
 
+    expect(typeof desktopBridge.listPublishChannelAccounts).toBe('function')
     expect(typeof desktopBridge.upsertPublishDraft).toBe('function')
     expect(typeof desktopBridge.getPublishDraft).toBe('function')
     expect(typeof desktopBridge.getPublishDraftPreview).toBe('function')

@@ -8,6 +8,7 @@ const props = defineProps({
   activeProjectId: { type: String, default: '' },
   focusProjectId: { type: String, default: '' },
   submitButtonState: { type: String, default: 'idle' },
+  publishState: { type: Object, default: () => ({}) },
   selectionManifest: { type: Object, default: () => ({ generatedAt: '', boards: [] }) },
   selectionPlatforms: { type: Array, default: () => [] },
   selectionSites: { type: Array, default: () => [] },
@@ -27,6 +28,12 @@ const emit = defineEmits([
   'export-project',
   'open-generator',
   'sync-publish-draft',
+  'publish-platform-change',
+  'publish-channel-account-change',
+  'publish-preview',
+  'publish-create-task',
+  'publish-refresh-task',
+  'publish-retry-task',
   'selection-query-change',
   'selection-import'
 ])
@@ -77,6 +84,13 @@ const stepOptions = [
   { key: 'video', label: '视频' }
 ]
 
+const selectionBoardOptions = [
+  { label: '热销商品', value: 'hot-sale' },
+  { label: '热销新品', value: 'hot-sale-new' },
+  { label: '新店热销', value: 'new-mall-hot-sale' },
+  { label: '大卖新品', value: 'big-sale-new' }
+]
+
 const expandedProjectIds = ref(new Set())
 const expandedResultIds = ref(new Set())
 const hasInitializedProjectExpansion = ref(false)
@@ -109,13 +123,6 @@ const resultCards = computed(() => {
     return rightTime - leftTime
   })
 })
-
-const selectionBoardOptions = [
-  { label: '热销商品', value: 'hot-sale' },
-  { label: '热销新品', value: 'hot-sale-new' },
-  { label: '新店热销', value: 'new-mall-hot-sale' },
-  { label: '大卖新品', value: 'big-sale-new' }
-]
 
 const selectionItems = computed(() => Array.isArray(props.selectionState?.items) ? props.selectionState.items : [])
 const selectionBoardSummaryMap = computed(() => {
@@ -199,6 +206,19 @@ function resolveStatusClass(status = '') {
   return 'workbench-status--draft'
 }
 
+function resolvePublishStatusLabel(status = '') {
+  const normalized = String(status || '').trim()
+  if (normalized === 'queued') return '已排队'
+  if (normalized === 'blocked') return '已阻塞'
+  if (normalized === 'running') return '执行中'
+  if (normalized === 'awaiting-platform-review') return '审核中'
+  if (normalized === 'succeeded') return '已成功'
+  if (normalized === 'failed-retryable') return '失败可重试'
+  if (normalized === 'failed-final') return '失败终止'
+  if (normalized === 'cancelled') return '已取消'
+  return '未创建'
+}
+
 function getRunImages(project, latestRun) {
   if (Array.isArray(latestRun?.outputs?.images) && latestRun.outputs.images.length) {
     return latestRun.outputs.images
@@ -251,6 +271,28 @@ function resolveSelectionBoardSummary(item = {}) {
     item.boardType,
     item.siteCode || ''
   ].join('__')) || null
+}
+
+function getPublishState(projectId = '') {
+  const state = props.publishState && typeof props.publishState === 'object'
+    ? props.publishState[projectId]
+    : null
+
+  return state && typeof state === 'object'
+    ? state
+    : {
+        selectedPlatform: '',
+        selectedChannelAccountId: '',
+        channelAccounts: [],
+        isSyncing: false,
+        isLoadingAccounts: false,
+        isPreviewLoading: false,
+        isTaskLoading: false,
+        error: '',
+        preview: null,
+        latestTask: null,
+        draftSummary: null
+      }
 }
 </script>
 
@@ -348,7 +390,7 @@ function resolveSelectionBoardSummary(item = {}) {
                 </select>
               </label>
               <label class="project-task-card__field">
-                <span>视频动态</span>
+                <span>视频动效</span>
                 <select :value="item.project.generationConfig?.videoMotionStrength || 'auto'" @change="updateProjectGenerationConfig(item.project, { videoMotionStrength: $event.target.value })">
                   <option v-for="option in videoMotionOptions" :key="`${item.project.id}-video-motion-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
@@ -368,10 +410,88 @@ function resolveSelectionBoardSummary(item = {}) {
               <button
                 class="secondary-action"
                 type="button"
+                :disabled="getPublishState(item.project.id).isSyncing"
                 @click="emit('sync-publish-draft', item.project)"
               >
                 同步发布草稿
               </button>
+            </div>
+
+            <div class="project-task-card__config-grid">
+              <label class="project-task-card__field">
+                <span>发布平台</span>
+                <select
+                  :value="getPublishState(item.project.id).selectedPlatform || item.project.platformTarget?.[0] || 'temu'"
+                  @change="emit('publish-platform-change', { project: item.project, platform: $event.target.value })"
+                >
+                  <option v-for="option in platformOptions" :key="`${item.project.id}-publish-platform-${option.value}`" :value="option.value">{{ option.label }}</option>
+                </select>
+              </label>
+              <label class="project-task-card__field project-task-card__field--full">
+                <span>发布账号</span>
+                <select
+                  :value="getPublishState(item.project.id).selectedChannelAccountId || ''"
+                  :disabled="getPublishState(item.project.id).isLoadingAccounts || !getPublishState(item.project.id).channelAccounts.length"
+                  @change="emit('publish-channel-account-change', { project: item.project, channelAccountId: $event.target.value })"
+                >
+                  <option value="">{{ getPublishState(item.project.id).isLoadingAccounts ? '加载账号中' : '请选择发布账号' }}</option>
+                  <option
+                    v-for="account in getPublishState(item.project.id).channelAccounts"
+                    :key="`${item.project.id}-publish-account-${account.id}`"
+                    :value="account.id"
+                  >
+                    {{ `${account.platformLabel} / ${account.sellerName} / ${account.sellerExternalIdMasked}` }}
+                  </option>
+                </select>
+              </label>
+            </div>
+
+            <div class="project-draft-card__flow-actions">
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="getPublishState(item.project.id).isPreviewLoading"
+                @click="emit('publish-preview', item.project)"
+              >
+                发布预览
+              </button>
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="getPublishState(item.project.id).isTaskLoading"
+                @click="emit('publish-create-task', item.project)"
+              >
+                创建任务
+              </button>
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="!getPublishState(item.project.id).latestTask?.id || getPublishState(item.project.id).isTaskLoading"
+                @click="emit('publish-refresh-task', item.project)"
+              >
+                刷新任务
+              </button>
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="!getPublishState(item.project.id).latestTask?.id || getPublishState(item.project.id).isTaskLoading"
+                @click="emit('publish-retry-task', item.project)"
+              >
+                重试任务
+              </button>
+            </div>
+
+            <div class="project-draft-card__meta">
+              <span v-if="getPublishState(item.project.id).draftSummary?.id">草稿ID: {{ getPublishState(item.project.id).draftSummary.id }}</span>
+              <span v-if="getPublishState(item.project.id).latestTask?.status">任务状态: {{ resolvePublishStatusLabel(getPublishState(item.project.id).latestTask.status) }}</span>
+              <span v-if="getPublishState(item.project.id).latestTask?.platformLabel">{{ getPublishState(item.project.id).latestTask.platformLabel }}</span>
+            </div>
+
+            <div v-if="getPublishState(item.project.id).preview || getPublishState(item.project.id).error" class="project-draft-card__meta">
+              <span v-if="getPublishState(item.project.id).preview">
+                {{ getPublishState(item.project.id).preview.isValid ? '预览校验通过' : `预览未通过：${(getPublishState(item.project.id).preview.validationIssues || []).length} 项` }}
+              </span>
+              <span v-if="getPublishState(item.project.id).error">{{ getPublishState(item.project.id).error }}</span>
             </div>
           </div>
 
@@ -494,7 +614,7 @@ function resolveSelectionBoardSummary(item = {}) {
 
         <div class="selection-panel__meta">
           <span v-if="selectionState.error" class="selection-panel__error">{{ selectionState.error }}</span>
-          <span v-else>{{ selectionState.isLoading ? '正在加载选品数据…' : `共 ${selectionState.totalItems || 0} 条，可导入工作台` }}</span>
+          <span v-else>{{ selectionState.isLoading ? '正在加载选品数据...' : `共 ${selectionState.totalItems || 0} 条，可导入工作台` }}</span>
         </div>
 
         <div class="selection-card-list">
@@ -524,6 +644,5 @@ function resolveSelectionBoardSummary(item = {}) {
         </div>
       </div>
     </section>
-
   </section>
 </template>

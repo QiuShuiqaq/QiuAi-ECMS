@@ -35,6 +35,7 @@ import {
   exportStudioProjectBundle,
   getActivationStatus,
   getComputePackageOrder,
+  getPublishTask,
   getPublishDraft,
   getPublishDraftPreview,
   getRechargeOrder,
@@ -44,6 +45,7 @@ import {
   getStudioRuntimeSnapshot,
   getStudioSnapshot,
   listComputePackages,
+  listPublishChannelAccounts,
   listPromptTemplates,
   listSelectionItems,
   listSelectionPlatforms,
@@ -96,6 +98,7 @@ const selectionItemsState = ref({
   isLoading: false,
   error: ''
 })
+const publishState = ref({})
 const studioTasks = ref([])
 const studioAgentReadiness = ref({
   queue: {
@@ -655,6 +658,360 @@ async function handleSyncPublishDraft(project) {
   }
 }
 
+function getProjectPublishState(project = {}) {
+  const projectId = String(project?.id || '').trim()
+  const platform = String(publishState.value?.[projectId]?.selectedPlatform || project?.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+
+  if (!publishState.value[projectId]) {
+    publishState.value = {
+      ...publishState.value,
+      [projectId]: {
+        selectedPlatform: platform,
+        selectedChannelAccountId: '',
+        channelAccounts: [],
+        isSyncing: false,
+        isLoadingAccounts: false,
+        isPreviewLoading: false,
+        isTaskLoading: false,
+        error: '',
+        preview: null,
+        latestTask: null,
+        draftSummary: null
+      }
+    }
+  }
+
+  return publishState.value[projectId]
+}
+
+function patchProjectPublishState(projectId, patch = {}) {
+  const currentState = publishState.value[projectId] || {}
+  publishState.value = {
+    ...publishState.value,
+    [projectId]: {
+      ...currentState,
+      ...patch
+    }
+  }
+  return publishState.value[projectId]
+}
+
+async function loadPublishChannelAccounts(project, { platform, preserveSelection = true } = {}) {
+  const projectId = String(project?.id || '').trim()
+  if (!projectId) {
+    return []
+  }
+
+  const currentState = getProjectPublishState(project)
+  const targetPlatform = String(platform || currentState.selectedPlatform || project?.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+  patchProjectPublishState(projectId, {
+    selectedPlatform: targetPlatform,
+    isLoadingAccounts: true,
+    error: ''
+  })
+
+  try {
+    const channelAccounts = await listPublishChannelAccounts({
+      platform: targetPlatform
+    })
+    const accountRows = Array.isArray(channelAccounts) ? channelAccounts : []
+    const nextSelectedChannelAccountId = preserveSelection && accountRows.some((item) => item.id === currentState.selectedChannelAccountId)
+      ? currentState.selectedChannelAccountId
+      : (accountRows[0]?.id || '')
+
+    patchProjectPublishState(projectId, {
+      channelAccounts: accountRows,
+      selectedChannelAccountId: nextSelectedChannelAccountId,
+      isLoadingAccounts: false
+    })
+    return accountRows
+  } catch (error) {
+    patchProjectPublishState(projectId, {
+      channelAccounts: [],
+      selectedChannelAccountId: '',
+      isLoadingAccounts: false,
+      error: buildErrorMessage(error, '发布账号加载失败')
+    })
+    throw error
+  }
+}
+
+async function handlePublishPlatformChange({ project, platform }) {
+  if (!project?.id) {
+    return
+  }
+
+  try {
+    await loadPublishChannelAccounts(project, {
+      platform,
+      preserveSelection: false
+    })
+  } catch {
+    // Error already stored in state.
+  }
+}
+
+function handlePublishChannelAccountChange({ project, channelAccountId }) {
+  if (!project?.id) {
+    return
+  }
+
+  patchProjectPublishState(project.id, {
+    selectedChannelAccountId: String(channelAccountId || '').trim(),
+    error: ''
+  })
+}
+
+async function ensurePublishDraftReady(project) {
+  const state = getProjectPublishState(project)
+  if (state.draftSummary?.id) {
+    return state.draftSummary.id
+  }
+
+  const draft = await upsertPublishDraft({
+    projectId: project.id
+  })
+  patchProjectPublishState(project.id, {
+    draftSummary: {
+      id: draft.id,
+      title: draft.title,
+      status: draft.status
+    }
+  })
+  return draft.id
+}
+
+async function ensurePublishChannelAccountReady(project) {
+  const state = getProjectPublishState(project)
+  if (state.selectedChannelAccountId) {
+    return state.selectedChannelAccountId
+  }
+
+  const channelAccounts = await loadPublishChannelAccounts(project, {
+    platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu'
+  })
+  const firstAccountId = String(channelAccounts?.[0]?.id || '').trim()
+  if (!firstAccountId) {
+    throw new Error('当前平台没有可用的发布账号。')
+  }
+  return firstAccountId
+}
+
+async function handleSyncPublishDraftFlow(project) {
+  if (!project?.id) {
+    return
+  }
+
+  try {
+    getProjectPublishState(project)
+    patchProjectPublishState(project.id, {
+      isSyncing: true,
+      error: ''
+    })
+
+    const draft = await upsertPublishDraft({
+      projectId: project.id
+    })
+
+    const currentState = patchProjectPublishState(project.id, {
+      draftSummary: {
+        id: draft.id,
+        title: draft.title,
+        status: draft.status
+      },
+      preview: null,
+      latestTask: null,
+      isSyncing: false
+    })
+
+    if (!Array.isArray(currentState.channelAccounts) || !currentState.channelAccounts.length) {
+      await loadPublishChannelAccounts(project, {
+        platform: currentState.selectedPlatform || project.platformTarget?.[0] || 'temu'
+      })
+    }
+
+    showActionFeedback({
+      type: 'success',
+      title: '草稿已同步',
+      message: `发布草稿已同步到服务端：${draft.title || project.name || project.id}`
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isSyncing: false,
+      error: buildErrorMessage(error, '发布草稿同步失败')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '同步失败',
+      message: buildErrorMessage(error, '发布草稿同步失败')
+    })
+  }
+}
+
+async function handlePublishPreview(project) {
+  if (!project?.id) {
+    return
+  }
+
+  const state = getProjectPublishState(project)
+  patchProjectPublishState(project.id, {
+    isPreviewLoading: true,
+    error: ''
+  })
+
+  try {
+    const draftId = await ensurePublishDraftReady(project)
+    const channelAccountId = await ensurePublishChannelAccountReady(project)
+    const preview = await getPublishDraftPreview({
+      id: draftId,
+      platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu',
+      channelAccountId
+    })
+
+    patchProjectPublishState(project.id, {
+      preview,
+      isPreviewLoading: false
+    })
+    showActionFeedback({
+      type: preview.isValid ? 'success' : 'error',
+      title: preview.isValid ? '预览通过' : '预览未通过',
+      message: preview.isValid ? '当前发布草稿已通过基础校验。' : `检测到 ${(preview.validationIssues || []).length} 项待处理问题`
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isPreviewLoading: false,
+      error: buildErrorMessage(error, '发布预览失败')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '预览失败',
+      message: buildErrorMessage(error, '发布预览失败')
+    })
+  }
+}
+
+async function handlePublishCreateTask(project) {
+  if (!project?.id) {
+    return
+  }
+
+  const state = getProjectPublishState(project)
+  patchProjectPublishState(project.id, {
+    isTaskLoading: true,
+    error: ''
+  })
+
+  try {
+    const draftId = await ensurePublishDraftReady(project)
+    const channelAccountId = await ensurePublishChannelAccountReady(project)
+    const task = await createPublishTask({
+      draftId,
+      platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu',
+      channelAccountId,
+      operationType: 'create-listing'
+    })
+
+    patchProjectPublishState(project.id, {
+      latestTask: task,
+      isTaskLoading: false
+    })
+    showActionFeedback({
+      type: 'success',
+      title: '任务已创建',
+      message: `发布任务状态：${task.status || 'queued'}`
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isTaskLoading: false,
+      error: buildErrorMessage(error, '发布任务创建失败')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '创建失败',
+      message: buildErrorMessage(error, '发布任务创建失败')
+    })
+  }
+}
+
+async function handlePublishRefreshTask(project) {
+  if (!project?.id) {
+    return
+  }
+
+  const state = getProjectPublishState(project)
+  const taskId = String(state.latestTask?.id || '').trim()
+  if (!taskId) {
+    return
+  }
+
+  patchProjectPublishState(project.id, {
+    isTaskLoading: true,
+    error: ''
+  })
+
+  try {
+    const task = await getPublishTask({
+      id: taskId
+    })
+    patchProjectPublishState(project.id, {
+      latestTask: task,
+      isTaskLoading: false
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isTaskLoading: false,
+      error: buildErrorMessage(error, '任务状态刷新失败')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '刷新失败',
+      message: buildErrorMessage(error, '任务状态刷新失败')
+    })
+  }
+}
+
+async function handlePublishRetryTask(project) {
+  if (!project?.id) {
+    return
+  }
+
+  const state = getProjectPublishState(project)
+  const taskId = String(state.latestTask?.id || '').trim()
+  if (!taskId) {
+    return
+  }
+
+  patchProjectPublishState(project.id, {
+    isTaskLoading: true,
+    error: ''
+  })
+
+  try {
+    const task = await retryPublishTask({
+      id: taskId
+    })
+    patchProjectPublishState(project.id, {
+      latestTask: task,
+      isTaskLoading: false
+    })
+    showActionFeedback({
+      type: 'success',
+      title: '已重试',
+      message: `发布任务已重新入队：${task.status || 'queued'}`
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isTaskLoading: false,
+      error: buildErrorMessage(error, '任务重试失败')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '重试失败',
+      message: buildErrorMessage(error, '任务重试失败')
+    })
+  }
+}
+
 async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
   if (!menuKey) {
     return
@@ -1123,6 +1480,7 @@ onUnmounted(() => {
           :active-project-id="activeProductProjectId"
           :focus-project-id="activeProductProjectId"
           :submit-button-state="submitButtonState"
+          :publish-state="publishState"
           :selection-manifest="selectionManifest"
           :selection-platforms="selectionPlatforms"
           :selection-sites="selectionSites"
@@ -1138,7 +1496,13 @@ onUnmounted(() => {
           @open-resource="handleOpenResource"
           @export-project="handleExportProject"
           @open-generator="handleOpenProjectGenerator"
-          @sync-publish-draft="handleSyncPublishDraft"
+          @sync-publish-draft="handleSyncPublishDraftFlow"
+          @publish-platform-change="handlePublishPlatformChange"
+          @publish-channel-account-change="handlePublishChannelAccountChange"
+          @publish-preview="handlePublishPreview"
+          @publish-create-task="handlePublishCreateTask"
+          @publish-refresh-task="handlePublishRefreshTask"
+          @publish-retry-task="handlePublishRetryTask"
           @selection-query-change="handleSelectionQueryChange"
           @selection-import="handleSelectionImport"
         />

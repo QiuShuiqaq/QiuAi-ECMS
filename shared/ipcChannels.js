@@ -13,6 +13,7 @@ module.exports = {
   SELECTION_LIST_SITES: 'selection:list-sites',
   SELECTION_LIST_ITEMS: 'selection:list-items',
   SELECTION_GET_ITEM_DETAIL: 'selection:get-item-detail',
+  PUBLISH_LIST_CHANNEL_ACCOUNTS: 'publish:list-channel-accounts',
   PUBLISH_UPSERT_DRAFT: 'publish:upsert-draft',
   PUBLISH_GET_DRAFT: 'publish:get-draft',
   PUBLISH_GET_DRAFT_PREVIEW: 'publish:get-draft-preview',
