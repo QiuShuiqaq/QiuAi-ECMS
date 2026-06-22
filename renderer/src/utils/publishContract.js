@@ -10,7 +10,7 @@ export const fallbackPublishPlatformProfiles = {
   tiktok: {
     label: 'TikTok Shop',
     ruleVersion: 'phase1-2026-06-22',
-    supportedOperations: ['create-listing'],
+    supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'material', label: 'Material' },
       { key: 'product_type', label: 'Product Type' }
@@ -20,7 +20,7 @@ export const fallbackPublishPlatformProfiles = {
   shopee: {
     label: 'Shopee',
     ruleVersion: 'phase1-2026-06-22',
-    supportedOperations: ['create-listing'],
+    supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'condition', label: 'Condition' }
@@ -30,7 +30,7 @@ export const fallbackPublishPlatformProfiles = {
   aliexpress: {
     label: 'AliExpress',
     ruleVersion: 'phase1-2026-06-22',
-    supportedOperations: ['create-listing'],
+    supportedOperations: ['create-listing', 'sync-status'],
     requiredAttributes: [
       { key: 'brand', label: 'Brand' },
       { key: 'shipping_origin', label: 'Shipping Origin' }

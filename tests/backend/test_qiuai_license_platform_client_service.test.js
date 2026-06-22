@@ -87,7 +87,7 @@ describe('qiuAiLicensePlatformClientService', () => {
       .mockResolvedValueOnce({ data: { ok: true, data: [{ code: 'my', label: '马来西亚' }] } })
       .mockResolvedValueOnce({ data: { ok: true, data: { items: [{ id: 'selection-1' }], page: 1, pageSize: 20, totalItems: 1 } } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'selection-1', title: 'Desk Lamp' } } })
-      .mockResolvedValueOnce({ data: { ok: true, data: { platforms: [{ key: 'tiktok', label: 'TikTok Shop', ruleVersion: 'phase1-2026-06-22', supportedOperations: ['create-listing'] }] } } })
+      .mockResolvedValueOnce({ data: { ok: true, data: { platforms: [{ key: 'tiktok', label: 'TikTok Shop', ruleVersion: 'phase1-2026-06-22', supportedOperations: ['create-listing', 'sync-status'] }] } } })
       .mockResolvedValueOnce({ data: { ok: true, data: [{ id: 'channel-1', platform: 'tiktok' }] } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-draft-1', title: 'Desk Lamp' } } })
       .mockResolvedValueOnce({ data: { ok: true, data: { id: 'publish-draft-1', title: 'Desk Lamp' } } })

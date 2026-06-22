@@ -312,7 +312,7 @@ describe('desktopBridge', () => {
   it('invokes publish bridge channels for preview and task lifecycle actions', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce([{ id: 'channel-1', platform: 'tiktok' }])
-      .mockResolvedValueOnce({ platforms: [{ key: 'tiktok', label: 'TikTok Shop', supportedOperations: ['create-listing'] }] })
+      .mockResolvedValueOnce({ platforms: [{ key: 'tiktok', label: 'TikTok Shop', supportedOperations: ['create-listing', 'sync-status'] }] })
       .mockResolvedValueOnce({ id: 'draft-1' })
       .mockResolvedValueOnce({ id: 'draft-1' })
       .mockResolvedValueOnce({ draftId: 'draft-1', isValid: true })

@@ -1208,6 +1208,61 @@ async function handlePublishCreateTask(project) {
   }
 }
 
+async function handlePublishSyncTask(project) {
+  if (!project?.id) {
+    return
+  }
+
+  const state = getProjectPublishState(project)
+  patchProjectPublishState(project.id, {
+    isTaskLoading: true,
+    error: ''
+  })
+
+  try {
+    const draftId = await ensurePublishDraftReady(project)
+    const channelAccountId = await ensurePublishChannelAccountReady(project)
+    const createdTask = await createPublishTask({
+      draftId,
+      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
+      channelAccountId,
+      operationType: 'sync-status'
+    })
+    let task = createdTask
+
+    try {
+      task = await getPublishTask({
+        id: createdTask.id
+      })
+    } catch {
+      task = createdTask
+    }
+
+    patchProjectPublishState(project.id, {
+      latestTask: task,
+      isTaskLoading: false
+    })
+    if (isPublishTaskActive(task)) {
+      queuePublishTaskPolling(0)
+    }
+    showActionFeedback({
+      type: 'success',
+      title: '鐘舵€佸悓姝ュ凡鍒涘缓',
+      message: `鍙戝竷瀹℃牳鐘舵€佸悓姝ヤ换鍔＄姸鎬侊細${task.status || 'queued'}`
+    })
+  } catch (error) {
+    patchProjectPublishState(project.id, {
+      isTaskLoading: false,
+      error: buildErrorMessage(error, '鍙戝竷鐘舵€佸悓姝ュけ璐?')
+    })
+    showActionFeedback({
+      type: 'error',
+      title: '鐘舵€佸悓姝ゅけ璐?',
+      message: buildErrorMessage(error, '鍙戝竷鐘舵€佸悓姝ュけ璐?')
+    })
+  }
+}
+
 async function handlePublishRefreshTask(project) {
   if (!project?.id) {
     return
@@ -1793,6 +1848,7 @@ onUnmounted(() => {
           @publish-channel-account-change="handlePublishChannelAccountChange"
           @publish-preview="handlePublishPreview"
           @publish-create-task="handlePublishCreateTask"
+          @publish-sync-task="handlePublishSyncTask"
           @publish-refresh-task="handlePublishRefreshTask"
           @publish-retry-task="handlePublishRetryTask"
           @selection-query-change="handleSelectionQueryChange"

@@ -40,6 +40,7 @@ const emit = defineEmits([
   'publish-channel-account-change',
   'publish-preview',
   'publish-create-task',
+  'publish-sync-task',
   'publish-refresh-task',
   'publish-retry-task',
   'selection-query-change',
@@ -853,6 +854,14 @@ function canRetryLatestPublishTask(projectId = '') {
                 @click="emit('publish-create-task', item.project)"
               >
                 创建任务
+              </button>
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="!resolveLatestTaskRemoteListingId(item.project.id) || getPublishState(item.project.id).isTaskLoading"
+                @click="emit('publish-sync-task', item.project)"
+              >
+                鍚屾瀹℃牳鐘舵€�
               </button>
               <button
                 class="secondary-action"

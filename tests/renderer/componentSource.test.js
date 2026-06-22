@@ -63,6 +63,8 @@ describe('component sources', () => {
     expect(workbenchSource).toContain('resolveSelectedChannelAccountStatusLabel')
     expect(workbenchSource).toContain('isSelectedChannelAccountUsable')
     expect(workbenchSource).toContain('Account Status:')
+    expect(workbenchSource).toContain("'publish-sync-task'")
+    expect(workbenchSource).toContain("emit('publish-sync-task', item.project)")
     expect(workbenchSource).toContain('Remote Listing ID:')
     expect(workbenchSource).toContain('Review Status:')
     expect(workbenchSource).toContain('Attempt Outcome:')

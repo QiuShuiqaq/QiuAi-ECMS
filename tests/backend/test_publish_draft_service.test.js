@@ -159,7 +159,7 @@ describe('publishDraftService', () => {
             key: 'tiktok',
             label: 'TikTok Shop',
             ruleVersion: 'phase1-2026-06-22',
-            supportedOperations: ['create-listing']
+            supportedOperations: ['create-listing', 'sync-status']
           }
         ]
       })
@@ -178,7 +178,7 @@ describe('publishDraftService', () => {
     })
     expect(result.platforms[0].key).toBe('tiktok')
     expect(result.platforms[0].ruleVersion).toBe('phase1-2026-06-22')
-    expect(result.platforms[0].supportedOperations).toEqual(['create-listing'])
+    expect(result.platforms[0].supportedOperations).toEqual(['create-listing', 'sync-status'])
   })
 
   it('forwards publish preview requests with normalized task context and current session token', async () => {
