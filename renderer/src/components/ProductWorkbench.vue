@@ -437,27 +437,9 @@ function resolvePublishStatusLabel(status = '') {
   return '未创建'
 }
 
-function getRunImages(project, latestRun) {
-  if (Array.isArray(latestRun?.outputs?.images) && latestRun.outputs.images.length) {
-    return latestRun.outputs.images
-  }
-  return Array.isArray(project?.assets?.generatedImages) ? project.assets.generatedImages : []
-}
-
-function getRunVideo(project, latestRun) {
-  return latestRun?.outputs?.video || project?.assets?.generatedVideo || null
-}
-
 function resolveTextPreview(value, fallback) {
   const text = String(value || '').trim()
   return text || fallback
-}
-
-function resolvePrimaryPreview(item) {
-  return getRunImages(item.project, item.latestRun)?.[0]?.preview ||
-    getRunImages(item.project, item.latestRun)?.[0]?.savedPath ||
-    item.project?.assets?.sourceImages?.[0]?.preview ||
-    ''
 }
 
 function resolveProjectRunById(runId = '') {
@@ -502,6 +484,46 @@ function resolveProjectCurrentDescription(project = {}, latestRun = null) {
 function resolveProjectMediaLandingLabel(project = {}, fieldKey = '') {
   const runLabel = resolveResultLandingRunLabel(project, fieldKey)
   return runLabel === '未采用' ? '未采用' : `采用自 ${runLabel}`
+}
+
+function resolveProjectCurrentImages(project = {}, latestRun = null) {
+  const runId = String(resolveResultLanding(project)?.imageRunId || '').trim()
+  const landedRun = runId ? resolveProjectRunById(runId) : null
+  const landedImages = Array.isArray(landedRun?.outputs?.images) ? landedRun.outputs.images : []
+  if (landedImages.length) {
+    return landedImages
+  }
+
+  if (Array.isArray(project?.assets?.generatedImages) && project.assets.generatedImages.length) {
+    return project.assets.generatedImages
+  }
+
+  if (Array.isArray(latestRun?.outputs?.images) && latestRun.outputs.images.length) {
+    return latestRun.outputs.images
+  }
+
+  return []
+}
+
+function resolveProjectCurrentVideo(project = {}, latestRun = null) {
+  const runId = String(resolveResultLanding(project)?.videoRunId || '').trim()
+  const landedRun = runId ? resolveProjectRunById(runId) : null
+  if (landedRun?.outputs?.video) {
+    return landedRun.outputs.video
+  }
+
+  if (project?.assets?.generatedVideo) {
+    return project.assets.generatedVideo
+  }
+
+  return latestRun?.outputs?.video || null
+}
+
+function resolvePrimaryPreview(item) {
+  return resolveProjectCurrentImages(item.project, item.latestRun)?.[0]?.preview ||
+    resolveProjectCurrentImages(item.project, item.latestRun)?.[0]?.savedPath ||
+    item.project?.assets?.sourceImages?.[0]?.preview ||
+    ''
 }
 
 function toggleProjectExpanded(projectId) {
@@ -1619,14 +1641,14 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               <span class="product-result-card__detail-label">套图</span>
               <div class="product-result-card__inline-actions">
                 <button class="secondary-action" type="button" @click="openResource(resolvePrimaryPreview(item))">预览</button>
-                <button class="secondary-action" type="button" @click="emit('open-images', { project: item.project, run: item.latestRun })">打开位置</button>
+                <button class="secondary-action" type="button" @click="emit('open-images', { project: item.project, run: resolveProjectRunById(resolveResultLanding(item.project).imageRunId) || item.latestRun })">打开位置</button>
               </div>
             </div>
             <div class="product-result-card__detail-row">
               <span class="product-result-card__detail-label">视频</span>
               <div class="product-result-card__inline-actions">
-                <button class="secondary-action" type="button" @click="openResource(getRunVideo(item.project, item.latestRun)?.savedPath)">预览</button>
-                <button class="secondary-action" type="button" @click="emit('open-video', { project: item.project, run: item.latestRun })">打开位置</button>
+                <button class="secondary-action" type="button" @click="openResource(resolveProjectCurrentVideo(item.project, item.latestRun)?.savedPath)">预览</button>
+                <button class="secondary-action" type="button" @click="emit('open-video', { project: item.project, run: resolveProjectRunById(resolveResultLanding(item.project).videoRunId) || item.latestRun })">打开位置</button>
               </div>
             </div>
             <div class="product-result-card__detail-row">

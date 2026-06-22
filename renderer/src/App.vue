@@ -1752,8 +1752,23 @@ async function handlePickGeneratorImage() {
   }
 }
 
-async function handleOpenImages(project) {
-  const latestRun = resolveLatestRun(project, projectRuns.value)
+function normalizeProjectRunPayload(payload = null) {
+  if (payload && typeof payload === 'object' && payload.project) {
+    return {
+      project: payload.project,
+      run: payload.run || null
+    }
+  }
+
+  return {
+    project: payload,
+    run: null
+  }
+}
+
+async function handleOpenImages(payload) {
+  const { project, run } = normalizeProjectRunPayload(payload)
+  const latestRun = resolveLatestRun(project, projectRuns.value, run)
   const imageDirectory = resolveImageOutputDirectory(project, latestRun)
 
   if (!imageDirectory) {
@@ -1765,8 +1780,9 @@ async function handleOpenImages(project) {
   })
 }
 
-async function handleOpenVideo(project) {
-  const latestRun = resolveLatestRun(project, projectRuns.value)
+async function handleOpenVideo(payload) {
+  const { project, run } = normalizeProjectRunPayload(payload)
+  const latestRun = resolveLatestRun(project, projectRuns.value, run)
   const videoDirectory = resolveVideoOutputDirectory(project, latestRun)
 
   if (!videoDirectory) {
