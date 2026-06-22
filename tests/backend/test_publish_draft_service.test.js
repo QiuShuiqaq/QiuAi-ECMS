@@ -178,4 +178,89 @@ describe('publishDraftService', () => {
     expect(result.platforms[0].key).toBe('tiktok')
     expect(result.platforms[0].ruleVersion).toBe('phase1-2026-06-22')
   })
+
+  it('forwards publish preview requests with normalized task context and current session token', async () => {
+    const remoteLicensePlatformClient = {
+      getPublishDraftPreview: vi.fn().mockResolvedValue({
+        draftId: 'draft-1',
+        platform: 'tiktok',
+        isValid: true
+      })
+    }
+
+    const { createPublishDraftService } = await import('../../main/src/services/publishDraftService.js')
+    const service = createPublishDraftService({
+      remoteLicensePlatformClient,
+      getSessionToken: async () => 'session-1'
+    })
+
+    const result = await service.getDraftPreview({
+      id: ' draft-1 ',
+      platform: ' tiktok ',
+      channelAccountId: ' channel-1 '
+    })
+
+    expect(remoteLicensePlatformClient.getPublishDraftPreview).toHaveBeenCalledWith({
+      id: 'draft-1',
+      platform: 'tiktok',
+      channelAccountId: 'channel-1',
+      sessionToken: 'session-1'
+    })
+    expect(result.isValid).toBe(true)
+  })
+
+  it('forwards publish task lifecycle calls with normalized payloads and current session token', async () => {
+    const remoteLicensePlatformClient = {
+      createPublishTask: vi.fn().mockResolvedValue({
+        id: 'task-1',
+        status: 'queued'
+      }),
+      getPublishTask: vi.fn().mockResolvedValue({
+        id: 'task-1',
+        status: 'running'
+      }),
+      retryPublishTask: vi.fn().mockResolvedValue({
+        id: 'task-1',
+        status: 'queued'
+      })
+    }
+
+    const { createPublishDraftService } = await import('../../main/src/services/publishDraftService.js')
+    const service = createPublishDraftService({
+      remoteLicensePlatformClient,
+      getSessionToken: async () => 'session-1'
+    })
+
+    const createdTask = await service.createTask({
+      draftId: ' draft-1 ',
+      platform: ' tiktok ',
+      channelAccountId: ' channel-1 ',
+      operationType: ' create-listing '
+    })
+    const loadedTask = await service.getTask({
+      id: ' task-1 '
+    })
+    const retriedTask = await service.retryTask({
+      id: ' task-1 '
+    })
+
+    expect(remoteLicensePlatformClient.createPublishTask).toHaveBeenCalledWith({
+      draftId: 'draft-1',
+      platform: 'tiktok',
+      channelAccountId: 'channel-1',
+      operationType: 'create-listing',
+      sessionToken: 'session-1'
+    })
+    expect(remoteLicensePlatformClient.getPublishTask).toHaveBeenCalledWith({
+      id: 'task-1',
+      sessionToken: 'session-1'
+    })
+    expect(remoteLicensePlatformClient.retryPublishTask).toHaveBeenCalledWith({
+      id: 'task-1',
+      sessionToken: 'session-1'
+    })
+    expect(createdTask.status).toBe('queued')
+    expect(loadedTask.status).toBe('running')
+    expect(retriedTask.status).toBe('queued')
+  })
 })
