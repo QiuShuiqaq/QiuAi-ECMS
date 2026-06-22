@@ -170,6 +170,9 @@ const actionNotice = reactive({
 const runtimePollingIntervalMs = 1500
 let runtimePollingTimer = null
 let runtimePollingInFlight = false
+const publishTaskPollingIntervalMs = 2500
+let publishTaskPollingTimer = null
+let publishTaskPollingInFlight = false
 let rechargeOrderController = null
 let softwareOrderController = null
 let computePackageOrderController = null
@@ -285,6 +288,23 @@ const hasActiveStudioTasks = computed(() => {
     Boolean(studioAgentReadiness.value?.queue?.isProcessing)
 })
 
+const publishTaskTerminalStatuses = new Set([
+  'blocked',
+  'succeeded',
+  'failed-retryable',
+  'failed-final',
+  'cancelled'
+])
+
+function isPublishTaskActive(task = null) {
+  const status = String(task?.status || '').trim()
+  return Boolean(status) && !publishTaskTerminalStatuses.has(status)
+}
+
+const hasActivePublishTasks = computed(() => {
+  return Object.values(publishState.value || {}).some((state) => isPublishTaskActive(state?.latestTask))
+})
+
 function stopRuntimePolling() {
   if (runtimePollingTimer) {
     window.clearTimeout(runtimePollingTimer)
@@ -292,10 +312,24 @@ function stopRuntimePolling() {
   }
 }
 
+function stopPublishTaskPolling() {
+  if (publishTaskPollingTimer) {
+    window.clearTimeout(publishTaskPollingTimer)
+    publishTaskPollingTimer = null
+  }
+}
+
 function queueRuntimePolling(delayMs = runtimePollingIntervalMs) {
   stopRuntimePolling()
   runtimePollingTimer = window.setTimeout(() => {
     void pollStudioRuntimeSnapshot()
+  }, delayMs)
+}
+
+function queuePublishTaskPolling(delayMs = publishTaskPollingIntervalMs) {
+  stopPublishTaskPolling()
+  publishTaskPollingTimer = window.setTimeout(() => {
+    void pollPublishTasks()
   }, delayMs)
 }
 
@@ -319,6 +353,52 @@ async function pollStudioRuntimeSnapshot() {
       queueRuntimePolling()
     } else {
       stopRuntimePolling()
+    }
+  }
+}
+
+async function pollPublishTasks() {
+  if (!isActivated.value || publishTaskPollingInFlight) {
+    if (isActivated.value && hasActivePublishTasks.value) {
+      queuePublishTaskPolling()
+    }
+    return
+  }
+
+  const activeProjectEntries = Object.entries(publishState.value || {}).filter(([, state]) => {
+    return isPublishTaskActive(state?.latestTask)
+  })
+
+  if (!activeProjectEntries.length) {
+    stopPublishTaskPolling()
+    return
+  }
+
+  publishTaskPollingInFlight = true
+  try {
+    await Promise.all(activeProjectEntries.map(async ([projectId, state]) => {
+      const taskId = String(state?.latestTask?.id || '').trim()
+      if (!taskId) {
+        return
+      }
+
+      try {
+        const task = await getPublishTask({
+          id: taskId
+        })
+        patchProjectPublishState(projectId, {
+          latestTask: task
+        })
+      } catch {
+        // Ignore transient polling failures and keep polling until the task reaches a terminal state.
+      }
+    }))
+  } finally {
+    publishTaskPollingInFlight = false
+    if (isActivated.value && hasActivePublishTasks.value) {
+      queuePublishTaskPolling()
+    } else {
+      stopPublishTaskPolling()
     }
   }
 }
@@ -1080,6 +1160,9 @@ async function handlePublishCreateTask(project) {
       latestTask: task,
       isTaskLoading: false
     })
+    if (isPublishTaskActive(task)) {
+      queuePublishTaskPolling(0)
+    }
     showActionFeedback({
       type: 'success',
       title: '任务已创建',
@@ -1159,6 +1242,9 @@ async function handlePublishRetryTask(project) {
       latestTask: task,
       isTaskLoading: false
     })
+    if (isPublishTaskActive(task)) {
+      queuePublishTaskPolling(0)
+    }
     showActionFeedback({
       type: 'success',
       title: '已重试',
@@ -1593,8 +1679,22 @@ watch(
   { immediate: true }
 )
 
+watch(
+  [isActivated, hasActivePublishTasks],
+  ([activated, hasActive]) => {
+    if (activated && hasActive) {
+      queuePublishTaskPolling(0)
+      return
+    }
+
+    stopPublishTaskPolling()
+  },
+  { immediate: true }
+)
+
 onUnmounted(() => {
   stopRuntimePolling()
+  stopPublishTaskPolling()
   rechargeOrderController?.stopPolling()
   softwareOrderController?.stopPolling()
   computePackageOrderController?.stopPolling()

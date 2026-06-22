@@ -280,8 +280,13 @@ describe('App source', () => {
     const channelSource = fs.readFileSync(path.resolve(process.cwd(), 'shared/ipcChannels.js'), 'utf8')
 
     expect(appSource).toContain('const runtimePollingIntervalMs = 1500')
+    expect(appSource).toContain('const publishTaskPollingIntervalMs = 2500')
     expect(appSource).toContain('const snapshot = await getStudioRuntimeSnapshot()')
     expect(appSource).toContain('if (isActivated.value && hasActiveStudioTasks.value) {')
+    expect(appSource).toContain('const activeProjectEntries = Object.entries(publishState.value || {}).filter(([, state]) => {')
+    expect(appSource).toContain('return isPublishTaskActive(state?.latestTask)')
+    expect(appSource).toContain('const task = await getPublishTask({')
+    expect(appSource).toContain('queuePublishTaskPolling(0)')
     expect(appSource).not.toContain('getGenerationJob(')
     expect(appSource).not.toContain('/api/generation/jobs')
     expect(appSource).not.toContain('/api/activation/status')
