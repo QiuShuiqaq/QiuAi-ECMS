@@ -1,6 +1,12 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { generatorShortcutOptions } from '../utils/generatorViews'
+import {
+  canRetryPublishTask,
+  normalizePublishPlatform,
+  publishPlatformOptions,
+  supportedPublishPlatforms
+} from '../utils/publishContract'
 
 const props = defineProps({
   productProjects: { type: Array, default: () => [] },
@@ -237,7 +243,7 @@ function normalizeProjectPublishDraft(project = {}) {
 }
 
 function resolveProjectPublishPlatform(project = {}) {
-  return String(getPublishState(project.id).selectedPlatform || project.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+  return normalizePublishPlatform(getPublishState(project.id).selectedPlatform || project.platformTarget?.[0] || '')
 }
 
 function resolveProjectPublishPlatformProfile(project = {}) {
@@ -519,6 +525,10 @@ function getPublishState(projectId = '') {
         draftSummary: null
       }
 }
+
+function canRetryLatestPublishTask(projectId = '') {
+  return canRetryPublishTask(getPublishState(projectId).latestTask?.status)
+}
 </script>
 
 <template>
@@ -646,10 +656,10 @@ function getPublishState(projectId = '') {
               <label class="project-task-card__field">
                 <span>发布平台</span>
                 <select
-                  :value="getPublishState(item.project.id).selectedPlatform || item.project.platformTarget?.[0] || 'temu'"
+                  :value="resolveProjectPublishPlatform(item.project)"
                   @change="emit('publish-platform-change', { project: item.project, platform: $event.target.value })"
                 >
-                  <option v-for="option in platformOptions" :key="`${item.project.id}-publish-platform-${option.value}`" :value="option.value">{{ option.label }}</option>
+                  <option v-for="option in publishPlatformOptions" :key="`${item.project.id}-publish-platform-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
               <label class="project-task-card__field project-task-card__field--full">
@@ -672,7 +682,7 @@ function getPublishState(projectId = '') {
             </div>
 
             <div
-              v-if="['tiktok', 'shopee', 'aliexpress'].includes(resolveProjectPublishPlatform(item.project))"
+              v-if="supportedPublishPlatforms.includes(resolveProjectPublishPlatform(item.project))"
               class="project-draft-card__publish-editor"
             >
               <div class="project-draft-card__publish-editor-header">
@@ -784,7 +794,7 @@ function getPublishState(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="!getPublishState(item.project.id).latestTask?.id || getPublishState(item.project.id).isTaskLoading"
+                :disabled="!getPublishState(item.project.id).latestTask?.id || getPublishState(item.project.id).isTaskLoading || !canRetryLatestPublishTask(item.project.id)"
                 @click="emit('publish-retry-task', item.project)"
               >
                 重试任务

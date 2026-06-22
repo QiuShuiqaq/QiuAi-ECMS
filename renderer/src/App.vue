@@ -18,6 +18,11 @@ import {
 import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'
 import { resolveGeneratorView } from './utils/generatorViews'
 import {
+  canRetryPublishTask,
+  isRetryNotAllowedError,
+  normalizePublishPlatform
+} from './utils/publishContract'
+import {
   resolveImageOutputDirectory,
   resolveLatestRun,
   resolveVideoOutputDirectory
@@ -660,7 +665,9 @@ async function handleSyncPublishDraft(project) {
 
 function getProjectPublishState(project = {}) {
   const projectId = String(project?.id || '').trim()
-  const platform = String(publishState.value?.[projectId]?.selectedPlatform || project?.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+  const platform = normalizePublishPlatform(
+    publishState.value?.[projectId]?.selectedPlatform || project?.platformTarget?.[0] || ''
+  )
 
   if (!publishState.value[projectId]) {
     publishState.value = {
@@ -703,7 +710,9 @@ async function loadPublishChannelAccounts(project, { platform, preserveSelection
   }
 
   const currentState = getProjectPublishState(project)
-  const targetPlatform = String(platform || currentState.selectedPlatform || project?.platformTarget?.[0] || 'temu').trim().toLowerCase() || 'temu'
+  const targetPlatform = normalizePublishPlatform(
+    platform || currentState.selectedPlatform || project?.platformTarget?.[0] || ''
+  )
   patchProjectPublishState(projectId, {
     selectedPlatform: targetPlatform,
     isLoadingAccounts: true,
@@ -788,7 +797,7 @@ async function ensurePublishChannelAccountReady(project) {
   }
 
   const channelAccounts = await loadPublishChannelAccounts(project, {
-    platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu'
+    platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || '')
   })
   const firstAccountId = String(channelAccounts?.[0]?.id || '').trim()
   if (!firstAccountId) {
@@ -826,7 +835,7 @@ async function handleSyncPublishDraftFlow(project) {
 
     if (!Array.isArray(currentState.channelAccounts) || !currentState.channelAccounts.length) {
       await loadPublishChannelAccounts(project, {
-        platform: currentState.selectedPlatform || project.platformTarget?.[0] || 'temu'
+        platform: normalizePublishPlatform(currentState.selectedPlatform || project.platformTarget?.[0] || '')
       })
     }
 
@@ -864,7 +873,7 @@ async function handlePublishPreview(project) {
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const preview = await getPublishDraftPreview({
       id: draftId,
-      platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu',
+      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
       channelAccountId
     })
 
@@ -906,7 +915,7 @@ async function handlePublishCreateTask(project) {
     const channelAccountId = await ensurePublishChannelAccountReady(project)
     const createdTask = await createPublishTask({
       draftId,
-      platform: state.selectedPlatform || project.platformTarget?.[0] || 'temu',
+      platform: normalizePublishPlatform(state.selectedPlatform || project.platformTarget?.[0] || ''),
       channelAccountId,
       operationType: 'create-listing'
     })
