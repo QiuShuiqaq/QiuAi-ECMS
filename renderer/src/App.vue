@@ -989,6 +989,25 @@ function handlePublishChannelAccountChange({ project, channelAccountId }) {
   })
 }
 
+function resolveSelectedPublishChannelAccount(project = {}) {
+  const state = getProjectPublishState(project)
+  const selectedChannelAccountId = String(state.selectedChannelAccountId || '').trim()
+  const channelAccounts = Array.isArray(state.channelAccounts) ? state.channelAccounts : []
+  return channelAccounts.find((item) => String(item?.id || '').trim() === selectedChannelAccountId) || null
+}
+
+function assertPublishChannelAccountUsable(project = {}) {
+  const account = resolveSelectedPublishChannelAccount(project)
+  const status = String(account?.status || '').trim().toLowerCase()
+
+  if (!account || status === 'active') {
+    return
+  }
+
+  const sellerName = String(account?.sellerName || account?.sellerExternalIdMasked || account?.id || 'selected account').trim()
+  throw new Error(`Selected publish account is not usable for task submission: ${sellerName} (${status || 'unknown'}).`)
+}
+
 async function ensurePublishDraftReady(project) {
   const draft = await upsertPublishDraft({
     projectId: project.id
@@ -1006,6 +1025,7 @@ async function ensurePublishDraftReady(project) {
 async function ensurePublishChannelAccountReady(project) {
   const state = getProjectPublishState(project)
   if (state.selectedChannelAccountId) {
+    assertPublishChannelAccountUsable(project)
     return state.selectedChannelAccountId
   }
 
@@ -1016,6 +1036,13 @@ async function ensurePublishChannelAccountReady(project) {
   if (!firstAccountId) {
     throw new Error('当前平台没有可用的发布账号。')
   }
+  patchProjectPublishState(project.id, {
+    selectedChannelAccountId: firstAccountId
+  })
+  assertPublishChannelAccountUsable({
+    ...project,
+    id: project.id
+  })
   return firstAccountId
 }
 

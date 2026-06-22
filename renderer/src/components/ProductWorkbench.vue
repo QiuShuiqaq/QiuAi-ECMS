@@ -204,6 +204,30 @@ function resolveProjectPublishPlatform(project = {}) {
   return normalizePublishPlatform(getPublishState(project.id).selectedPlatform || project.platformTarget?.[0] || '')
 }
 
+function resolveSelectedChannelAccount(project = {}) {
+  const state = getPublishState(project.id)
+  const selectedChannelAccountId = String(state.selectedChannelAccountId || '').trim()
+  const channelAccounts = Array.isArray(state.channelAccounts) ? state.channelAccounts : []
+  return channelAccounts.find((item) => String(item?.id || '').trim() === selectedChannelAccountId) || null
+}
+
+function resolveSelectedChannelAccountStatus(project = {}) {
+  return String(resolveSelectedChannelAccount(project)?.status || '').trim().toLowerCase()
+}
+
+function resolveSelectedChannelAccountStatusLabel(project = {}) {
+  const status = resolveSelectedChannelAccountStatus(project)
+  if (status === 'active') return 'Active'
+  if (status === 'expired') return 'Expired'
+  if (status === 'revoked') return 'Revoked'
+  if (status === 'disabled') return 'Disabled'
+  return ''
+}
+
+function isSelectedChannelAccountUsable(project = {}) {
+  return resolveSelectedChannelAccountStatus(project) === 'active'
+}
+
 function resolveProjectPublishPlatformProfile(project = {}) {
   const platformProfiles = props.publishState?.[project.id]?.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
   return platformProfiles[resolveProjectPublishPlatform(project)] || {
@@ -715,10 +739,17 @@ function canRetryLatestPublishTask(projectId = '') {
                     :key="`${item.project.id}-publish-account-${account.id}`"
                     :value="account.id"
                   >
-                    {{ `${account.platformLabel} / ${account.sellerName} / ${account.sellerExternalIdMasked}` }}
+                    {{ `${account.platformLabel} / ${account.sellerName} / ${account.sellerExternalIdMasked} / ${String(account.status || '').toUpperCase()}` }}
                   </option>
                 </select>
               </label>
+            </div>
+
+            <div v-if="resolveSelectedChannelAccountStatusLabel(item.project)" class="project-draft-card__meta">
+              <span>Account Status: {{ resolveSelectedChannelAccountStatusLabel(item.project) }}</span>
+              <span v-if="resolveSelectedChannelAccount(item.project)?.lastValidatedAt">
+                Last Validated: {{ resolveSelectedChannelAccount(item.project).lastValidatedAt }}
+              </span>
             </div>
 
             <div
@@ -810,7 +841,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="getPublishState(item.project.id).isPreviewLoading"
+                :disabled="getPublishState(item.project.id).isPreviewLoading || !isSelectedChannelAccountUsable(item.project)"
                 @click="emit('publish-preview', item.project)"
               >
                 发布预览
@@ -818,7 +849,7 @@ function canRetryLatestPublishTask(projectId = '') {
               <button
                 class="secondary-action"
                 type="button"
-                :disabled="getPublishState(item.project.id).isTaskLoading"
+                :disabled="getPublishState(item.project.id).isTaskLoading || !isSelectedChannelAccountUsable(item.project)"
                 @click="emit('publish-create-task', item.project)"
               >
                 创建任务
