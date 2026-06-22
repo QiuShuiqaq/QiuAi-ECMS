@@ -127,12 +127,13 @@ describe('workspaceProductProjectService', () => {
     const { service, getState } = await createService()
 
     const created = await service.createProject({
+      projectId: 'project-imported-1',
       productName: 'Lamp',
       platform: 'temu',
       language: 'zh-CN'
     })
 
-    expect(created.id).toBeTruthy()
+    expect(created.id).toBe('project-imported-1')
     expect(getState().activeProductProjectId).toBe(created.id)
 
     const updated = await service.updateProject({

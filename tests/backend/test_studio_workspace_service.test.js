@@ -752,6 +752,61 @@ describe('studioWorkspaceService', () => {
     expect(observedVideoPrompts.some((prompt) => prompt.includes('选品价格：¥89'))).toBe(true)
   })
 
+  it('imports selection primary image into project source assets during project creation', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await settingsService.saveSettings({
+      authPlatform: {
+        enabled: true,
+        baseUrl: 'https://qiuaihub.com',
+        sessionToken: 'session-1'
+      }
+    })
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async (directoryPath) => {
+        await fs.mkdir(directoryPath, { recursive: true })
+      },
+      persistSourceFiles: async () => [],
+      writeFile: fs.writeFile,
+      remoteLicensePlatformClient: {
+        downloadGenerationArtifact: async ({ sessionToken, downloadUrl }) => {
+          expect(sessionToken).toBe('session-1')
+          expect(downloadUrl).toBe('https://cdn.qiuaihub.com/selection/item-1.png')
+          return Buffer.from('selection-image-binary')
+        }
+      }
+    })
+
+    const project = await service.createProject({
+      productName: '露营灯',
+      platform: 'temu',
+      language: 'zh-CN',
+      patch: {
+        sourceImageImportUrl: 'https://cdn.qiuaihub.com/selection/item-1.png',
+        metadata: {
+          selectionSource: {
+            itemId: 'selection-1',
+            primaryImageUrl: 'https://cdn.qiuaihub.com/selection/item-1.png'
+          }
+        }
+      }
+    })
+
+    expect(project.assets.sourceImages).toHaveLength(1)
+    expect(project.assets.sourceImages[0].name).toContain(`${project.id}-selection`)
+    expect(project.assets.sourceImages[0].storedPath).toContain(path.join('input', 'workspace', project.id, 'source-images'))
+    expect(project.assets.sourceImages[0].preview).toContain('data:image/png;base64,')
+  })
+
   it('keeps workspace drafts on canonical runtime fields and ignores removed legacy aliases', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()

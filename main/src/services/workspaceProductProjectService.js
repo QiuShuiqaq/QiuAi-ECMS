@@ -16,6 +16,7 @@ function createWorkspaceProductProjectService({
   attachProjectRunToProject
 } = {}) {
   async function createProject({
+    projectId = '',
     productName = '',
     platform = 'temu',
     language = 'zh-CN',
@@ -24,7 +25,7 @@ function createWorkspaceProductProjectService({
     const state = getStoredState()
     const createdAt = getNow()
     const createdProject = buildEmptyProductProject({
-      projectId: `project-${createId()}`,
+      projectId: projectId || `project-${createId()}`,
       productName,
       platform,
       language,

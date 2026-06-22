@@ -799,6 +799,7 @@ async function handleSelectionImport({ item, mode }) {
 
     const patch = {
       name: detail.title || '选品项目',
+      sourceImageImportUrl: detail.primaryImageUrl || '',
       platformTarget: [String(detail.platform || 'temu').trim().toLowerCase() || 'temu'],
       baseInfo: {
         productName: detail.title || '',

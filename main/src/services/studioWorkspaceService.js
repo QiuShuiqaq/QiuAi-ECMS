@@ -3,6 +3,7 @@ const fsSync = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { pathToFileURL } = require('node:url')
+const axios = require('axios')
 const studioMenuConfig = require('../../../shared/studio-menu-config.json')
 const { createWorkspaceExportService } = require('./workspaceExportService')
 const { createWorkspaceCreditService } = require('./workspaceCreditService')
@@ -17,6 +18,7 @@ const { MAX_SERIES_GENERATE_GROUP_SIZE } = require('./studioGenerationConstants'
 const {
   ensureDirectory,
   getTaskDataDirectories,
+  INPUT_ROOT_DIRECTORY,
   OUTPUT_ROOT_DIRECTORY,
   getFeatureDirectoryKey
 } = require('./dataPathsService')
@@ -395,6 +397,72 @@ function hydrateProjectRunForDisplay(projectRun = {}) {
         : null
     }
   }
+}
+
+function trimString(value = '') {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeBaseUrl(baseUrl = '') {
+  return trimString(baseUrl).replace(/\/+$/, '')
+}
+
+function isAbsoluteHttpUrl(value = '') {
+  return /^https?:\/\//i.test(trimString(value))
+}
+
+function buildDataUrlFromBuffer(buffer, mimeType = 'image/png') {
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    return ''
+  }
+
+  return `data:${mimeType};base64,${buffer.toString('base64')}`
+}
+
+function inferMimeTypeFromUrl(url = '') {
+  const normalizedUrl = trimString(url).toLowerCase()
+  if (normalizedUrl.endsWith('.jpg') || normalizedUrl.endsWith('.jpeg')) {
+    return 'image/jpeg'
+  }
+  if (normalizedUrl.endsWith('.webp')) {
+    return 'image/webp'
+  }
+  return 'image/png'
+}
+
+function inferImageExtension({ contentType = '', url = '' } = {}) {
+  const normalizedContentType = trimString(contentType).toLowerCase()
+  if (normalizedContentType.includes('image/jpeg')) {
+    return '.jpg'
+  }
+  if (normalizedContentType.includes('image/webp')) {
+    return '.webp'
+  }
+  if (normalizedContentType.includes('image/png')) {
+    return '.png'
+  }
+
+  const normalizedUrl = trimString(url).toLowerCase()
+  if (normalizedUrl.endsWith('.jpg') || normalizedUrl.endsWith('.jpeg')) {
+    return '.jpg'
+  }
+  if (normalizedUrl.endsWith('.webp')) {
+    return '.webp'
+  }
+  return '.png'
+}
+
+function formatAssetSizeLabel(size = 0) {
+  const numericSize = Number(size) || 0
+  if (numericSize <= 0) {
+    return ''
+  }
+
+  if (numericSize >= 1024 * 1024) {
+    return `${(numericSize / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  return `${Math.max(1, Math.round(numericSize / 1024))} KB`
 }
 
 function hydrateProjectRunsForDisplay(projectRuns = []) {
@@ -1036,6 +1104,68 @@ function buildEmptyProductProject({
     },
     createdAt,
     updatedAt: createdAt
+  })
+}
+
+async function importRemoteProjectSourceImage({
+  sourceImageImportUrl = '',
+  projectId = '',
+  remoteLicensePlatformClient = null,
+  settingsService = null,
+  ensureDirectory: ensureDirectoryDependency = ensureDirectory,
+  writeFile = fs.writeFile,
+  requestBinary = async () => Buffer.alloc(0)
+} = {}) {
+  const normalizedUrl = trimString(sourceImageImportUrl)
+  const normalizedProjectId = trimString(projectId)
+
+  if (!normalizedUrl || !normalizedProjectId) {
+    return null
+  }
+
+  const inputDirectory = path.resolve(INPUT_ROOT_DIRECTORY, 'workspace', normalizedProjectId, 'source-images')
+  await ensureDirectoryDependency(inputDirectory)
+
+  let buffer = null
+  let contentType = ''
+
+  if (
+    remoteLicensePlatformClient &&
+    typeof remoteLicensePlatformClient.downloadGenerationArtifact === 'function'
+  ) {
+    const sessionToken = trimString(settingsService?.getSettings?.()?.authPlatform?.sessionToken || '')
+    buffer = await remoteLicensePlatformClient.downloadGenerationArtifact({
+      id: '',
+      sessionToken,
+      downloadUrl: normalizedUrl
+    })
+  } else {
+    const response = await requestBinary(normalizedUrl)
+    buffer = Buffer.isBuffer(response?.buffer) ? response.buffer : Buffer.from(response?.buffer || response || '')
+    contentType = trimString(response?.contentType || '')
+  }
+
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    throw new Error('Failed to download selection source image.')
+  }
+
+  const resolvedContentType = contentType || inferMimeTypeFromUrl(normalizedUrl)
+  const extension = inferImageExtension({
+    contentType: resolvedContentType,
+    url: normalizedUrl
+  })
+  const fileName = `${sanitizePathSegment(normalizedProjectId, 'project')}-selection${extension}`
+  const targetPath = path.resolve(inputDirectory, fileName)
+
+  await writeFile(targetPath, buffer)
+
+  return normalizeImageAsset({
+    id: `source-image-${normalizedProjectId}`,
+    name: fileName,
+    path: targetPath,
+    storedPath: targetPath,
+    preview: buildDataUrlFromBuffer(buffer, resolvedContentType || 'image/png'),
+    sizeLabel: formatAssetSizeLabel(buffer.length)
   })
 }
 
@@ -2252,6 +2382,27 @@ function createStudioWorkspaceService({
   const generateImageResultsDependency = generateImageResults || createMissingGenerationDependency('image')
   const generateTextResultsDependency = generateTextResults || createMissingGenerationDependency('text')
   const generateVideoResultsDependency = generateVideoResults || createMissingGenerationDependency('video')
+  const requestBinary = async (targetUrl) => {
+    const normalizedUrl = trimString(targetUrl)
+    if (!normalizedUrl) {
+      throw new Error('Remote source image url is required.')
+    }
+
+    const resolvedBaseUrl = normalizeBaseUrl(settingsService?.getSettings?.()?.authPlatform?.baseUrl || '')
+    const response = await axios.request({
+      method: 'get',
+      url: isAbsoluteHttpUrl(normalizedUrl) || !resolvedBaseUrl
+        ? normalizedUrl
+        : `${resolvedBaseUrl}${normalizedUrl}`,
+      responseType: 'arraybuffer',
+      timeout: 20000
+    })
+
+    return {
+      buffer: Buffer.isBuffer(response.data) ? response.data : Buffer.from(response.data),
+      contentType: trimString(response.headers?.['content-type'] || '')
+    }
+  }
   const queuedTaskExecutions = []
   const activeTaskControllers = new Map()
   let isTaskQueueRunning = false
@@ -2663,17 +2814,55 @@ function createStudioWorkspaceService({
     return nextDraft
   }
 
+  async function resolveProjectPatchWithImportedSourceImage(patch = {}, projectId = '') {
+    const nextPatch = patch && typeof patch === 'object' ? { ...patch } : {}
+    const normalizedProjectId = trimString(projectId)
+    const sourceImageImportUrl = trimString(nextPatch.sourceImageImportUrl || nextPatch.metadata?.selectionSource?.primaryImageUrl || '')
+
+    delete nextPatch.sourceImageImportUrl
+
+    if (!sourceImageImportUrl || !normalizedProjectId) {
+      return nextPatch
+    }
+
+    const importedSourceImage = await importRemoteProjectSourceImage({
+      sourceImageImportUrl,
+      projectId: normalizedProjectId,
+      remoteLicensePlatformClient,
+      settingsService,
+      ensureDirectory: ensureDirectoryDependency,
+      writeFile,
+      requestBinary
+    })
+
+    if (!importedSourceImage) {
+      return nextPatch
+    }
+
+    return {
+      ...nextPatch,
+      assets: {
+        ...(nextPatch.assets && typeof nextPatch.assets === 'object' ? nextPatch.assets : {}),
+        sourceImages: [importedSourceImage]
+      }
+    }
+  }
+
   async function createProject({
     productName = '',
     platform = 'temu',
     language = 'zh-CN',
     patch = null
   } = {}) {
+    const nextProjectId = `project-${createId()}`
+    const nextPatch = await resolveProjectPatchWithImportedSourceImage(patch, nextProjectId)
+
     return workspaceProductProjectService.createProject({
+      projectId: nextProjectId,
       productName,
       platform,
       language,
-      patch
+      patch: nextPatch
     })
   }
 
@@ -2681,9 +2870,11 @@ function createStudioWorkspaceService({
     projectId = '',
     patch = {}
   } = {}) {
+    const nextPatch = await resolveProjectPatchWithImportedSourceImage(patch, projectId)
+
     return workspaceProductProjectService.updateProject({
       projectId,
-      patch
+      patch: nextPatch
     })
   }
 

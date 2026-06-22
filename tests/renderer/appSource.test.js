@@ -132,6 +132,7 @@ describe('App source', () => {
     expect(source).toContain('async function handleSelectionImport({ item, mode }) {')
     expect(source).toContain('metadata: {')
     expect(source).toContain('selectionSource: {')
+    expect(source).toContain("sourceImageImportUrl: detail.primaryImageUrl || ''")
 
     expect(workbenchSource).toContain("emit('create-project')")
     expect(workbenchSource).toContain("emit('update-project'")
