@@ -2388,6 +2388,16 @@ textarea {
   font-size: 12px;
 }
 
+.project-draft-card__issue-link {
+  margin-left: 8px;
+  border: none;
+  background: transparent;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
 .secondary-action:disabled,
 .primary-action:disabled {
   opacity: 0.6;

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { generatorShortcutOptions } from '../utils/generatorViews'
 import {
   canRetryPublishTask,
@@ -108,6 +108,7 @@ const expandedProjectIds = ref(new Set())
 const expandedResultIds = ref(new Set())
 const hasInitializedProjectExpansion = ref(false)
 const hasInitializedResultExpansion = ref(false)
+const publishFieldRefs = ref({})
 
 const projectRunMap = computed(() => new Map((props.projectRuns || []).map((item) => [item.id, item])))
 
@@ -536,6 +537,75 @@ function resolvePublishPreviewIssueKey(issue = {}, index = 0) {
   ].join('__')
 }
 
+function buildPublishFieldRefKey(projectId = '', fieldKey = '') {
+  return [String(projectId || '').trim(), String(fieldKey || '').trim()].filter(Boolean).join('::')
+}
+
+function setPublishFieldRef(projectId = '', fieldKey = '', element = null) {
+  const refKey = buildPublishFieldRefKey(projectId, fieldKey)
+  if (!refKey) return
+
+  if (element) {
+    publishFieldRefs.value = {
+      ...publishFieldRefs.value,
+      [refKey]: element
+    }
+    return
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(publishFieldRefs.value, refKey)) {
+    return
+  }
+
+  const nextRefs = { ...publishFieldRefs.value }
+  delete nextRefs[refKey]
+  publishFieldRefs.value = nextRefs
+}
+
+function registerPublishFieldRef(projectId = '', fieldKey = '') {
+  return (element) => {
+    setPublishFieldRef(projectId, fieldKey, element)
+  }
+}
+
+function resolvePublishIssueTargetFieldKey(issue = {}) {
+  const field = String(issue.field || '').trim()
+  if (!field) return ''
+  if (field === 'platformDraft.categoryId') return 'categoryId'
+  if (field.startsWith('platformDraft.attributes.')) {
+    return `attribute:${field.slice('platformDraft.attributes.'.length).trim()}`
+  }
+  if (field.includes('.sellerSkuCode')) return 'variant:sellerSkuCode'
+  if (field.includes('.priceAmount')) return 'variant:priceAmount'
+  if (field.includes('.stockQuantity')) return 'variant:stockQuantity'
+  if (field.includes('.barcode')) return 'variant:barcode'
+  return ''
+}
+
+function canLocatePublishIssue(project = {}, issue = {}) {
+  const projectId = String(project?.id || '').trim()
+  const fieldKey = resolvePublishIssueTargetFieldKey(issue)
+  if (!projectId || !fieldKey) return false
+  return Boolean(publishFieldRefs.value[buildPublishFieldRefKey(projectId, fieldKey)])
+}
+
+async function focusPublishIssueField(project = {}, issue = {}) {
+  const projectId = String(project?.id || '').trim()
+  const fieldKey = resolvePublishIssueTargetFieldKey(issue)
+  if (!projectId || !fieldKey) return
+
+  await nextTick()
+  const element = publishFieldRefs.value[buildPublishFieldRefKey(projectId, fieldKey)]
+  if (!element || typeof element.focus !== 'function') {
+    return
+  }
+
+  if (typeof element.scrollIntoView === 'function') {
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  element.focus()
+}
+
 function resolvePublishIssueFieldLabel(issue = {}) {
   const field = String(issue.field || '').trim()
   if (!field) return 'Unknown Field'
@@ -927,6 +997,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 <label class="project-task-card__field project-task-card__field--full">
                   <span>Category ID</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, 'categoryId')"
                     :value="resolveProjectPlatformDraftCategoryId(item.project)"
                     type="text"
                     placeholder="platform category id"
@@ -941,6 +1012,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 >
                   <span>{{ attribute.label }}</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, `attribute:${attribute.key}`)"
                     :value="resolveProjectPlatformDraftAttribute(item.project, attribute.key)"
                     type="text"
                     :placeholder="attribute.key"
@@ -962,6 +1034,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 <label class="project-task-card__field">
                   <span>Seller SKU</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, 'variant:sellerSkuCode')"
                     :value="resolveProjectPublishVariant(item.project, 0).sellerSkuCode || ''"
                     type="text"
                     placeholder="SKU-001"
@@ -971,6 +1044,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 <label class="project-task-card__field">
                   <span>Price</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, 'variant:priceAmount')"
                     :value="resolveProjectPublishVariant(item.project, 0).priceAmount ?? ''"
                     type="number"
                     min="0"
@@ -981,6 +1055,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 <label class="project-task-card__field">
                   <span>Stock</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, 'variant:stockQuantity')"
                     :value="resolveProjectPublishVariant(item.project, 0).stockQuantity ?? 0"
                     type="number"
                     min="0"
@@ -991,6 +1066,7 @@ function canRetryLatestPublishTask(projectId = '') {
                 <label class="project-task-card__field">
                   <span>Barcode</span>
                   <input
+                    :ref="registerPublishFieldRef(item.project.id, 'variant:barcode')"
                     :value="resolveProjectPublishVariant(item.project, 0).barcode || ''"
                     type="text"
                     placeholder="optional"
@@ -1103,6 +1179,14 @@ function canRetryLatestPublishTask(projectId = '') {
                   <span v-if="resolvePublishIssueSuggestedFix(issue)">
                     {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
                   </span>
+                  <button
+                    v-if="canLocatePublishIssue(item.project, issue)"
+                    class="project-draft-card__issue-link"
+                    type="button"
+                    @click="focusPublishIssueField(item.project, issue)"
+                  >
+                    Locate Field
+                  </button>
                 </li>
               </ul>
             </div>
@@ -1130,6 +1214,14 @@ function canRetryLatestPublishTask(projectId = '') {
                   <span v-if="resolvePublishIssueSuggestedFix(issue)">
                     {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
                   </span>
+                  <button
+                    v-if="canLocatePublishIssue(item.project, issue)"
+                    class="project-draft-card__issue-link"
+                    type="button"
+                    @click="focusPublishIssueField(item.project, issue)"
+                  >
+                    Locate Field
+                  </button>
                 </li>
               </ul>
             </div>

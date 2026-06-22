@@ -102,6 +102,7 @@ describe('styles source', () => {
     expect(source).toContain('.prompt-template-card')
     expect(source).toContain('.sidebar-shell__brand-orb')
     expect(source).toContain('.secondary-action--compact')
+    expect(source).toContain('.project-draft-card__issue-link')
     expect(source).toContain('min-height: 34px;')
     expect(source).toContain('padding: 0 10px;')
     expect(source).toContain('.prompt-library-list')
