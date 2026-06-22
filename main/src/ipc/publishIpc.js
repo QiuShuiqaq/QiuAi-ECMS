@@ -4,6 +4,10 @@ const ipcChannels = require('../../../shared/ipcChannels')
 function registerPublishIpc({
   publishDraftService
 }) {
+  ipcMain.handle(ipcChannels.PUBLISH_GET_CONFIG, async (_event, payload = {}) => {
+    return publishDraftService.getConfig(payload)
+  })
+
   ipcMain.handle(ipcChannels.PUBLISH_LIST_CHANNEL_ACCOUNTS, async (_event, payload = {}) => {
     return publishDraftService.listChannelAccounts(payload)
   })

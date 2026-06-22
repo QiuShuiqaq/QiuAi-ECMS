@@ -25,6 +25,7 @@ describe('desktop-server contract source', () => {
     const computePackageOrderDetailRouteSource = readPlatformFile('src/app/api/compute-package-orders/[id]/route.ts')
     const rechargeOrdersRouteSource = readPlatformFile('src/app/api/recharge/orders/route.ts')
     const rechargeOrderDetailRouteSource = readPlatformFile('src/app/api/recharge/orders/[id]/route.ts')
+    const publishConfigRouteSource = readPlatformFile('src/app/api/client/publish/config/route.ts')
     const generationJobsRouteSource = readPlatformFile('src/app/api/generation/jobs/route.ts')
     const generationJobDetailRouteSource = readPlatformFile('src/app/api/generation/jobs/[id]/route.ts')
     const generationArtifactDownloadRouteSource = readPlatformFile('src/app/api/generation/artifacts/[id]/download/route.ts')
@@ -59,6 +60,9 @@ describe('desktop-server contract source', () => {
     expect(desktopClientSource).toContain("'/api/recharge/orders'")
     expect(rechargeOrdersRouteSource).toContain('export async function POST')
     expect(rechargeOrderDetailRouteSource).toContain('export async function GET')
+
+    expect(desktopClientSource).toContain("'/api/client/publish/config'")
+    expect(publishConfigRouteSource).toContain('export async function GET')
 
     expect(desktopClientSource).toContain("'/api/generation/jobs'")
     expect(generationJobsRouteSource).toContain('export async function POST')

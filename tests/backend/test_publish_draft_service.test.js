@@ -150,4 +150,30 @@ describe('publishDraftService', () => {
       }
     ])
   })
+
+  it('loads publish platform config with the current session token', async () => {
+    const remoteLicensePlatformClient = {
+      getPublishClientConfig: vi.fn().mockResolvedValue({
+        platforms: [
+          {
+            key: 'tiktok',
+            label: 'TikTok Shop'
+          }
+        ]
+      })
+    }
+
+    const { createPublishDraftService } = await import('../../main/src/services/publishDraftService.js')
+    const service = createPublishDraftService({
+      remoteLicensePlatformClient,
+      getSessionToken: async () => 'session-1'
+    })
+
+    const result = await service.getConfig()
+
+    expect(remoteLicensePlatformClient.getPublishClientConfig).toHaveBeenCalledWith({
+      sessionToken: 'session-1'
+    })
+    expect(result.platforms[0].key).toBe('tiktok')
+  })
 })

@@ -19,8 +19,11 @@ import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'
 import { resolveGeneratorView } from './utils/generatorViews'
 import {
   canRetryPublishTask,
+  fallbackPublishPlatformProfiles,
   isRetryNotAllowedError,
-  normalizePublishPlatform
+  normalizePublishPlatform,
+  normalizePublishPlatformProfiles,
+  publishPlatformOptions
 } from './utils/publishContract'
 import {
   resolveImageOutputDirectory,
@@ -40,6 +43,7 @@ import {
   exportStudioProjectBundle,
   getActivationStatus,
   getComputePackageOrder,
+  getPublishClientConfig,
   getPublishTask,
   getPublishDraft,
   getPublishDraftPreview,
@@ -104,6 +108,12 @@ const selectionItemsState = ref({
   error: ''
 })
 const publishState = ref({})
+const publishConfigState = ref({
+  platformOptions: publishPlatformOptions,
+  platformProfiles: fallbackPublishPlatformProfiles,
+  isLoading: false,
+  error: ''
+})
 const studioTasks = ref([])
 const studioAgentReadiness = ref({
   queue: {
@@ -336,7 +346,8 @@ async function loadActivatedWorkspace() {
     loadStudioSnapshot(),
     loadPromptTemplateState(),
     loadPurchaseCenterCatalog(),
-    loadSelectionAssistantState()
+    loadSelectionAssistantState(),
+    loadPublishConfigState()
   ])
 }
 
@@ -345,6 +356,36 @@ async function loadSelectionAssistantState() {
   selectionPlatforms.value = await listSelectionPlatforms()
   await refreshSelectionSites(selectionItemsState.value.platform)
   await refreshSelectionItems()
+}
+
+async function loadPublishConfigState() {
+  publishConfigState.value = {
+    ...publishConfigState.value,
+    isLoading: true,
+    error: ''
+  }
+
+  try {
+    const payload = await getPublishClientConfig({})
+    const platformRows = Array.isArray(payload?.platforms) ? payload.platforms : []
+    publishConfigState.value = {
+      platformOptions: platformRows.length
+        ? platformRows.map((item) => ({
+            label: String(item.label || item.key || '').trim(),
+            value: normalizePublishPlatform(item.key || '')
+          }))
+        : publishPlatformOptions,
+      platformProfiles: normalizePublishPlatformProfiles(platformRows),
+      isLoading: false,
+      error: ''
+    }
+  } catch (error) {
+    publishConfigState.value = {
+      ...publishConfigState.value,
+      isLoading: false,
+      error: buildErrorMessage(error, '发布平台配置加载失败')
+    }
+  }
 }
 
 async function refreshSelectionSites(platform) {
@@ -683,7 +724,18 @@ function getProjectPublishState(project = {}) {
         error: '',
         preview: null,
         latestTask: null,
-        draftSummary: null
+        draftSummary: null,
+        publishConfig: publishConfigState.value
+      }
+    }
+  }
+
+  if (publishState.value[projectId]?.publishConfig !== publishConfigState.value) {
+    publishState.value = {
+      ...publishState.value,
+      [projectId]: {
+        ...publishState.value[projectId],
+        publishConfig: publishConfigState.value
       }
     }
   }

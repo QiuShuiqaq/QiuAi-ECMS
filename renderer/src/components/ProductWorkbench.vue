@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { generatorShortcutOptions } from '../utils/generatorViews'
 import {
   canRetryPublishTask,
+  fallbackPublishPlatformProfiles,
   normalizePublishPlatform,
   publishPlatformOptions,
   supportedPublishPlatforms
@@ -44,12 +45,16 @@ const emit = defineEmits([
   'selection-import'
 ])
 
-const platformOptions = [
+const generalPlatformOptions = [
   { label: 'TEMU', value: 'temu' },
   { label: 'OZON', value: 'ozon' },
   { label: 'Amazon', value: 'amazon' },
   { label: 'TK', value: 'tiktok' },
   { label: 'AliExpress', value: 'aliexpress' }
+]
+
+const platformOptions = [
+  ...generalPlatformOptions
 ]
 
 const languageOptions = [
@@ -96,33 +101,6 @@ const selectionBoardOptions = [
   { label: '新店热销', value: 'new-mall-hot-sale' },
   { label: '大卖新品', value: 'big-sale-new' }
 ]
-
-const publishPlatformProfiles = {
-  tiktok: {
-    label: 'TikTok Shop',
-    requiredAttributes: [
-      { key: 'material', label: 'Material' },
-      { key: 'product_type', label: 'Product Type' }
-    ],
-    manualReviewAttributeKey: 'tiktokManualReviewRequired'
-  },
-  shopee: {
-    label: 'Shopee',
-    requiredAttributes: [
-      { key: 'brand', label: 'Brand' },
-      { key: 'condition', label: 'Condition' }
-    ],
-    manualReviewAttributeKey: 'shopeeManualReviewRequired'
-  },
-  aliexpress: {
-    label: 'AliExpress',
-    requiredAttributes: [
-      { key: 'brand', label: 'Brand' },
-      { key: 'shipping_origin', label: 'Shipping Origin' }
-    ],
-    manualReviewAttributeKey: 'aliexpressManualReviewRequired'
-  }
-}
 
 const expandedProjectIds = ref(new Set())
 const expandedResultIds = ref(new Set())
@@ -247,11 +225,17 @@ function resolveProjectPublishPlatform(project = {}) {
 }
 
 function resolveProjectPublishPlatformProfile(project = {}) {
-  return publishPlatformProfiles[resolveProjectPublishPlatform(project)] || {
+  const platformProfiles = props.publishState?.[project.id]?.publishConfig?.platformProfiles || fallbackPublishPlatformProfiles
+  return platformProfiles[resolveProjectPublishPlatform(project)] || {
     label: 'Platform',
     requiredAttributes: [],
     manualReviewAttributeKey: ''
   }
+}
+
+function resolvePublishPlatformOptions(project = {}) {
+  const rows = props.publishState?.[project.id]?.publishConfig?.platformOptions
+  return Array.isArray(rows) && rows.length ? rows : publishPlatformOptions
 }
 
 function resolveProjectPlatformDraft(project = {}) {
@@ -659,7 +643,7 @@ function canRetryLatestPublishTask(projectId = '') {
                   :value="resolveProjectPublishPlatform(item.project)"
                   @change="emit('publish-platform-change', { project: item.project, platform: $event.target.value })"
                 >
-                  <option v-for="option in publishPlatformOptions" :key="`${item.project.id}-publish-platform-${option.value}`" :value="option.value">{{ option.label }}</option>
+                  <option v-for="option in resolvePublishPlatformOptions(item.project)" :key="`${item.project.id}-publish-platform-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
               <label class="project-task-card__field project-task-card__field--full">

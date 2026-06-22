@@ -623,6 +623,14 @@ export function listPublishChannelAccounts (payload) {
   return invoke(getChannel('PUBLISH_LIST_CHANNEL_ACCOUNTS'), payload)
 }
 
+export function getPublishClientConfig (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('PUBLISH_GET_CONFIG'), payload)
+}
+
 export function upsertPublishDraft (payload) {
   if (!hasBridge()) {
     return Promise.reject(createBridgeUnavailableError())

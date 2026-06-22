@@ -188,6 +188,12 @@ function normalizePublishChannelAccountsPayload (payload = {}) {
   }
 }
 
+function normalizePublishClientConfigPayload (payload = {}) {
+  return {
+    sessionToken: trimString(payload.sessionToken)
+  }
+}
+
 function createServiceError(code, message, details = {}) {
   const error = new Error(message)
   error.code = code
@@ -413,6 +419,12 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function getPublishClientConfig (payload = {}) {
+    return request('get', '/api/client/publish/config', {
+      params: normalizePublishClientConfigPayload(payload)
+    })
+  }
+
   async function getPublishDraft ({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/client/publish/drafts/${trimString(id)}`, {
       params: {
@@ -493,6 +505,7 @@ function createQiuAiLicensePlatformClientService({
     getAuthorizationStatus,
     getComputePackageOrder,
     getGenerationJob,
+    getPublishClientConfig,
     listPublishChannelAccounts,
     getPublishDraft,
     getPublishDraftPreview,
