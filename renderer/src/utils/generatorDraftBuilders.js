@@ -66,6 +66,9 @@ export function buildProjectGeneratorDraft(project, menuKey) {
 
 export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
   const generationConfig = project?.generationConfig || {}
+  const selectionSource = project?.metadata?.selectionSource && typeof project.metadata.selectionSource === 'object'
+    ? project.metadata.selectionSource
+    : null
 
   return {
     ...workspaceDraft,
@@ -82,6 +85,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
       .filter(Boolean)
       .join(', '),
     sourceImage: project?.assets?.sourceImages?.[0] || null,
+    selectionSource,
     enabledSteps: generationConfig.enabledSteps || undefined,
     titleMaxChars: generationConfig.titleMaxChars || workspaceDraft?.titleMaxChars || 60,
     descriptionMaxChars: generationConfig.descriptionMaxChars || workspaceDraft?.descriptionMaxChars || 300,

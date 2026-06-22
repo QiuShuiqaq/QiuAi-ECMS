@@ -357,6 +357,12 @@ describe('studioWorkspaceService', () => {
         descriptionCandidates: ['描述候选 1', '描述候选 2'],
         selectedTitle: '标题候选 1',
         selectedDescription: '描述候选 1'
+      },
+      metadata: {
+        resultLanding: {
+          titleRunId: updatedProject.latestRunId,
+          descriptionRunId: updatedProject.latestRunId
+        }
       }
     })
     expect(updatedProject.latestRunId).toBeTruthy()
@@ -369,6 +375,10 @@ describe('studioWorkspaceService', () => {
     })
     expect(latestRun.outputs.title).toBeTruthy()
     expect(latestRun.outputs.description).toBeTruthy()
+    expect(latestRun.outputs.titleCandidates).toEqual(['标题候选 1', '标题候选 2'])
+    expect(latestRun.outputs.descriptionCandidates).toEqual(['描述候选 1', '描述候选 2'])
+    expect(latestRun.outputs.selectedTitle).toBe('标题候选 1')
+    expect(latestRun.outputs.selectedDescription).toBe('描述候选 1')
     expect(latestRun.storage.runDirectory).toContain(path.join('output', 'workspace'))
     expect(snapshot.resultsByMenu.workspace.textResults).toHaveLength(4)
     expect(snapshot.exportItemsByMenu.workspace).toHaveLength(1)
@@ -618,6 +628,128 @@ describe('studioWorkspaceService', () => {
 
     expect(observedPrompts.length).toBeGreaterThan(0)
     expect(observedPrompts.every((prompt) => String(prompt || '').trim().length > 0)).toBe(true)
+  })
+
+  it('injects selection snapshot context into workspace text and media generation prompts', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const observedTextPrompts = []
+    const observedImagePrompts = []
+    const observedVideoPrompts = []
+    const settingsService = createSettingsStoreService({ store })
+    await seedCredits(settingsService, 5000)
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateTextResults: async ({ draft, taskId }) => {
+        observedTextPrompts.push(String(draft.prompt || ''))
+        const prefix = String(taskId).includes('-title') ? '标题' : '描述'
+        return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
+      },
+      generateImageResults: async ({ draft }) => {
+        observedImagePrompts.push(...(draft.promptAssignments || []).map((item) => String(item.prompt || '')))
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: { title: '图片结果' }
+        }
+      },
+      generateVideoResults: async ({ draft }) => {
+        observedVideoPrompts.push(String(draft.prompt || ''))
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: { title: '视频结果' }
+        }
+      },
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-selection-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260623-0001',
+      getNow: () => '2026-06-23T10:00:00.000Z'
+    })
+
+    const project = await service.createProject({
+      productName: '露营灯',
+      platform: 'temu',
+      language: 'zh-CN',
+      patch: {
+        metadata: {
+          selectionSource: {
+            itemId: 'selection-1',
+            platform: 'temu',
+            boardType: 'hot-sale',
+            boardLabel: '热销商品',
+            siteCode: '',
+            title: '爆款露营灯',
+            subtitle: '户外便携',
+            categoryText: '照明',
+            priceText: '¥89',
+            salesVolumeText: '1000+',
+            ratingText: '4.9',
+            extractedKeywords: ['露营灯', '户外', '便携']
+          }
+        }
+      }
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: project.id,
+        projectName: '露营灯项目',
+        productName: '露营灯',
+        brand: 'QiuAi',
+        category: '照明',
+        highlightsText: '便携, 高亮',
+        keywordsText: '露营灯, 户外',
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        generateCount: 1,
+        selectionSource: {
+          itemId: 'selection-1',
+          platform: 'temu',
+          boardType: 'hot-sale',
+          boardLabel: '热销商品',
+          siteCode: '',
+          title: '爆款露营灯',
+          subtitle: '户外便携',
+          categoryText: '照明',
+          priceText: '¥89',
+          salesVolumeText: '1000+',
+          ratingText: '4.9',
+          extractedKeywords: ['露营灯', '户外', '便携']
+        },
+        sourceImage: {
+          name: 'camp-lamp.png',
+          path: path.resolve(process.cwd(), 'tests', '1.png'),
+          storedPath: path.resolve(process.cwd(), 'tests', '1.png')
+        }
+      }
+    })
+
+    await service.createTask({ menuKey: 'workspace' })
+    await service.waitForIdle()
+
+    expect(observedTextPrompts.some((prompt) => prompt.includes('选品平台：temu'))).toBe(true)
+    expect(observedTextPrompts.some((prompt) => prompt.includes('选品标题：爆款露营灯'))).toBe(true)
+    expect(observedTextPrompts.some((prompt) => prompt.includes('选品关键词：露营灯、户外、便携'))).toBe(true)
+    expect(observedImagePrompts.some((prompt) => prompt.includes('选品榜单：热销商品'))).toBe(true)
+    expect(observedVideoPrompts.some((prompt) => prompt.includes('选品价格：¥89'))).toBe(true)
   })
 
   it('keeps workspace drafts on canonical runtime fields and ignores removed legacy aliases', async () => {

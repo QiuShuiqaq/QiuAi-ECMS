@@ -207,16 +207,6 @@ function createWorkspaceTaskExecutionService({
         resultPayload: persistedResultPayload,
         elapsedMilliseconds: executionCompletedAt - executionStartedAt
       })
-      const completedTask = buildTaskSummary({
-        menuKey,
-        draft: preparedDraft,
-        taskId,
-        taskNumber,
-        createdAt,
-        inputDirectory,
-        outputDirectory,
-        resultPayload: enrichedResultPayload
-      })
       const latestState = getStoredState()
       const currentProject = preparedDraft.projectId
         ? (
@@ -231,6 +221,20 @@ function createWorkspaceTaskExecutionService({
       const currentProjectRunAfterExecution = projectRunId
         ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
         : null
+      const enrichedResultPayloadWithRun = {
+        ...enrichedResultPayload,
+        projectRunId: currentProjectRunAfterExecution?.id || projectRunId || ''
+      }
+      const completedTask = buildTaskSummary({
+        menuKey,
+        draft: preparedDraft,
+        taskId,
+        taskNumber,
+        createdAt,
+        inputDirectory,
+        outputDirectory,
+        resultPayload: enrichedResultPayloadWithRun
+      })
       let nextProductProjects = latestState.productProjects
       let nextProjectRuns = latestState.projectRuns
 
@@ -240,7 +244,7 @@ function createWorkspaceTaskExecutionService({
           preparedDraft,
           taskId,
           menuKey,
-          enrichedResultPayload,
+          enrichedResultPayload: enrichedResultPayloadWithRun,
           createdAt
         })
       }
@@ -251,7 +255,7 @@ function createWorkspaceTaskExecutionService({
           workspaceProjectRunService.buildProjectRunUpdateFromResult({
             projectRun: currentProjectRunAfterExecution,
             menuKey,
-            resultPayload: enrichedResultPayload,
+            resultPayload: enrichedResultPayloadWithRun,
             exportItems,
             outputDirectory,
             completedAt: getNow()
@@ -265,7 +269,7 @@ function createWorkspaceTaskExecutionService({
           [menuKey]: preparedDraft
         },
         resultsByMenuPatch: {
-          [menuKey]: enrichedResultPayload
+          [menuKey]: enrichedResultPayloadWithRun
         },
         exportItemsByMenuPatch: {
           [menuKey]: exportItems

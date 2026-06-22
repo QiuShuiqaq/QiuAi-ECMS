@@ -166,6 +166,8 @@ describe('App source', () => {
     expect(draftBuilderSource).not.toContain("titleTemplateId:")
     expect(draftBuilderSource).not.toContain("descriptionTemplateId:")
     expect(draftBuilderSource).toContain("keywordsText: [workspaceDraft?.keywordsText || '', ...(project?.baseInfo?.keywords || [])]")
+    expect(draftBuilderSource).toContain("const selectionSource = project?.metadata?.selectionSource")
+    expect(draftBuilderSource).toContain('selectionSource,')
     expect(draftBuilderSource).toContain("model: workspaceDraft?.model || 'deepseek-v4-flash'")
     expect(formOptionsSource).toContain('export const seriesImageTemplateOptions = [')
     expect(formOptionsSource).toContain('export const imageTemplateTypeMap = Object.fromEntries(')

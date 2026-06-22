@@ -273,9 +273,15 @@ function createWorkspaceProjectRunService({
     }
 
     if (menuKey === 'workspace') {
-      const titleValue = (resultPayload.textResults || []).find((item) => item.kind === 'title')?.content || ''
+      const titleCandidates = (resultPayload.textResults || [])
+        .filter((item) => item.kind === 'title')
+        .map((item) => String(item.content || '').trim())
+        .filter(Boolean)
+      const titleValue = titleCandidates[0] || ''
       const titleStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
       nextOutputs.title = String(titleValue || '').trim()
+      nextOutputs.titleCandidates = titleCandidates
+      nextOutputs.selectedTitle = String(titleValue || '').trim()
       nextStorage.titleFile = titleStorage.titleFile || nextStorage.titleFile
       stepStates.title = {
         ...stepStates.title,
@@ -285,9 +291,15 @@ function createWorkspaceProjectRunService({
     }
 
     if (menuKey === 'workspace') {
-      const descriptionValue = (resultPayload.textResults || []).find((item) => item.kind === 'description')?.content || ''
+      const descriptionCandidates = (resultPayload.textResults || [])
+        .filter((item) => item.kind === 'description')
+        .map((item) => String(item.content || '').trim())
+        .filter(Boolean)
+      const descriptionValue = descriptionCandidates[0] || ''
       const textStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
       nextOutputs.description = String(descriptionValue || '').trim()
+      nextOutputs.descriptionCandidates = descriptionCandidates
+      nextOutputs.selectedDescription = String(descriptionValue || '').trim()
       nextStorage.descriptionFile = textStorage.descriptionFile || nextStorage.descriptionFile
       stepStates.description = {
         ...stepStates.description,

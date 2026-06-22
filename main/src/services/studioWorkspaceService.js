@@ -592,6 +592,10 @@ function normalizeProjectRun(projectRun = {}) {
     outputs: {
       title: String(outputs.title || '').trim(),
       description: String(outputs.description || '').trim(),
+      titleCandidates: normalizeStringList(outputs.titleCandidates),
+      descriptionCandidates: normalizeStringList(outputs.descriptionCandidates),
+      selectedTitle: String(outputs.selectedTitle || '').trim(),
+      selectedDescription: String(outputs.selectedDescription || '').trim(),
       images: Array.isArray(outputs.images) ? outputs.images.slice() : [],
       video: outputs.video && typeof outputs.video === 'object'
         ? { ...outputs.video }
@@ -666,7 +670,20 @@ function normalizeProductProject(project = {}) {
     metadata: {
       selectionSource: metadata.selectionSource && typeof metadata.selectionSource === 'object'
         ? { ...metadata.selectionSource }
-        : null
+        : null,
+      resultLanding: metadata.resultLanding && typeof metadata.resultLanding === 'object'
+        ? {
+            titleRunId: String(metadata.resultLanding.titleRunId || '').trim(),
+            descriptionRunId: String(metadata.resultLanding.descriptionRunId || '').trim(),
+            imageRunId: String(metadata.resultLanding.imageRunId || '').trim(),
+            videoRunId: String(metadata.resultLanding.videoRunId || '').trim()
+          }
+        : {
+            titleRunId: '',
+            descriptionRunId: '',
+            imageRunId: '',
+            videoRunId: ''
+          }
     },
     latestRunId: typeof source.latestRunId === 'string' ? source.latestRunId : '',
     runIds: normalizeStringList(source.runIds),
@@ -745,6 +762,52 @@ function splitWorkspaceTextValues(value = '') {
     .split(/[\r\n,，;；]+/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function normalizeSelectionSource(selectionSource = null) {
+  const source = selectionSource && typeof selectionSource === 'object' ? selectionSource : null
+  if (!source) {
+    return null
+  }
+
+  return {
+    itemId: String(source.itemId || '').trim(),
+    platform: String(source.platform || '').trim(),
+    boardType: String(source.boardType || '').trim(),
+    boardLabel: String(source.boardLabel || '').trim(),
+    siteCode: String(source.siteCode || '').trim(),
+    title: String(source.title || '').trim(),
+    subtitle: String(source.subtitle || '').trim(),
+    categoryText: String(source.categoryText || '').trim(),
+    priceText: String(source.priceText || '').trim(),
+    salesVolumeText: String(source.salesVolumeText || '').trim(),
+    ratingText: String(source.ratingText || '').trim(),
+    extractedKeywords: normalizeStringList(source.extractedKeywords),
+    primaryImageUrl: String(source.primaryImageUrl || '').trim(),
+    capturedAt: String(source.capturedAt || '').trim(),
+    sourceDetailUrl: String(source.sourceDetailUrl || '').trim(),
+    importedAt: String(source.importedAt || '').trim()
+  }
+}
+
+function buildWorkspaceSelectionContextLines(selectionSource = null) {
+  const normalizedSelectionSource = normalizeSelectionSource(selectionSource)
+  if (!normalizedSelectionSource) {
+    return []
+  }
+
+  return [
+    `选品平台：${normalizedSelectionSource.platform || '未提供'}`,
+    `选品榜单：${normalizedSelectionSource.boardLabel || normalizedSelectionSource.boardType || '未提供'}`,
+    `选品站点：${normalizedSelectionSource.siteCode || '默认站点'}`,
+    `选品标题：${normalizedSelectionSource.title || '未提供'}`,
+    `选品副标题：${normalizedSelectionSource.subtitle || '未提供'}`,
+    `选品类目：${normalizedSelectionSource.categoryText || '未提供'}`,
+    `选品价格：${normalizedSelectionSource.priceText || '未提供'}`,
+    `选品销量：${normalizedSelectionSource.salesVolumeText || '未提供'}`,
+    `选品评分：${normalizedSelectionSource.ratingText || '未提供'}`,
+    `选品关键词：${normalizedSelectionSource.extractedKeywords.join('、') || '未提供'}`
+  ]
 }
 
 function resolveWorkspaceProjectDisplayName(draft = {}) {
@@ -826,6 +889,14 @@ function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, up
       selectedTitle: titleCandidates[0] || project.content?.selectedTitle || '',
       selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
     },
+    metadata: {
+      ...(project.metadata || {}),
+      resultLanding: {
+        ...(project.metadata?.resultLanding || {}),
+        titleRunId: titleCandidates.length ? String(resultPayload.projectRunId || '').trim() : (project.metadata?.resultLanding?.titleRunId || ''),
+        descriptionRunId: descriptionCandidates.length ? String(resultPayload.projectRunId || '').trim() : (project.metadata?.resultLanding?.descriptionRunId || '')
+      }
+    },
     updatedAt
   })
 }
@@ -847,6 +918,13 @@ function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt 
     assets: {
       ...(project.assets || {}),
       generatedImages
+    },
+    metadata: {
+      ...(project.metadata || {}),
+      resultLanding: {
+        ...(project.metadata?.resultLanding || {}),
+        imageRunId: generatedImages.length ? String(resultPayload.projectRunId || '').trim() : (project.metadata?.resultLanding?.imageRunId || '')
+      }
     },
     updatedAt
   })
@@ -873,6 +951,13 @@ function applyVideoResultsToProject(project = {}, resultPayload = {}, updatedAt 
             publishReadyUrl: generatedVideo.publishReadyUrl || generatedVideo.downloadUrl || ''
           }
         : project.assets?.generatedVideo || null
+    },
+    metadata: {
+      ...(project.metadata || {}),
+      resultLanding: {
+        ...(project.metadata?.resultLanding || {}),
+        videoRunId: generatedVideo ? String(resultPayload.projectRunId || '').trim() : (project.metadata?.resultLanding?.videoRunId || '')
+      }
     },
     updatedAt
   })
@@ -1319,6 +1404,9 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     const highlightText = splitWorkspaceTextValues(draft.highlightsText).join('、') || '暂无'
     const keywordText = splitWorkspaceTextValues(draft.keywordsText).join('、') || '暂无'
     const platformText = splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'
+    const selectionContextLines = buildWorkspaceSelectionContextLines(draft.selectionSource)
+    const selectedTitleSeed = String(draft.selectedTitle || '').trim()
+    const selectedDescriptionSeed = String(draft.selectedDescription || '').trim()
 
     const titleResults = enabledSteps.title
       ? await generateTextResults({
@@ -1334,9 +1422,11 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
               `关键词：${keywordText}`,
               `目标平台：${platformText}`,
               `语言：${draft.language || 'zh-CN'}`,
+              ...selectionContextLines,
               `任务要求：${draft.titlePrompt || ''}`,
               `最大字数：${draft.titleMaxChars || 60}`,
-              '请输出适合电商上架的商品标题，长度适中，优先突出商品主体、关键卖点和购买价值。'
+              '请基于当前商品信息和选品上下文，输出适合电商上架的商品标题。',
+              '要求优先保留商品主体、类目和真实卖点，不要编造参数，不要输出解释，只返回标题结果。'
             ].filter(Boolean).join('\n')
           }
         })
@@ -1361,9 +1451,12 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
               `关键词：${keywordText}`,
               `目标平台：${platformText}`,
               `语言：${draft.language || 'zh-CN'}`,
+              `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
+              ...selectionContextLines,
               `任务要求：${draft.descriptionPrompt || ''}`,
               `最大字数：${draft.descriptionMaxChars || 300}`,
-              '请输出适合商品详情页或上架页的商品描述，要求信息清晰、卖点明确、语气自然，不要分点编号。'
+              '请输出适合商品详情页或上架页的商品描述。',
+              '要求信息清晰、卖点明确、语气自然，不要分点编号，不要编造不存在的规格。'
             ].filter(Boolean).join('\n')
           }
         })
@@ -1378,6 +1471,13 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       draft.imagePrompt ||
       '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'
     ).trim()
+    const workspaceImagePromptContext = [
+      `商品名称：${draft.productName || workspaceProjectName}`,
+      `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
+      `参考描述：${descriptionResults[0]?.content || selectedDescriptionSeed || ''}`,
+      ...selectionContextLines,
+      workspaceImagePromptBase
+    ].filter(Boolean).join('\n')
     const workspaceImageTypeLabels = SERIES_GENERATE_DEFAULT_TYPE_ORDER
     const imageDraft = {
       ...draft,
@@ -1389,7 +1489,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       promptAssignments: normalizePromptAssignments(
         Array.from({ length: Math.max(1, Number(draft.generateCount) || 4) }, (_unused, index) => ({
           id: `workspace-series-${index + 1}`,
-          prompt: `${workspaceImageTypeLabels[index] || '详情图'}：${workspaceImagePromptBase}`,
+          prompt: `${workspaceImageTypeLabels[index] || '详情图'}：\n${workspaceImagePromptContext}`,
           templateId: SERIES_GENERATE_TEMPLATE_ID_BY_TYPE[workspaceImageTypeLabels[index] || '详情图'] || draft.imageTemplateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
           imageType: workspaceImageTypeLabels[index] || '详情图',
           differenceLevel: 'off'
@@ -1431,7 +1531,13 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       ...draft,
       sourceImage: draft.sourceImage || null,
       model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
-      prompt: String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim(),
+      prompt: [
+        `商品名称：${draft.productName || workspaceProjectName}`,
+        `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
+        `参考描述：${descriptionResults[0]?.content || selectedDescriptionSeed || ''}`,
+        ...selectionContextLines,
+        String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim()
+      ].filter(Boolean).join('\n'),
       duration: draft.duration || '6s',
       resolution: draft.resolution || '768P',
       motionStrength: draft.motionStrength || 'auto',

@@ -30,7 +30,16 @@ describe('workspaceProjectRunService', () => {
         triggerMenuKey: value.triggerMenuKey || '',
         status: value.status || 'pending',
         stepStates: value.stepStates || {},
-        outputs: value.outputs || { title: '', description: '', images: [], video: null },
+        outputs: value.outputs || {
+          title: '',
+          description: '',
+          titleCandidates: [],
+          descriptionCandidates: [],
+          selectedTitle: '',
+          selectedDescription: '',
+          images: [],
+          video: null
+        },
         storage: value.storage || { runDirectory: '', titleFile: '', descriptionFile: '', imageDirectory: '', videoDirectory: '' },
         createdAt: value.createdAt || '',
         completedAt: value.completedAt || ''
@@ -127,6 +136,46 @@ describe('workspaceProjectRunService', () => {
     expect(completed.outputs.video.savedPath).toContain('.mp4')
     expect(normalizePath(completed.storage.runDirectory)).toBe(normalizePath('F:/output/video/task-1'))
     expect(normalizePath(completed.storage.videoDirectory)).toBe(normalizePath('F:/output/video/task-1/group-1'))
+  })
+
+  it('stores workspace candidate outputs and selected outputs in the project run record', async () => {
+    const service = await createService()
+    const completed = service.buildProjectRunUpdateFromResult({
+      projectRun: service.buildStartedProjectRun({
+        projectRun: service.buildProjectRunRecord({
+          runId: 'run-workspace-1',
+          projectId: 'project-1',
+          menuKey: 'workspace',
+          draft: {},
+          createdAt: '2026-06-21T10:00:00.000Z'
+        }),
+        menuKey: 'workspace',
+        startedAt: '2026-06-21T10:05:00.000Z'
+      }),
+      menuKey: 'workspace',
+      resultPayload: {
+        textResults: [
+          { kind: 'title', title: '标题 1', content: '标题候选 A' },
+          { kind: 'title', title: '标题 2', content: '标题候选 B' },
+          { kind: 'description', title: '描述 1', content: '描述候选 A' }
+        ],
+        groupedResults: []
+      },
+      exportItems: [
+        {
+          directoryPath: 'F:/output/workspace/task-1/group-1'
+        }
+      ],
+      outputDirectory: 'F:/output/workspace/task-1',
+      completedAt: '2026-06-21T10:06:00.000Z'
+    })
+
+    expect(completed.outputs.title).toBe('标题候选 A')
+    expect(completed.outputs.description).toBe('描述候选 A')
+    expect(completed.outputs.titleCandidates).toEqual(['标题候选 A', '标题候选 B'])
+    expect(completed.outputs.descriptionCandidates).toEqual(['描述候选 A'])
+    expect(completed.outputs.selectedTitle).toBe('标题候选 A')
+    expect(completed.outputs.selectedDescription).toBe('描述候选 A')
   })
 
   it('marks unresolved steps failed for workspace runs', async () => {
