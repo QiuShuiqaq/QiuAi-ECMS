@@ -11,7 +11,7 @@ function createSettingsService({ enabled = true, sessionToken = 'session-1' } = 
         authPlatform: {
           enabled,
           sessionToken,
-          baseUrl: 'https://qiuaihub.com'
+          baseUrl: 'https://api.qiuaihub.com'
         }
       }
     }

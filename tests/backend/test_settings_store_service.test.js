@@ -40,7 +40,7 @@ describe('settingsStoreService', () => {
       themeMode: 'dark',
       authPlatform: {
         enabled: true,
-        baseUrl: 'https://qiuaihub.com',
+        baseUrl: 'https://api.qiuaihub.com',
         sessionToken: ''
       }
     })

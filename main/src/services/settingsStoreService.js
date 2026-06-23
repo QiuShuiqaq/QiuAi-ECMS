@@ -38,7 +38,7 @@ const defaultDashboardCreditState = {
 
 const defaultAuthPlatform = {
   enabled: true,
-  baseUrl: 'https://qiuaihub.com',
+  baseUrl: 'https://api.qiuaihub.com',
   sessionToken: '',
   lastUserId: '',
   lastLicenseId: '',

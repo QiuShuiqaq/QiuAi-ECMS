@@ -763,7 +763,7 @@ describe('studioWorkspaceService', () => {
     await settingsService.saveSettings({
       authPlatform: {
         enabled: true,
-        baseUrl: 'https://qiuaihub.com',
+        baseUrl: 'https://api.qiuaihub.com',
         sessionToken: 'session-1'
       }
     })
