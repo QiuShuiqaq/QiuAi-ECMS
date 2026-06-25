@@ -109,7 +109,7 @@ describe('qiuAiLicensePlatformClientService', () => {
     await service.getServiceCapacityProfile({ sessionToken: 'session-1' })
     await service.listSoftwarePackages({ sessionToken: 'session-1' })
     await service.createSoftwareOrder({ sessionToken: 'session-1', productPackageId: 'pkg-1' })
-    await service.getSoftwareOrder({ id: 'software-order-1', sessionToken: 'session-1' })
+    await service.getSoftwareOrder({ id: 'software-order-1', sessionToken: 'session-1', orderAccessToken: 'order-access-1' })
     await service.listComputePackages({ sessionToken: 'session-1' })
     await service.createComputePackageOrder({ sessionToken: 'session-1', computePackageId: 'compute-1' })
     await service.getComputePackageOrder({ id: 'compute-order-1', sessionToken: 'session-1' })
@@ -149,12 +149,21 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/orders',
-      data: { sessionToken: 'session-1', productPackageId: 'pkg-1', channel: 'alipay' }
+      data: {
+        sessionToken: 'session-1',
+        productPackageId: 'pkg-1',
+        channel: 'alipay',
+        customerName: '',
+        contact: '',
+        inviteCode: '',
+        deviceFingerprint: '',
+        deviceName: ''
+      }
     }))
     expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/orders/software-order-1',
-      params: { sessionToken: 'session-1' }
+      params: { sessionToken: 'session-1', orderAccessToken: 'order-access-1' }
     }))
     expect(request).toHaveBeenNthCalledWith(6, expect.objectContaining({
       method: 'get',
@@ -376,7 +385,12 @@ describe('qiuAiLicensePlatformClientService', () => {
     await service.createSoftwareOrder({
       sessionToken: ' session-1 ',
       productPackageId: ' pkg-1 ',
-      channel: ' alipay '
+      channel: ' alipay ',
+      customerName: ' Alice ',
+      contact: ' 13800138000 ',
+      inviteCode: ' QAI8888 ',
+      deviceFingerprint: ' DEVICE-1 ',
+      deviceName: ' QiuAi Desktop '
     })
     await service.createComputePackageOrder({
       sessionToken: ' session-1 ',
@@ -423,7 +437,12 @@ describe('qiuAiLicensePlatformClientService', () => {
       data: {
         sessionToken: 'session-1',
         productPackageId: 'pkg-1',
-        channel: 'alipay'
+        channel: 'alipay',
+        customerName: 'Alice',
+        contact: '13800138000',
+        inviteCode: 'QAI8888',
+        deviceFingerprint: 'DEVICE-1',
+        deviceName: 'QiuAi Desktop'
       }
     }))
     expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({

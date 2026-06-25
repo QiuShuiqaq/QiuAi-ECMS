@@ -1774,6 +1774,14 @@ textarea {
   padding: 24px;
 }
 
+.activation-shell__grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 520px) minmax(420px, 760px);
+  gap: 20px;
+  width: min(1320px, 100%);
+  align-items: start;
+}
+
 .activation-gate {
   width: min(720px, 100%);
 }
@@ -3383,6 +3391,10 @@ textarea {
 }
 
 @media (max-width: 960px) {
+  .activation-shell__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .activation-gate__meta-grid {
     grid-template-columns: minmax(0, 1fr);
   }

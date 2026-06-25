@@ -6,6 +6,7 @@ const { pathToFileURL } = require('node:url')
 const axios = require('axios')
 const studioMenuConfig = require('../../../shared/studio-menu-config.json')
 const { createWorkspaceExportService } = require('./workspaceExportService')
+const { getAvailableDiskSpaceBytes } = require('./workspaceExportService')
 const { createWorkspaceCreditService } = require('./workspaceCreditService')
 const { createWorkspaceProductProjectService } = require('./workspaceProductProjectService')
 const { createWorkspaceProjectRunService } = require('./workspaceProjectRunService')
@@ -1271,13 +1272,6 @@ function normalizeRequestMetrics(requestMetrics = []) {
     : createDefaultRequestMetrics()
 }
 
-function appendRequestMetric(requestMetrics = [], entry = {}) {
-  return [
-    normalizeRequestMetricEntry(entry),
-    ...normalizeRequestMetrics(requestMetrics)
-  ].slice(0, REQUEST_METRIC_HISTORY_LIMIT)
-}
-
 function listDirectoryEntriesSync(directoryPath, {
   readdirSync = fsSync.readdirSync
 } = {}) {
@@ -2050,8 +2044,8 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
     summary: {
       ...summary,
       statusLabel: '已完成',
-      modelLabel: models.length ? `浣跨敤妯″瀷 ${models.join(' / ')}` : '',
-      resultCountLabel: `缁撴灉鏁伴噺 ${resultCount}`,
+      modelLabel: models.length ? `使用模型 ${models.join(' / ')}` : '',
+      resultCountLabel: `结果数量 ${resultCount}`,
       elapsedLabel: formatElapsedLabel(elapsedMilliseconds)
     }
   }
@@ -2389,9 +2383,7 @@ function createStudioWorkspaceService({
   store,
   settingsService,
   authorizationService,
-  promptTemplateService,
   remoteLicensePlatformClient,
-  messageRecorder,
   runtimeLogger,
   outputRootDirectory = OUTPUT_ROOT_DIRECTORY,
   createId = () => crypto.randomUUID(),
@@ -2731,15 +2723,6 @@ function createStudioWorkspaceService({
     return task
   }
 
-  async function prepareDraftForExecution({ menuKey, draft, inputDirectory, outputDirectory }) {
-    return workspaceTaskExecutionService.prepareDraftForExecution({
-      menuKey,
-      draft,
-      inputDirectory,
-      outputDirectory
-    })
-  }
-
   async function runQueuedTaskExecution({
     menuKey,
     draft,
@@ -2802,14 +2785,6 @@ function createStudioWorkspaceService({
   function saveState(nextState) {
     store.set(STUDIO_WORKSPACE_KEY, nextState)
     return nextState
-  }
-
-  async function reconcileOrphanedActiveTasks(tasks = getStoredTasks()) {
-    return workspaceStateMaintenanceService.reconcileOrphanedActiveTasks(tasks)
-  }
-
-  function getResolvedExportItemsByMenu(state = getStoredState()) {
-    return workspaceStateMaintenanceService.getResolvedExportItemsByMenu(state)
   }
 
   async function syncCreditStateWithRealtimeBalance() {

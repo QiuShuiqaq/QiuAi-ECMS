@@ -14,7 +14,7 @@ const props = defineProps({
 
 const emit = defineEmits(['menu-select'])
 
-const groupOrder = ['核心', '配置']
+const groupOrder = ['主线', '支持']
 
 const groupedMenuItems = computed(() => {
   return groupOrder
@@ -37,7 +37,7 @@ function handleMenuClick(menuKey) {
         <span class="sidebar-shell__brand-orb"></span>
         <div class="sidebar-shell__brand-copy">
           <span class="sidebar-shell__eyebrow">QiuAi ECMS</span>
-          <strong>商品工作流</strong>
+          <strong>QiuAi 客户端</strong>
         </div>
       </div>
     </div>

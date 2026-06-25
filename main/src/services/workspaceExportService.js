@@ -310,6 +310,7 @@ function createWorkspaceExportService({
 }
 
 module.exports = {
+  getAvailableDiskSpaceBytes,
   buildProjectExportManifest,
   createWorkspaceExportService
 }

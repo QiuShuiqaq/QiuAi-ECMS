@@ -3,13 +3,20 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
-import PromptLibraryPanel from './components/PromptLibraryPanel.vue'
-import ProductWorkbench from './components/ProductWorkbench.vue'
+import GenerationCenterPage from './components/GenerationCenterPage.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
-import DataCenterPage from './components/DataCenterPage.vue'
 import GeneratorStudioPage from './components/GeneratorStudioPage.vue'
+import TextGeneratorPage from './components/TextGeneratorPage.vue'
+import WorkbenchOverviewPage from './components/WorkbenchOverviewPage.vue'
+import ResultsCenterPage from './components/ResultsCenterPage.vue'
+import AccountDevicePage from './components/AccountDevicePage.vue'
+import SettingsCenterPage from './components/SettingsCenterPage.vue'
 import studioMenuConfig from '../../shared/studio-menu-config.json'
-import { buildProjectGeneratorDraft, buildWorkspaceRunDraft } from './utils/generatorDraftBuilders'
+import {
+  buildProjectGeneratorDraft,
+  buildProjectTextGeneratorDraft,
+  buildWorkspaceRunDraft
+} from './utils/generatorDraftBuilders'
 import {
   createComputePackageOrderController,
   createRechargeOrderController,
@@ -19,9 +26,7 @@ import { validateGeneratorTaskDraft } from './utils/generatorTaskValidation'
 import { resolveGeneratorView } from './utils/generatorViews'
 import { validatePublishDraftBeforeRemote } from './utils/publishDraftValidation'
 import {
-  canRetryPublishTask,
   fallbackPublishPlatformProfiles,
-  isRetryNotAllowedError,
   normalizePublishPlatform,
   normalizeProjectPublishDraft,
   normalizePublishPlatformProfiles,
@@ -33,60 +38,32 @@ import {
   resolveLatestRun,
   resolveVideoOutputDirectory
 } from './utils/workspaceOutputLocators'
+import { clearStudioRuntimeState } from './services/desktopBridge'
 import {
-  activateRemoteLicense,
-  clearStudioRuntimeState,
-  createComputePackageOrder,
-  createRechargeOrder,
-  createSoftwareOrder,
-  createStudioProject,
-  createStudioTask,
-  deleteStudioProject,
-  exportStudioResults,
-  exportStudioProjectBundle,
-  getActivationStatus,
-  getComputePackageOrder,
-  getPublishClientConfig,
-  getPublishTask,
-  getPublishDraft,
-  getPublishDraftPreview,
-  getRechargeOrder,
-  getSoftwareOrder,
-  getSelectionItemDetail,
-  getSelectionManifest,
-  getStudioRuntimeSnapshot,
-  getStudioSnapshot,
-  listComputePackages,
-  listPublishChannelAccounts,
-  listPromptTemplates,
-  listSelectionItems,
-  listSelectionPlatforms,
-  listSelectionSites,
-  listSoftwarePackages,
-  openOutputDirectory,
-  openExternalResource,
-  pickStudioInputAssets,
-  createPublishTask,
-  removePromptTemplate,
-  retryPublishTask,
-  savePromptTemplate,
-  saveStudioDraft,
-  upsertPublishDraft,
-  updateStudioProject
-} from './services/desktopBridge'
+  activationClient,
+  catalogClient,
+  commerceClient,
+  promptLibraryClient,
+  publishClient,
+  selectionClient,
+  shellClient,
+  workspaceClient
+} from './services/platformClient'
 
 const fallbackMenuItems = [
-  { key: 'workspace', label: '工作台', section: '核心' },
-  { key: 'purchase-center', label: '购买中心', section: '核心' },
-  { key: 'account-usage', label: '账户与用量', section: '核心' },
-  { key: 'prompt-library', label: '提示词库', section: '配置' }
+  { key: 'workbench', label: '工作台', section: '主线' },
+  { key: 'generation-center', label: '生成工作区', section: '主线' },
+  { key: 'results-center', label: '结果中心', section: '主线' },
+  { key: 'purchase-center', label: '充值/购买', section: '主线' },
+  { key: 'account-device', label: '账号与设备', section: '支持' },
+  { key: 'settings-center', label: '设置', section: '支持' }
 ]
 
 const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   ? studioMenuConfig.primaryMenuItems
   : fallbackMenuItems
 
-const activeMenu = ref('workspace')
+const activeMenu = ref('workbench')
 const activeGeneratorMenu = ref('')
 const submitButtonState = ref('idle')
 const formDrafts = ref({})
@@ -143,6 +120,11 @@ const activationState = ref({
   message: '',
   mode: 'server-license'
 })
+const activationForm = ref({
+  customerName: '',
+  contact: '',
+  inviteCode: ''
+})
 const isActivationLoading = ref(true)
 const isActivationSubmitting = ref(false)
 const isRechargeSubmitting = ref(false)
@@ -182,6 +164,12 @@ let publishTaskPollingInFlight = false
 let rechargeOrderController = null
 let softwareOrderController = null
 let computePackageOrderController = null
+const emptyGeneratorResultPayload = {
+  textResults: [],
+  comparisonResults: [],
+  groupedResults: [],
+  summary: null
+}
 
 const activeGeneratorMenuKey = computed(() => {
   const menuKey = String(activeGeneratorMenu.value || '').trim()
@@ -193,20 +181,19 @@ const currentDraft = computed(() => {
 })
 
 const currentResultPayload = computed(() => {
-  return resultsByMenu.value[activeGeneratorMenuKey.value] || {
-    textResults: [],
-    comparisonResults: [],
-    groupedResults: [],
-    summary: null
-  }
+  return resultsByMenu.value[activeGeneratorMenuKey.value] || emptyGeneratorResultPayload
 })
 
 const currentExportItems = computed(() => {
   return exportItemsByMenu.value[activeGeneratorMenuKey.value] || []
 })
 
+const workspaceDraft = computed(() => formDrafts.value.workspace || {})
+const workspaceResultPayload = computed(() => resultsByMenu.value.workspace || emptyGeneratorResultPayload)
+const workspaceExportItems = computed(() => exportItemsByMenu.value.workspace || [])
+
 const activeWorkspaceGeneratorView = computed(() => {
-  if (activeMenu.value !== 'workspace') {
+  if (activeMenu.value !== 'generation-center') {
     return null
   }
 
@@ -214,9 +201,25 @@ const activeWorkspaceGeneratorView = computed(() => {
 })
 
 const isWorkspaceGeneratorView = computed(() => Boolean(activeWorkspaceGeneratorView.value))
+const activeTextGeneratorView = computed(() => {
+  return activeWorkspaceGeneratorView.value?.mode === 'text' ? activeWorkspaceGeneratorView.value : null
+})
+const activeMediaGeneratorView = computed(() => {
+  const mode = activeWorkspaceGeneratorView.value?.mode
+  return mode === 'image' || mode === 'video' ? activeWorkspaceGeneratorView.value : null
+})
 
 const isWorkspaceHome = computed(() => {
-  return activeMenu.value === 'workspace' && !isWorkspaceGeneratorView.value
+  return activeMenu.value === 'generation-center' && !isWorkspaceGeneratorView.value
+})
+
+const currentTextResultItems = computed(() => {
+  const textKind = activeTextGeneratorView.value?.textKind
+  if (!textKind) {
+    return []
+  }
+
+  return (workspaceResultPayload.value.textResults || []).filter((item) => item?.kind === textKind)
 })
 
 const activationSummary = computed(() => {
@@ -233,20 +236,6 @@ const isActivated = computed(() => activationState.value.status === 'activated')
 
 const remoteServiceCapacity = computed(() => {
   return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
-})
-
-const rechargeStatusLabel = computed(() => {
-  const status = currentRechargeOrder.value?.status || ''
-  if (status === 'paid') {
-    return '已支付'
-  }
-  if (status === 'failed') {
-    return '支付失败'
-  }
-  if (status === 'closed') {
-    return '已关闭'
-  }
-  return '待支付'
 })
 
 function showActionFeedback({ type = 'success', title = '', message = '' }) {
@@ -341,6 +330,16 @@ const hasActivePublishTasks = computed(() => {
   return Object.values(publishState.value || {}).some((state) => isPublishTaskActive(state?.latestTask))
 })
 
+const sortedRecentTasks = computed(() => {
+  return (studioTasks.value || [])
+    .slice()
+    .sort((left, right) => {
+      const rightTime = new Date(right?.createdAt || right?.updatedAt || 0).getTime()
+      const leftTime = new Date(left?.createdAt || left?.updatedAt || 0).getTime()
+      return rightTime - leftTime
+    })
+})
+
 function stopRuntimePolling() {
   if (runtimePollingTimer) {
     window.clearTimeout(runtimePollingTimer)
@@ -422,7 +421,7 @@ async function pollStudioRuntimeSnapshot() {
 
   runtimePollingInFlight = true
   try {
-    const snapshot = await getStudioRuntimeSnapshot()
+    const snapshot = await workspaceClient.getRuntimeSnapshot()
     applyStudioRuntimeSnapshot(snapshot)
   } catch {
     // Ignore transient polling failures while tasks are still active.
@@ -464,7 +463,7 @@ async function pollPublishTasks() {
       }
 
       try {
-        const task = await getPublishTask({
+        const task = await publishClient.getTask({
           id: taskId
         })
         patchProjectPublishState(projectId, {
@@ -487,20 +486,23 @@ async function pollPublishTasks() {
 }
 
 async function loadPromptTemplateState() {
-  promptTemplates.value = await listPromptTemplates()
+  promptTemplates.value = await promptLibraryClient.listTemplates()
 }
 
 async function loadActivationState() {
   isActivationLoading.value = true
   try {
-    activationState.value = await getActivationStatus()
+    activationState.value = await activationClient.getStatus()
+    if (activationState.value.customerName && !activationForm.value.customerName) {
+      activationForm.value.customerName = activationState.value.customerName
+    }
   } finally {
     isActivationLoading.value = false
   }
 }
 
 async function loadStudioSnapshot() {
-  const snapshot = await getStudioSnapshot()
+  const snapshot = await workspaceClient.getSnapshot()
   formDrafts.value = snapshot.formDrafts || {}
   workspaceDashboard.value = snapshot.workspaceDashboard || workspaceDashboard.value
   applyStudioRuntimeSnapshot(snapshot)
@@ -517,8 +519,8 @@ async function loadActivatedWorkspace() {
 }
 
 async function loadSelectionAssistantState() {
-  selectionManifest.value = await getSelectionManifest()
-  selectionPlatforms.value = await listSelectionPlatforms()
+  selectionManifest.value = await selectionClient.getManifest()
+  selectionPlatforms.value = await selectionClient.listPlatforms()
   await refreshSelectionSites(selectionItemsState.value.platform)
   await refreshSelectionItems()
 }
@@ -531,7 +533,7 @@ async function loadPublishConfigState() {
   }
 
   try {
-    const payload = await getPublishClientConfig({})
+    const payload = await publishClient.getConfig({})
     const platformRows = Array.isArray(payload?.platforms) ? payload.platforms : []
     publishConfigState.value = {
       platformOptions: platformRows.length
@@ -565,7 +567,7 @@ async function refreshSelectionSites(platform) {
     return
   }
 
-  selectionSites.value = await listSelectionSites({ platform })
+  selectionSites.value = await selectionClient.listSites({ platform })
 }
 
 async function refreshSelectionItems(overrides = {}) {
@@ -581,7 +583,7 @@ async function refreshSelectionItems(overrides = {}) {
   }
 
   try {
-    const payload = await listSelectionItems({
+    const payload = await selectionClient.listItems({
       platform: nextState.platform,
       boardType: nextState.boardType,
       siteCode: nextState.siteCode,
@@ -611,19 +613,17 @@ async function refreshSelectionItems(overrides = {}) {
 }
 
 async function loadPurchaseCenterCatalog() {
-  if (!isActivated.value) {
-    softwarePackages.value = []
-    computePackages.value = []
-    return
-  }
-
   isCatalogLoading.value = true
   try {
-    const [softwareRows, computeRows] = await Promise.all([
-      listSoftwarePackages(),
-      listComputePackages()
-    ])
+    const softwareRows = await catalogClient.listSoftwarePackages()
     softwarePackages.value = Array.isArray(softwareRows) ? softwareRows : []
+
+    if (!isActivated.value) {
+      computePackages.value = []
+      return
+    }
+
+    const computeRows = await catalogClient.listComputePackages()
     computePackages.value = Array.isArray(computeRows) ? computeRows : []
   } finally {
     isCatalogLoading.value = false
@@ -632,20 +632,27 @@ async function loadPurchaseCenterCatalog() {
 
 function handleMenuSelect(menuKey) {
   activeGeneratorMenu.value = ''
-  if (menuKey === 'workspace' && formDrafts.value.workspace?.projectId) {
+  if (menuKey === 'generation-center' && formDrafts.value.workspace?.projectId) {
     activeProductProjectId.value = formDrafts.value.workspace.projectId
   }
   activeMenu.value = menuKey
 }
 
 async function handleOpenProjectGenerator({ project, menuKey }) {
-  if (!project?.id || !menuKey) {
+  if (!menuKey) {
     return
   }
 
-  activeProductProjectId.value = project.id
-  await persistDraft(menuKey, buildProjectGeneratorDraft(project, menuKey))
-  activeMenu.value = 'workspace'
+  if (project?.id) {
+    activeProductProjectId.value = project.id
+    if (resolveGeneratorView(menuKey)?.mode === 'text') {
+      await persistDraft('workspace', buildProjectTextGeneratorDraft(project, formDrafts.value.workspace || {}, resolveGeneratorView(menuKey)?.textKind))
+    } else {
+      await persistDraft(menuKey, buildProjectGeneratorDraft(project, menuKey))
+    }
+  }
+
+  activeMenu.value = 'generation-center'
   activeGeneratorMenu.value = menuKey
 }
 
@@ -658,7 +665,7 @@ async function persistDraft(menuKey, patch) {
     ...formDrafts.value,
     [menuKey]: nextDraft
   }
-  await saveStudioDraft({
+  await workspaceClient.saveDraft({
     menuKey,
     patch
   })
@@ -674,9 +681,15 @@ async function handleDraftUpdate({ field, value }) {
   })
 }
 
+async function handleTextGeneratorDraftUpdate({ field, value }) {
+  await persistDraft('workspace', {
+    [field]: value
+  })
+}
+
 async function handleCreateProject() {
   try {
-    const createdProject = await createStudioProject({
+    const createdProject = await workspaceClient.createProject({
       productName: '',
       platform: 'temu',
       language: 'zh-CN'
@@ -701,7 +714,7 @@ async function handleCreateProject() {
 
 async function handleReplaceProjectImage(project) {
   try {
-    const result = await pickStudioInputAssets({
+    const result = await workspaceClient.pickInputAssets({
       menuKey: 'workspace',
       allowMultiple: false
     })
@@ -710,7 +723,7 @@ async function handleReplaceProjectImage(project) {
       return
     }
 
-    await updateStudioProject({
+    await workspaceClient.updateProject({
       projectId: project.id,
       patch: {
         assets: {
@@ -733,7 +746,7 @@ async function handleReplaceProjectImage(project) {
 
 async function handleProjectUpdate({ projectId, patch }) {
   try {
-    await updateStudioProject({
+    await workspaceClient.updateProject({
       projectId,
       patch
     })
@@ -754,7 +767,7 @@ async function handleProjectUpdate({ projectId, patch }) {
 
 async function handleProjectDelete(projectId) {
   try {
-    await deleteStudioProject({ projectId })
+    await workspaceClient.deleteProject({ projectId })
     await loadStudioSnapshot()
   } catch (error) {
     showActionFeedback({
@@ -790,7 +803,7 @@ async function handleSelectionImport({ item, mode }) {
   }
 
   try {
-    const detail = await getSelectionItemDetail({ id: item.id })
+    const detail = await selectionClient.getItemDetail({ id: item.id })
     const highlights = []
     if (detail.subtitle) highlights.push(detail.subtitle)
     if (detail.priceText) highlights.push(`价格：${detail.priceText}`)
@@ -832,7 +845,7 @@ async function handleSelectionImport({ item, mode }) {
 
     let nextProjectId = ''
     if (mode === 'update' && activeProductProjectId.value) {
-      const updatedProject = await updateStudioProject({
+      const updatedProject = await workspaceClient.updateProject({
         projectId: activeProductProjectId.value,
         patch
       })
@@ -841,7 +854,7 @@ async function handleSelectionImport({ item, mode }) {
         markDraftSummaryStale: true
       })
     } else {
-      const createdProject = await createStudioProject({
+      const createdProject = await workspaceClient.createProject({
         productName: detail.title || '',
         platform: String(detail.platform || 'temu').trim().toLowerCase() || 'temu',
         language: 'zh-CN',
@@ -864,30 +877,6 @@ async function handleSelectionImport({ item, mode }) {
       type: 'error',
       title: '导入失败',
       message: buildErrorMessage(error, '选品条目导入失败')
-    })
-  }
-}
-
-async function handleSyncPublishDraft(project) {
-  if (!project?.id) {
-    return
-  }
-
-  try {
-    const draft = await upsertPublishDraft({
-      projectId: project.id
-    })
-
-    showActionFeedback({
-      type: 'success',
-      title: '已同步',
-      message: `发布草稿已同步到服务端：${draft.title || project.name || project.id}`
-    })
-  } catch (error) {
-    showActionFeedback({
-      type: 'error',
-      title: '同步失败',
-      message: buildErrorMessage(error, '发布草稿同步失败')
     })
   }
 }
@@ -1042,30 +1031,6 @@ function patchProjectPublishState(projectId, patch = {}) {
   return publishState.value[projectId]
 }
 
-function markProjectPublishDraftSummaryStale(projectId = '', message = buildPublishDraftSummaryStaleMessage()) {
-  const normalizedProjectId = String(projectId || '').trim()
-  if (!normalizedProjectId) {
-    return null
-  }
-
-  const currentState = publishState.value[normalizedProjectId] || {}
-  const currentDraftSummary = currentState.draftSummary && typeof currentState.draftSummary === 'object'
-    ? currentState.draftSummary
-    : null
-
-  if (!currentDraftSummary) {
-    return currentState
-  }
-
-  return patchProjectPublishState(normalizedProjectId, {
-    draftSummary: {
-      ...currentDraftSummary,
-      isStale: true,
-      staleMessage: String(message || '').trim() || buildPublishDraftSummaryStaleMessage()
-    }
-  })
-}
-
 function invalidateProjectPublishState(projectId = '', options = {}) {
   const normalizedProjectId = String(projectId || '').trim()
   if (!normalizedProjectId) {
@@ -1169,7 +1134,7 @@ async function loadPublishChannelAccounts(project, { platform, preserveSelection
   })
 
   try {
-    const channelAccounts = await listPublishChannelAccounts({
+    const channelAccounts = await publishClient.listChannelAccounts({
       platform: targetPlatform
     })
     const accountRows = Array.isArray(channelAccounts) ? channelAccounts : []
@@ -1256,7 +1221,7 @@ function assertPublishChannelAccountUsable(project = {}) {
 }
 
 async function ensurePublishDraftReady(project) {
-  const draft = await upsertPublishDraft({
+  const draft = await publishClient.upsertDraft({
     projectId: project.id
   })
   patchProjectPublishState(project.id, {
@@ -1311,7 +1276,7 @@ async function handleSyncPublishDraftFlow(project) {
       error: ''
     })
 
-    const draft = await upsertPublishDraft({
+    const draft = await publishClient.upsertDraft({
       projectId: project.id
     })
 
@@ -1384,7 +1349,7 @@ async function handlePublishPreview(project) {
     }
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
-    const preview = await getPublishDraftPreview({
+    const preview = await publishClient.getDraftPreview({
       id: draftId,
       platform: selectedPlatform,
       channelAccountId
@@ -1397,7 +1362,7 @@ async function handlePublishPreview(project) {
     )
 
     if (publishDraftPatch) {
-      await updateStudioProject({
+      await workspaceClient.updateProject({
         projectId: project.id,
         patch: publishDraftPatch
       })
@@ -1431,7 +1396,6 @@ async function handlePublishCreateTask(project) {
     return
   }
 
-  const state = getProjectPublishState(project)
   patchProjectPublishState(project.id, {
     isTaskLoading: true,
     error: ''
@@ -1466,7 +1430,7 @@ async function handlePublishCreateTask(project) {
     }
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
-    const createdTask = await createPublishTask({
+    const createdTask = await publishClient.createTask({
       draftId,
       platform: selectedPlatform,
       channelAccountId,
@@ -1475,7 +1439,7 @@ async function handlePublishCreateTask(project) {
     let task = createdTask
 
     try {
-      task = await getPublishTask({
+      task = await publishClient.getTask({
         id: createdTask.id
       })
     } catch {
@@ -1490,11 +1454,6 @@ async function handlePublishCreateTask(project) {
       queuePublishTaskPolling(0)
     }
     return showActionFeedback(buildPublishTaskFeedback(task, '发布任务已创建'))
-    showActionFeedback({
-      type: 'success',
-      title: '任务已创建',
-      message: `发布任务状态：${task.status || 'queued'}`
-    })
   } catch (error) {
     patchProjectPublishState(project.id, {
       isTaskLoading: false,
@@ -1513,7 +1472,6 @@ async function handlePublishSyncTask(project) {
     return
   }
 
-  const state = getProjectPublishState(project)
   patchProjectPublishState(project.id, {
     isTaskLoading: true,
     error: ''
@@ -1523,7 +1481,7 @@ async function handlePublishSyncTask(project) {
     const { selectedPlatform } = assertProjectPublishPlatformReady(project, 'sync-status')
     const draftId = await ensurePublishDraftReady(project)
     const channelAccountId = await ensurePublishChannelAccountReady(project)
-    const createdTask = await createPublishTask({
+    const createdTask = await publishClient.createTask({
       draftId,
       platform: selectedPlatform,
       channelAccountId,
@@ -1532,7 +1490,7 @@ async function handlePublishSyncTask(project) {
     let task = createdTask
 
     try {
-      task = await getPublishTask({
+      task = await publishClient.getTask({
         id: createdTask.id
       })
     } catch {
@@ -1547,20 +1505,15 @@ async function handlePublishSyncTask(project) {
       queuePublishTaskPolling(0)
     }
     return showActionFeedback(buildPublishTaskFeedback(task, '同步任务已创建'))
-    showActionFeedback({
-      type: 'success',
-      title: '鐘舵€佸悓姝ュ凡鍒涘缓',
-      message: `鍙戝竷瀹℃牳鐘舵€佸悓姝ヤ换鍔＄姸鎬侊細${task.status || 'queued'}`
-    })
   } catch (error) {
     patchProjectPublishState(project.id, {
       isTaskLoading: false,
-      error: buildErrorMessage(error, '鍙戝竷鐘舵€佸悓姝ュけ璐?')
+      error: buildErrorMessage(error, '发布状态同步失败')
     })
     showActionFeedback({
       type: 'error',
-      title: '鐘舵€佸悓姝ゅけ璐?',
-      message: buildErrorMessage(error, '鍙戝竷鐘舵€佸悓姝ュけ璐?')
+      title: '状态同步失败',
+      message: buildErrorMessage(error, '发布状态同步失败')
     })
   }
 }
@@ -1582,7 +1535,7 @@ async function handlePublishRefreshTask(project) {
   })
 
   try {
-    const task = await getPublishTask({
+    const task = await publishClient.getTask({
       id: taskId
     })
     patchProjectPublishState(project.id, {
@@ -1619,7 +1572,7 @@ async function handlePublishRetryTask(project) {
   })
 
   try {
-    const task = await retryPublishTask({
+    const task = await publishClient.retryTask({
       id: taskId
     })
     patchProjectPublishState(project.id, {
@@ -1676,7 +1629,7 @@ async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
       return
     }
 
-    await createStudioTask({
+    await workspaceClient.createTask({
       menuKey,
       draft
     })
@@ -1697,6 +1650,43 @@ async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
   }
 }
 
+function buildStandaloneTextDraft(textKind = 'title') {
+  const normalizedKind = textKind === 'description' ? 'description' : 'title'
+  return {
+    ...workspaceDraft.value,
+    enabledSteps: {
+      title: normalizedKind === 'title',
+      description: normalizedKind === 'description',
+      image: false,
+      video: false
+    }
+  }
+}
+
+async function handleSubmitTextGenerator(textKind = 'title') {
+  submitButtonState.value = 'pending'
+  try {
+    await workspaceClient.createTask({
+      menuKey: 'workspace',
+      draft: buildStandaloneTextDraft(textKind)
+    })
+    await loadStudioSnapshot()
+    showActionFeedback({
+      type: 'success',
+      title: '已提交',
+      message: textKind === 'description' ? '描述生成任务已加入队列' : '标题生成任务已加入队列'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '提交失败',
+      message: buildErrorMessage(error, textKind === 'description' ? '描述生成任务提交失败' : '标题生成任务提交失败')
+    })
+  } finally {
+    submitButtonState.value = 'idle'
+  }
+}
+
 async function handleRunProject(project) {
   if (!project?.id) {
     return
@@ -1704,7 +1694,7 @@ async function handleRunProject(project) {
 
   submitButtonState.value = 'pending'
   try {
-    await createStudioTask({
+    await workspaceClient.createTask({
       menuKey: 'workspace',
       draft: buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})
     })
@@ -1731,7 +1721,7 @@ async function handlePickGeneratorImage() {
   }
 
   try {
-    const result = await pickStudioInputAssets({
+    const result = await workspaceClient.pickInputAssets({
       menuKey: activeGeneratorMenuKey.value,
       allowMultiple: false
     })
@@ -1775,7 +1765,7 @@ async function handleOpenImages(payload) {
     return
   }
 
-  await openOutputDirectory({
+  await shellClient.openOutputDirectory({
     outputDirectory: imageDirectory
   })
 }
@@ -1789,7 +1779,7 @@ async function handleOpenVideo(payload) {
     return
   }
 
-  await openOutputDirectory({
+  await shellClient.openOutputDirectory({
     outputDirectory: videoDirectory
   })
 }
@@ -1799,12 +1789,12 @@ async function handleOpenResource(target) {
     return
   }
 
-  await openExternalResource({ target })
+  await shellClient.openExternalResource({ target })
 }
 
 async function handleExportProject(projectId) {
   try {
-    await exportStudioProjectBundle({ projectId })
+    await workspaceClient.exportProjectBundle({ projectId })
     showActionFeedback({
       type: 'success',
       title: '已导出',
@@ -1850,7 +1840,7 @@ async function handleOpenGeneratorExportItem(exportItem) {
     return
   }
 
-  await openOutputDirectory({
+  await shellClient.openOutputDirectory({
     outputDirectory
   })
 }
@@ -1869,7 +1859,7 @@ async function handleExportCurrentResults(payload = {}) {
   }
 
   try {
-    const exportResult = await exportStudioResults({
+    const exportResult = await workspaceClient.exportResults({
       menuKey: activeGeneratorMenuKey.value,
       selectedExportIds
     })
@@ -1892,6 +1882,36 @@ async function handleExportCurrentResults(payload = {}) {
   }
 }
 
+async function handleExportTextResults() {
+  const selectedExportIds = workspaceExportItems.value.map((item) => item.id).filter(Boolean)
+  if (!selectedExportIds.length) {
+    return
+  }
+
+  try {
+    const exportResult = await workspaceClient.exportResults({
+      menuKey: 'workspace',
+      selectedExportIds
+    })
+
+    if (exportResult?.canceled) {
+      return
+    }
+
+    showActionFeedback({
+      type: 'success',
+      title: '已导出',
+      message: '文本结果压缩包已生成'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '导出失败',
+      message: buildErrorMessage(error, '文本结果导出失败')
+    })
+  }
+}
+
 async function handleCopyDeviceCode() {
   await navigator.clipboard.writeText(activationState.value.deviceCode || '')
   showActionFeedback({
@@ -1904,7 +1924,13 @@ async function handleCopyDeviceCode() {
 async function handleActivateRemote(payload) {
   isActivationSubmitting.value = true
   try {
-    activationState.value = await activateRemoteLicense({
+    activationForm.value = {
+      customerName: payload.customerName || '',
+      contact: payload.contact || '',
+      inviteCode: payload.inviteCode || ''
+    }
+
+    activationState.value = await activationClient.activate({
       customerName: payload.customerName,
       contact: payload.contact,
       inviteCode: payload.inviteCode,
@@ -1950,18 +1976,20 @@ function openClearRuntimeConfirm() {
 }
 
 async function handleSavePromptTemplate(payload) {
-  await savePromptTemplate(payload)
+  await promptLibraryClient.saveTemplate(payload)
   await loadPromptTemplateState()
 }
 
 async function handleRemovePromptTemplate(templateId) {
-  await removePromptTemplate({ id: templateId })
+  await promptLibraryClient.removeTemplate({ id: templateId })
   await loadPromptTemplateState()
 }
 
 function openPurchaseCenter() {
   activeGeneratorMenu.value = ''
-  activeMenu.value = 'purchase-center'
+  if (isActivated.value) {
+    activeMenu.value = 'purchase-center'
+  }
 }
 
 function handleRechargeFormUpdate({ field, value }) {
@@ -2019,9 +2047,9 @@ rechargeOrderController = createRechargeOrderController({
   isRechargeSubmittingRef: isRechargeSubmitting,
   isRechargeRefreshingRef: isRechargeRefreshing,
   rechargeForm,
-  createRechargeOrder,
-  getRechargeOrder,
-  openExternalResource,
+  createRechargeOrder: commerceClient.createRechargeOrder,
+  getRechargeOrder: commerceClient.getRechargeOrder,
+  openExternalResource: shellClient.openExternalResource,
   showActionFeedback,
   buildErrorMessage,
   loadStudioSnapshot,
@@ -2032,11 +2060,13 @@ softwareOrderController = createSoftwareOrderController({
   currentSoftwareOrderRef: currentSoftwareOrder,
   isSoftwareOrderSubmittingRef: isSoftwareOrderSubmitting,
   isSoftwareOrderRefreshingRef: isSoftwareOrderRefreshing,
-  createSoftwareOrder,
-  getSoftwareOrder,
-  openExternalResource,
+  activationFormRef: activationForm,
+  createSoftwareOrder: commerceClient.createSoftwareOrder,
+  getSoftwareOrder: commerceClient.getSoftwareOrder,
+  openExternalResource: shellClient.openExternalResource,
   showActionFeedback,
   buildErrorMessage,
+  activateRemoteLicense: activationClient.activate,
   loadActivationState,
   loadStudioSnapshot,
   loadPurchaseCenterCatalog
@@ -2047,9 +2077,9 @@ computePackageOrderController = createComputePackageOrderController({
   isComputePackageOrderSubmittingRef: isComputePackageOrderSubmitting,
   isComputePackageOrderRefreshingRef: isComputePackageOrderRefreshing,
   computePackagesRef: computePackages,
-  createComputePackageOrder,
-  getComputePackageOrder,
-  openExternalResource,
+  createComputePackageOrder: commerceClient.createComputePackageOrder,
+  getComputePackageOrder: commerceClient.getComputePackageOrder,
+  openExternalResource: shellClient.openExternalResource,
   showActionFeedback,
   buildErrorMessage,
   loadActivationState,
@@ -2060,6 +2090,7 @@ computePackageOrderController = createComputePackageOrderController({
 onMounted(() => {
   void (async () => {
     await loadActivationState()
+    await loadPurchaseCenterCatalog()
     if (isActivated.value) {
       await loadActivatedWorkspace()
     }
@@ -2107,6 +2138,7 @@ onUnmounted(() => {
       brand-label="QiuAi"
       :activation-summary="activationSummary"
       :recharge-enabled="isActivated"
+      :purchase-label="isActivated ? '充值购买' : '购买授权'"
       @cleanup-click="openClearRuntimeConfirm"
       @recharge-click="openPurchaseCenter"
     />
@@ -2119,13 +2151,39 @@ onUnmounted(() => {
     </div>
 
     <section v-if="isActivationLoading || !isActivated" class="activation-shell">
-      <ActivationGate
-        :activation-state="activationState"
-        :is-loading="isActivationLoading"
-        :is-submitting="isActivationSubmitting"
-        @activate-remote="handleActivateRemote"
-        @copy-device-code="handleCopyDeviceCode"
-      />
+      <div class="activation-shell__grid">
+        <ActivationGate
+          :activation-state="activationState"
+          :form-state="activationForm"
+          :is-loading="isActivationLoading"
+          :is-submitting="isActivationSubmitting"
+          @activate-remote="handleActivateRemote"
+          @copy-device-code="handleCopyDeviceCode"
+        />
+
+        <PurchaseCenterPage
+          embedded
+          :activation-state="activationState"
+          :wallet-summary="activationState.walletSummary || null"
+          :software-packages="softwarePackages"
+          :compute-packages="[]"
+          :current-software-order="currentSoftwareOrder"
+          :current-compute-package-order="null"
+          :current-recharge-order="null"
+          :recharge-form="rechargeForm"
+          :is-catalog-loading="isCatalogLoading"
+          :is-recharge-submitting="false"
+          :is-software-order-submitting="isSoftwareOrderSubmitting"
+          :is-software-order-refreshing="isSoftwareOrderRefreshing"
+          :is-compute-package-order-submitting="false"
+          :is-compute-package-order-refreshing="false"
+          :is-recharge-refreshing="false"
+          @refresh-catalog="loadPurchaseCenterCatalog"
+          @create-software-order="handleCreateSoftwareOrder"
+          @refresh-software-order="handleRefreshSoftwareOrder"
+          @open-software-order="handleOpenSoftwareOrderLink"
+        />
+      </div>
     </section>
 
     <section v-else class="shell-grid shell-grid--simple">
@@ -2138,8 +2196,20 @@ onUnmounted(() => {
       </aside>
 
       <section class="shell-grid__workspace">
-        <ProductWorkbench
-          v-if="isWorkspaceHome"
+        <WorkbenchOverviewPage
+          v-if="activeMenu === 'workbench'"
+          :activation-state="activationState"
+          :remote-service-capacity="remoteServiceCapacity"
+          :workspace-dashboard="workspaceDashboard"
+          :tasks="sortedRecentTasks"
+          :current-recharge-order="currentRechargeOrder"
+          :current-software-order="currentSoftwareOrder"
+          :current-compute-package-order="currentComputePackageOrder"
+          :project-count="productProjects.length"
+        />
+
+        <GenerationCenterPage
+          v-else-if="isWorkspaceHome"
           :product-projects="productProjects"
           :project-runs="projectRuns"
           :active-project-id="activeProductProjectId"
@@ -2173,10 +2243,25 @@ onUnmounted(() => {
           @selection-import="handleSelectionImport"
         />
 
+        <TextGeneratorPage
+          v-else-if="activeTextGeneratorView"
+          :title="activeTextGeneratorView.title"
+          :text-kind="activeTextGeneratorView.textKind"
+          :draft="workspaceDraft"
+          :result-items="currentTextResultItems"
+          :export-items="workspaceExportItems"
+          :prompt-templates="promptTemplates"
+          @update-draft="handleTextGeneratorDraftUpdate"
+          @submit-task="handleSubmitTextGenerator(activeTextGeneratorView.textKind)"
+          @copy-text="handleCopyText"
+          @export-results="handleExportTextResults"
+          @open-export-item="handleOpenGeneratorExportItem"
+        />
+
         <GeneratorStudioPage
-          v-else-if="isWorkspaceGeneratorView"
-          :title="activeWorkspaceGeneratorView.title"
-          :mode="activeWorkspaceGeneratorView.mode"
+          v-else-if="activeMediaGeneratorView"
+          :title="activeMediaGeneratorView.title"
+          :mode="activeMediaGeneratorView.mode"
           :draft="currentDraft"
           :result-payload="currentResultPayload"
           :export-items="currentExportItems"
@@ -2222,19 +2307,26 @@ onUnmounted(() => {
           @open-recharge-order="handleOpenRechargeLink"
         />
 
-        <DataCenterPage
-          v-else-if="activeMenu === 'account-usage'"
-          :workspace-dashboard="workspaceDashboard"
+        <ResultsCenterPage
+          v-else-if="activeMenu === 'results-center'"
+          :tasks="sortedRecentTasks"
+          @open-output="handleOpenGeneratorExportItem"
         />
 
-        <PromptLibraryPanel
-          v-else-if="activeMenu === 'prompt-library'"
+        <AccountDevicePage
+          v-else-if="activeMenu === 'account-device'"
+          :activation-state="activationState"
+          :remote-service-capacity="remoteServiceCapacity"
+          @copy-device-code="handleCopyDeviceCode"
+        />
+
+        <SettingsCenterPage
+          v-else-if="activeMenu === 'settings-center'"
           :prompt-templates="promptTemplates"
           @save-template="handleSavePromptTemplate"
           @remove-template="handleRemovePromptTemplate"
         />
       </section>
     </section>
-
   </main>
 </template>

@@ -31,13 +31,15 @@ describe('license ipc source', () => {
     expect(registerSource).not.toContain('createLicenseService')
   })
 
-  it('guards commerce ipc handlers behind a remote session token check', () => {
+  it('keeps session checks for compute and recharge commerce while software orders can bootstrap before activation', () => {
     const licenseIpcSource = fs.readFileSync(path.resolve(process.cwd(), 'main/src/ipc/licenseIpc.js'), 'utf8')
 
     expect(licenseIpcSource).toContain('async function requireSessionToken(settingsService)')
     expect(licenseIpcSource).toContain("error.code = 'REMOTE_AUTH_REQUIRED'")
     expect(licenseIpcSource).toContain('Remote authorization is required before using commerce features.')
     expect(licenseIpcSource).toContain('const sessionToken = await requireSessionToken(settingsService)')
+    expect(licenseIpcSource).toContain('async function buildSoftwareOrderPayload')
+    expect(licenseIpcSource).not.toContain('const sessionToken = await requireSessionToken(settingsService)\n    return remoteLicensePlatformClient.createSoftwareOrder')
     expect(licenseIpcSource).not.toContain('const { dialog, ipcMain } = require(\'electron\')')
   })
 })

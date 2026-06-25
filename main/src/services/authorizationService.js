@@ -22,6 +22,18 @@ function buildNextAction(status = '') {
   return 'activate-license'
 }
 
+function buildPersistedAuthPlatformPatch(remoteConfig = {}, remoteStatus = {}, remoteServiceCapacity = null) {
+  return {
+    ...remoteConfig,
+    enabled: true,
+    sessionToken: String(remoteStatus?.sessionToken || remoteConfig?.sessionToken || '').trim(),
+    lastUserId: String(remoteStatus?.userId || '').trim(),
+    lastLicenseId: String(remoteStatus?.licenseId || '').trim(),
+    lastSyncedAt: new Date().toISOString(),
+    remoteServiceCapacity: remoteServiceCapacity || null
+  }
+}
+
 function createAuthorizationState(overrides = {}) {
   return {
     status: 'not_logged_in',
@@ -109,11 +121,11 @@ function createAuthorizationService({
 
       if (settingsService && typeof settingsService.saveSettings === 'function') {
         await settingsService.saveSettings({
-          authPlatform: {
-            ...remoteConfig,
-            remoteServiceCapacity,
-            lastSyncedAt: new Date().toISOString()
-          }
+          authPlatform: buildPersistedAuthPlatformPatch(
+            remoteConfig,
+            remoteStatus,
+            remoteServiceCapacity
+          )
         }).catch(() => {})
       }
 

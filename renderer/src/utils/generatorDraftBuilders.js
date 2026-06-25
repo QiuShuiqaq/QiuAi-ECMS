@@ -92,6 +92,8 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
       .join(', '),
     sourceImage: project?.assets?.sourceImages?.[0] || null,
     selectionSource,
+    selectedTitle: project?.content?.selectedTitle || '',
+    selectedDescription: project?.content?.selectedDescription || '',
     enabledSteps: generationConfig.enabledSteps || undefined,
     titleMaxChars: generationConfig.titleMaxChars || workspaceDraft?.titleMaxChars || 60,
     descriptionMaxChars: generationConfig.descriptionMaxChars || workspaceDraft?.descriptionMaxChars || 300,
@@ -109,5 +111,20 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     imageTemplateId: generationConfig.imageTemplateId || 'image-default',
     videoTemplateId: generationConfig.videoTemplateId || 'video-main',
     model: workspaceDraft?.model || 'deepseek-v4-flash'
+  }
+}
+
+export function buildProjectTextGeneratorDraft(project, workspaceDraft = {}, kind = 'title') {
+  const baseDraft = buildWorkspaceRunDraft(project, workspaceDraft)
+  const normalizedKind = kind === 'description' ? 'description' : 'title'
+
+  return {
+    ...baseDraft,
+    enabledSteps: {
+      title: normalizedKind === 'title',
+      description: normalizedKind === 'description',
+      image: false,
+      video: false
+    }
   }
 }

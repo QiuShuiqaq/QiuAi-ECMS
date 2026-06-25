@@ -40,7 +40,12 @@ function normalizeSoftwareOrderPayload(payload = {}) {
   return {
     productPackageId: trimString(payload.productPackageId),
     channel: trimString(payload.channel || 'alipay') || 'alipay',
-    sessionToken: trimString(payload.sessionToken)
+    sessionToken: trimString(payload.sessionToken),
+    customerName: trimString(payload.customerName),
+    contact: trimString(payload.contact),
+    inviteCode: trimString(payload.inviteCode),
+    deviceFingerprint: trimString(payload.deviceFingerprint),
+    deviceName: trimString(payload.deviceName)
   }
 }
 
@@ -329,10 +334,11 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function getSoftwareOrder({ id = '', sessionToken = '' } = {}) {
+  async function getSoftwareOrder({ id = '', sessionToken = '', orderAccessToken = '' } = {}) {
     return request('get', `/api/orders/${trimString(id)}`, {
       params: {
-        sessionToken: trimString(sessionToken)
+        sessionToken: trimString(sessionToken),
+        orderAccessToken: trimString(orderAccessToken)
       }
     })
   }
@@ -495,7 +501,71 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  const activation = {
+    getStatus: getAuthorizationStatus,
+    activate: activateLicense
+  }
+
+  const wallet = {
+    getSummary: getWalletSummary
+  }
+
+  const serviceCapacity = {
+    getProfile: getServiceCapacityProfile
+  }
+
+  const softwareCommerce = {
+    listPackages: listSoftwarePackages,
+    createOrder: createSoftwareOrder,
+    getOrder: getSoftwareOrder
+  }
+
+  const computeCommerce = {
+    listPackages: listComputePackages,
+    createOrder: createComputePackageOrder,
+    getOrder: getComputePackageOrder
+  }
+
+  const recharge = {
+    createOrder: createRechargeOrder,
+    getOrder: getRechargeOrder
+  }
+
+  const selection = {
+    getManifest: getSelectionManifest,
+    listPlatforms: listSelectionPlatforms,
+    listSites: listSelectionSites,
+    listItems: listSelectionItems,
+    getItemDetail: getSelectionItemDetail
+  }
+
+  const generation = {
+    createJob: createGenerationJob,
+    getJob: getGenerationJob,
+    downloadArtifact: downloadGenerationArtifact
+  }
+
+  const publish = {
+    getClientConfig: getPublishClientConfig,
+    listChannelAccounts: listPublishChannelAccounts,
+    upsertDraft: upsertPublishDraft,
+    getDraft: getPublishDraft,
+    getDraftPreview: getPublishDraftPreview,
+    createTask: createPublishTask,
+    getTask: getPublishTask,
+    retryTask: retryPublishTask
+  }
+
   return {
+    activation,
+    wallet,
+    serviceCapacity,
+    softwareCommerce,
+    computeCommerce,
+    recharge,
+    selection,
+    generation,
+    publish,
     activateLicense,
     createComputePackageOrder,
     createGenerationJob,

@@ -25,10 +25,15 @@ describe('authorization service', () => {
       })
     }
 
+    const saveSettings = vi.fn().mockResolvedValue(undefined)
     const service = createAuthorizationService({
       remoteLicensePlatformClient: remoteClient,
+      settingsService: {
+        saveSettings
+      },
       getRemoteConfig: () => ({
         enabled: true,
+        baseUrl: 'https://api.qiuaihub.com',
         sessionToken: 'session-1'
       }),
       getDeviceCode: vi.fn().mockResolvedValue('QAI-REMOTE-DEVICE')
@@ -43,6 +48,16 @@ describe('authorization service', () => {
       imageBalanceCny: 88,
       videoBalanceCny: 66
     })
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      authPlatform: expect.objectContaining({
+        enabled: true,
+        baseUrl: 'https://api.qiuaihub.com',
+        sessionToken: 'session-1',
+        lastUserId: 'user-1',
+        lastLicenseId: 'license-1',
+        remoteServiceCapacity: null
+      })
+    }))
   })
 
   it('returns not_logged_in with device code when no remote session is available', async () => {

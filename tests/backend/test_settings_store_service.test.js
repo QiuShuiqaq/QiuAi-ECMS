@@ -73,6 +73,27 @@ describe('settingsStoreService', () => {
     expect(settings.providerApiKeys).toBeUndefined()
   })
 
+  it('migrates the legacy commerce host to the dedicated api subdomain', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const service = createSettingsStoreService({ store })
+
+    store.set('userSettings', {
+      authPlatform: {
+        enabled: true,
+        baseUrl: 'https://qiuaihub.com/',
+        sessionToken: 'session-1'
+      }
+    })
+
+    expect(service.getSettings().authPlatform).toMatchObject({
+      enabled: true,
+      baseUrl: 'https://api.qiuaihub.com',
+      sessionToken: 'session-1'
+    })
+  })
+
   it('rejects invalid workspace upload directories and accepts clearing them', async () => {
     const store = createMemoryStore()
 

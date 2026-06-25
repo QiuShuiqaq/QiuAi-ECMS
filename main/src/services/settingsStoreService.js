@@ -46,6 +46,18 @@ const defaultAuthPlatform = {
   remoteServiceCapacity: null
 }
 
+function normalizeAuthPlatformBaseUrl(baseUrl = '') {
+  const normalizedBaseUrl = typeof baseUrl === 'string' && baseUrl.trim()
+    ? baseUrl.trim().replace(/\/+$/, '')
+    : defaultAuthPlatform.baseUrl
+
+  if (normalizedBaseUrl === 'https://qiuaihub.com') {
+    return defaultAuthPlatform.baseUrl
+  }
+
+  return normalizedBaseUrl
+}
+
 const defaultSettings = {
   defaultSize: '1:1',
   downloadDirectory: '',
@@ -237,9 +249,7 @@ function normalizeAuthPlatform(rawAuthPlatform = {}) {
   const source = rawAuthPlatform && typeof rawAuthPlatform === 'object' ? rawAuthPlatform : {}
   return {
     enabled: source.enabled !== false,
-    baseUrl: typeof source.baseUrl === 'string' && source.baseUrl.trim()
-      ? source.baseUrl.trim().replace(/\/+$/, '')
-      : defaultAuthPlatform.baseUrl,
+    baseUrl: normalizeAuthPlatformBaseUrl(source.baseUrl),
     sessionToken: typeof source.sessionToken === 'string' ? source.sessionToken.trim() : '',
     lastUserId: typeof source.lastUserId === 'string' ? source.lastUserId.trim() : '',
     lastLicenseId: typeof source.lastLicenseId === 'string' ? source.lastLicenseId.trim() : '',

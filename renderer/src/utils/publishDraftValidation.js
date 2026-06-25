@@ -1,21 +1,21 @@
 import { normalizePublishPlatform, normalizeProjectPublishDraft } from './publishContract'
 
-function trimString (value = '') {
+function trimString(value = '') {
   return String(value || '').trim()
 }
 
-function isRemotePublishMediaUrl (value = '') {
+function isRemotePublishMediaUrl(value = '') {
   return /^https?:\/\//i.test(trimString(value))
 }
 
-function hasNonEmptyMedia (project = {}) {
+function hasNonEmptyMedia(project = {}) {
   const assets = project?.assets && typeof project.assets === 'object' ? project.assets : {}
   const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
   const sourceImages = Array.isArray(assets.sourceImages) ? assets.sourceImages : []
   return generatedImages.length > 0 || sourceImages.length > 0
 }
 
-function hasRemotePublishReadyMedia (project = {}) {
+function hasRemotePublishReadyMedia(project = {}) {
   const assets = project?.assets && typeof project.assets === 'object' ? project.assets : {}
   const generatedImages = Array.isArray(assets.generatedImages) ? assets.generatedImages : []
   return generatedImages.some((item) => {
@@ -23,11 +23,11 @@ function hasRemotePublishReadyMedia (project = {}) {
   })
 }
 
-function buildLocalValidationError ({
+function buildLocalValidationError({
   title = '',
   message = '',
   missingFields = [],
-  missingFieldLabels = []
+  missingFieldLabels = [],
 } = {}) {
   return {
     title,
@@ -37,75 +37,86 @@ function buildLocalValidationError ({
       : [],
     missingFieldLabels: Array.isArray(missingFieldLabels)
       ? missingFieldLabels.map((item) => trimString(item)).filter(Boolean)
-      : []
+      : [],
   }
 }
 
-export function validatePublishDraftBeforeRemote ({
+export function validatePublishDraftBeforeRemote({
   project = {},
   platform = '',
   profile = null,
-  operationType = 'create-listing'
+  operationType = 'create-listing',
 } = {}) {
   const normalizedPlatform = normalizePublishPlatform(platform || project?.platformTarget?.[0] || '')
   const normalizedProfile = profile && typeof profile === 'object' ? profile : null
   const publishDraft = normalizeProjectPublishDraft(project)
-  const platformDraft = publishDraft.platformDrafts?.[normalizedPlatform] && typeof publishDraft.platformDrafts[normalizedPlatform] === 'object'
-    ? publishDraft.platformDrafts[normalizedPlatform]
-    : {}
+  const platformDraft =
+    publishDraft.platformDrafts?.[normalizedPlatform] &&
+    typeof publishDraft.platformDrafts[normalizedPlatform] === 'object'
+      ? publishDraft.platformDrafts[normalizedPlatform]
+      : {}
   const requiredAttributes = Array.isArray(normalizedProfile?.requiredAttributes)
     ? normalizedProfile.requiredAttributes
     : []
   const variants = Array.isArray(publishDraft.variants) ? publishDraft.variants : []
   const primaryVariant = variants[0] && typeof variants[0] === 'object' ? variants[0] : {}
   const requiresCreateFields = operationType !== 'sync-status'
-  const missingAttribute = requiredAttributes.find((attribute) => {
-    const key = trimString(attribute?.key || '')
-    return key && !trimString(platformDraft?.attributes?.[key] || '')
-  }) || null
+  const missingAttribute =
+    requiredAttributes.find((attribute) => {
+      const key = trimString(attribute?.key || '')
+      return key && !trimString(platformDraft?.attributes?.[key] || '')
+    }) || null
 
-  if (!trimString(project?.content?.selectedTitle || project?.content?.titleCandidates?.[0] || project?.baseInfo?.productName || project?.name || '')) {
+  if (
+    !trimString(
+      project?.content?.selectedTitle ||
+        project?.content?.titleCandidates?.[0] ||
+        project?.baseInfo?.productName ||
+        project?.name ||
+        '',
+    )
+  ) {
     return buildLocalValidationError({
-      title: '鍙戝竷鏍囬鏈噯澶囧ソ',
-      message: '璇峰厛涓哄綋鍓嶉」鐩ˉ鍏呮爣棰橈紝鍐嶈繘琛屽彂甯冮瑙堟垨鍒涘缓浠诲姟銆?',
+      title: '标题不能为空',
+      message: '请先补全标题，再发起远程发布校验或发布任务。',
       missingFields: ['title'],
-      missingFieldLabels: ['Title']
+      missingFieldLabels: ['Title'],
     })
   }
 
   if (!trimString(project?.content?.selectedDescription || project?.content?.descriptionCandidates?.[0] || '')) {
     return buildLocalValidationError({
-      title: '鍙戝竷鎻忚堪鏈噯澶囧ソ',
-      message: '璇峰厛鐢熸垚鎴栧～鍐欐弿杩板唴瀹癸紝鍐嶈繘琛屽彂甯冮瑙堟垨鍒涘缓浠诲姟銆?',
+      title: '描述不能为空',
+      message: '请先补全描述，再发起远程发布校验或发布任务。',
       missingFields: ['descriptionHtml'],
-      missingFieldLabels: ['Description']
+      missingFieldLabels: ['Description'],
     })
   }
 
   if (!hasNonEmptyMedia(project)) {
     return buildLocalValidationError({
-      title: '鍙戝竷绱犳潗鏈噯澶囧ソ',
-      message: '璇峰厛涓哄綋鍓嶉」鐩ˉ鍏呰嚦灏戜竴寮犲浘鐗囩礌鏉愩€?',
+      title: '素材不能为空',
+      message: '请先补全素材，再发起远程发布校验或发布任务。',
       missingFields: ['media'],
-      missingFieldLabels: ['Media']
+      missingFieldLabels: ['Media'],
     })
   }
 
   if (requiresCreateFields && !hasRemotePublishReadyMedia(project)) {
     return buildLocalValidationError({
-      title: 'Publish media is not ready',
-      message: 'At least one generated media asset needs a server-accessible publish URL before create-listing.',
+      title: '发布素材未就绪',
+      message: '至少需要一个带远程发布地址的生成素材，才能执行 create-listing。',
       missingFields: ['media[0].publishReadyUrl'],
-      missingFieldLabels: ['Primary Media Publish URL']
+      missingFieldLabels: ['Primary Media Publish URL'],
     })
   }
 
   if (requiresCreateFields && !trimString(platformDraft?.categoryId || '')) {
     return buildLocalValidationError({
-      title: '绫荤洰鏈～鍐?',
-      message: '璇峰厛濉啓 Category ID锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      title: '类目 ID 不能为空',
+      message: '请先补全发布草稿里的类目 ID，再发起远程发布校验或发布任务。',
       missingFields: ['platformDraft.categoryId'],
-      missingFieldLabels: ['Category ID']
+      missingFieldLabels: ['Category ID'],
     })
   }
 
@@ -113,46 +124,48 @@ export function validatePublishDraftBeforeRemote ({
     const attributeKey = trimString(missingAttribute.key || 'required')
     const attributeLabel = trimString(missingAttribute.label || missingAttribute.key || 'Required Attribute')
     return buildLocalValidationError({
-      title: '骞冲彴灞炴€ф湭濉啓',
-      message: `璇峰厛濉啓 ${trimString(missingAttribute.label || missingAttribute.key || 'required attribute')}锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€俙`,
+      title: '平台属性不能为空',
+      message: `请先补全平台属性 ${trimString(
+        missingAttribute.label || missingAttribute.key || 'required attribute',
+      )}，再发起远程发布校验或发布任务。`,
       missingFields: [`platformDraft.attributes.${attributeKey}`],
-      missingFieldLabels: [attributeLabel]
+      missingFieldLabels: [attributeLabel],
     })
   }
 
   if (requiresCreateFields && variants.length === 0) {
     return buildLocalValidationError({
-      title: 'SKU 鏈～鍐?',
-      message: '璇峰厛涓哄綋鍓嶅彂甯冭崏绋垮姞鍏ヨ嚦灏戜竴涓?SKU锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      title: 'SKU 不能为空',
+      message: '请至少补一条 SKU，再发起远程发布校验或发布任务。',
       missingFields: ['variants'],
-      missingFieldLabels: ['Variants']
+      missingFieldLabels: ['Variants'],
     })
   }
 
   if (requiresCreateFields && !trimString(primaryVariant?.sellerSkuCode || '')) {
     return buildLocalValidationError({
-      title: 'SKU 鏈～鍐?',
-      message: '璇峰厛濉啓 Seller SKU锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      title: 'SKU 编码不能为空',
+      message: '请先补全一条 SKU 编码，再发起远程发布校验或发布任务。',
       missingFields: ['variants[0].sellerSkuCode'],
-      missingFieldLabels: ['Primary Variant SKU']
+      missingFieldLabels: ['Primary Variant SKU'],
     })
   }
 
   if (requiresCreateFields && !Number.isFinite(Number(primaryVariant?.priceAmount))) {
     return buildLocalValidationError({
-      title: '浠锋牸鏈～鍐?',
-      message: '璇峰厛涓洪涓?SKU 濉啓鏈夋晥浠锋牸锛屽啀杩涜鍙戝竷棰勮鎴栧垱寤轰换鍔°€?',
+      title: 'SKU 价格不能为空',
+      message: '请先补全一条 SKU 价格，再发起远程发布校验或发布任务。',
       missingFields: ['variants[0].priceAmount'],
-      missingFieldLabels: ['Primary Variant Price']
+      missingFieldLabels: ['Primary Variant Price'],
     })
   }
 
   if (requiresCreateFields && Number(primaryVariant?.stockQuantity || 0) <= 0) {
     return buildLocalValidationError({
-      title: '搴撳瓨鏈～鍐?',
-      message: '璇峰厛涓洪涓?SKU 濉啓澶т簬 0 鐨勫簱瀛橈紝鍐嶈繘琛屽彂甯冮瑙堟垨鍒涘缓浠诲姟銆?',
+      title: 'SKU 库存不能为空',
+      message: '请先补全一条 SKU 库存，再发起远程发布校验或发布任务。',
       missingFields: ['variants[0].stockQuantity'],
-      missingFieldLabels: ['Primary Variant Stock']
+      missingFieldLabels: ['Primary Variant Stock'],
     })
   }
 

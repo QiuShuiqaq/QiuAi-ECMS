@@ -67,10 +67,12 @@ describe('studioWorkspaceService', () => {
 
     expect(snapshot.themeMode).toBe('dark')
     expect(snapshot.menuItems.map((item) => item.key)).toEqual([
-      'workspace',
+      'workbench',
+      'generation-center',
+      'results-center',
       'purchase-center',
-      'account-usage',
-      'prompt-library'
+      'account-device',
+      'settings-center'
     ])
     expect(snapshot.formDrafts.workspace).toMatchObject({
       platformTargetsText: 'temu, ozon',

@@ -26,26 +26,35 @@ describe('studio menu contract source', () => {
       'video-generate'
     ])
     expect(config.primaryMenuItems.map((item) => item.key)).toEqual([
-      'workspace',
+      'workbench',
+      'generation-center',
+      'results-center',
       'purchase-center',
-      'account-usage',
-      'prompt-library'
+      'account-device',
+      'settings-center'
     ])
     expect(Object.keys(config.generatorViews)).toEqual([
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])
+    expect(config.generatorViews['title-generate'].textKind).toBe('title')
+    expect(config.generatorViews['description-generate'].textKind).toBe('description')
     expect(config.generatorViews['series-generate'].shortcutLabel).toBeTruthy()
     expect(config.generatorViews['video-generate'].shortcutLabel).toBeTruthy()
 
     expect(appSource).toContain("import studioMenuConfig from '../../shared/studio-menu-config.json'")
     expect(appSource).toContain('const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)')
+    expect(appSource).toContain("const activeMenu = ref('workbench')")
+    expect(appSource).toContain("activeMenu.value === 'generation-center'")
     expect(generatorViewsSource).toContain("import studioMenuConfig from '../../../shared/studio-menu-config.json'")
     expect(generatorViewsSource).toContain('export const generatorViewMap = studioMenuConfig.generatorViews || {}')
     expect(generatorViewsSource).toContain('export const generatorShortcutOptions = Object.entries(generatorViewMap).map')
     expect(workspaceServiceSource).toContain("require('../../../shared/studio-menu-config.json')")
     expect(workspaceServiceSource).toContain('const runtimeStateMenuItems = Array.isArray(studioMenuConfig.runtimeTaskMenuItems)')
     expect(workspaceServiceSource).toContain('studioMenuConfig.runtimeTaskMenuKeys.includes(item.key)')
+    expect(workspaceServiceSource).toContain('const menuItems = primaryMenuItems')
     expect(lifecycleSource).toContain("require('../../../shared/studio-menu-config.json')")
     expect(lifecycleSource).toContain('const supportedTaskMenuKeys = new Set(studioMenuConfig.runtimeTaskMenuKeys ||')
   })

@@ -18,7 +18,6 @@ function createWorkspaceSnapshotService({
   workspaceDashboardSections = [],
   menuLabelMap = {},
   taskMenuMapByCategory = {},
-  modelCreditCostMap = {},
   creditActivityHistoryLimit = 20
 } = {}) {
   function pickStateMenuState(source = {}) {
@@ -79,10 +78,6 @@ function createWorkspaceSnapshotService({
       title,
       items
     }
-  }
-
-  function resolveModelCreditCost(modelName = '') {
-    return modelCreditCostMap[modelName] || 0
   }
 
   function buildCreditOverview(settings = {}) {

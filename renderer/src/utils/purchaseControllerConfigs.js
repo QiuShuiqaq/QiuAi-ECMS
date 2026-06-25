@@ -59,11 +59,13 @@ export function createSoftwareOrderController({
   currentSoftwareOrderRef,
   isSoftwareOrderSubmittingRef,
   isSoftwareOrderRefreshingRef,
+  activationFormRef,
   createSoftwareOrder,
   getSoftwareOrder,
   openExternalResource,
   showActionFeedback,
   buildErrorMessage,
+  activateRemoteLicense,
   loadActivationState,
   loadStudioSnapshot,
   loadPurchaseCenterCatalog
@@ -88,18 +90,36 @@ export function createSoftwareOrderController({
     createConfig: {
       buildPayload: (productPackageId) => ({
         productPackageId,
-        channel: 'alipay'
+        channel: 'alipay',
+        customerName: activationFormRef?.value?.customerName || '',
+        contact: activationFormRef?.value?.contact || '',
+        inviteCode: activationFormRef?.value?.inviteCode || '',
+        deviceName: 'QiuAi Desktop'
+      }),
+      buildRefreshPayload: (currentOrder) => ({
+        id: currentOrder?.id || '',
+        orderAccessToken: currentOrder?.orderAccessToken || ''
       }),
       successTitle: '授权订单已创建',
       successMessage: '请继续完成支付',
       errorMessage: '授权订单创建失败'
     },
     successConfig: {
-      refreshActions: () => [
-        loadActivationState(),
-        loadStudioSnapshot(),
-        loadPurchaseCenterCatalog()
-      ],
+      refreshActions: () => {
+        const activationPayload = {
+          customerName: activationFormRef?.value?.customerName || '',
+          contact: activationFormRef?.value?.contact || '',
+          inviteCode: activationFormRef?.value?.inviteCode || '',
+          deviceName: 'QiuAi Desktop'
+        }
+
+        return [
+          activateRemoteLicense(activationPayload).catch(() => null),
+          loadActivationState(),
+          loadStudioSnapshot(),
+          loadPurchaseCenterCatalog()
+        ]
+      },
       paidTitle: '授权已到账',
       paidMessage: '已同步最新授权状态',
       openTitle: '已打开支付',
@@ -157,9 +177,9 @@ export function createComputePackageOrderController({
         computePackageId,
         channel: 'alipay'
       }),
-      successTitle: '月套餐订单已创建',
+      successTitle: '算力包订单已创建',
       successMessage: '请继续完成支付',
-      errorMessage: '月套餐订单创建失败'
+      errorMessage: '算力包订单创建失败'
     },
     successConfig: {
       refreshActions: () => [
@@ -167,11 +187,11 @@ export function createComputePackageOrderController({
         loadStudioSnapshot(),
         loadPurchaseCenterCatalog()
       ],
-      paidTitle: '月套餐已到账',
-      paidMessage: '已同步最新算力额度',
+      paidTitle: '算力包已到账',
+      paidMessage: '已同步最新算力余额',
       openTitle: '已打开支付',
-      openMessage: '月套餐订单支付链接已在浏览器打开',
-      refreshErrorMessage: '月套餐订单查询失败'
+      openMessage: '算力包订单支付链接已在浏览器打开',
+      refreshErrorMessage: '算力包订单查询失败'
     }
   })
 }

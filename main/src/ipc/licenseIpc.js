@@ -34,6 +34,18 @@ async function requireSessionToken(settingsService) {
   throw error
 }
 
+async function buildSoftwareOrderPayload({ settingsService, authorizationService, payload = {} }) {
+  const sessionToken = await getSessionToken(settingsService)
+  const deviceCodePayload = await authorizationService.getDeviceCodePayload()
+
+  return {
+    ...payload,
+    sessionToken,
+    deviceFingerprint: trimString(payload.deviceFingerprint || deviceCodePayload?.deviceCode),
+    deviceName: trimString(payload.deviceName || 'QiuAi Desktop')
+  }
+}
+
 function registerLicenseIpc({
   authorizationService,
   remoteLicensePlatformClient,
@@ -67,25 +79,25 @@ function registerLicenseIpc({
   })
 
   ipcMain.handle(ipcChannels.LICENSE_LIST_PACKAGES, async () => {
-    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.listSoftwarePackages({
-      sessionToken
+      sessionToken: await getSessionToken(settingsService)
     })
   })
 
   ipcMain.handle(ipcChannels.LICENSE_CREATE_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await requireSessionToken(settingsService)
-    return remoteLicensePlatformClient.createSoftwareOrder({
-      ...payload,
-      sessionToken
-    })
+    return remoteLicensePlatformClient.createSoftwareOrder(
+      await buildSoftwareOrderPayload({
+        settingsService,
+        authorizationService,
+        payload
+      })
+    )
   })
 
   ipcMain.handle(ipcChannels.LICENSE_GET_ORDER, async (_event, payload = {}) => {
-    const sessionToken = await requireSessionToken(settingsService)
     return remoteLicensePlatformClient.getSoftwareOrder({
       ...payload,
-      sessionToken
+      sessionToken: await getSessionToken(settingsService)
     })
   })
 

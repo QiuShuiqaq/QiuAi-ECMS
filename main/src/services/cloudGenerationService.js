@@ -628,7 +628,7 @@ function createCloudGenerationService({
   pollIntervalMs = 10000,
   pollTimeoutMs = 30 * 60 * 1000
 }) {
-  async function generateImageResults({ menuKey, draft, taskId, outputDirectory, onProgress }) {
+  async function generateImageResults({ menuKey, draft, outputDirectory, onProgress }) {
     if (menuKey !== 'series-generate') {
       const error = new Error('Unsupported image task menu key. Use the current series generation flow instead.')
       error.code = 'UNSUPPORTED_IMAGE_MENU_KEY'
@@ -649,7 +649,7 @@ function createCloudGenerationService({
     })
   }
 
-  async function generateVideoResults({ draft, taskId, outputDirectory, onProgress }) {
+  async function generateVideoResults({ draft, outputDirectory, onProgress }) {
     const { sessionToken } = ensureRemoteReady(settingsService)
 
     return runRemoteJob({
@@ -664,7 +664,7 @@ function createCloudGenerationService({
     })
   }
 
-  async function generateTextResults({ draft, taskId }) {
+  async function generateTextResults({ draft }) {
     const { sessionToken } = ensureRemoteReady(settingsService)
 
     return runRemoteTextJob({

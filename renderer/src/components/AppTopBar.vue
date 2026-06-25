@@ -13,6 +13,10 @@ defineProps({
   rechargeEnabled: {
     type: Boolean,
     default: false
+  },
+  purchaseLabel: {
+    type: String,
+    default: '购买授权'
   }
 })
 
@@ -79,12 +83,11 @@ function closeContactPreview() {
 
     <div class="topbar-right-actions">
       <button
-        v-if="rechargeEnabled"
         class="topbar-recharge-button"
         type="button"
         @click="emit('recharge-click')"
       >
-        充值
+        {{ purchaseLabel }}
       </button>
 
       <div v-if="activationSummary" class="topbar-activation-pill">

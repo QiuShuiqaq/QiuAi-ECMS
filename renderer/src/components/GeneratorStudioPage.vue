@@ -258,8 +258,8 @@ function handleVideoDurationChange(value) {
 }
 
 function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
-  if (imageTemplateTypeMap[templateId]) {
-    return imageTemplateTypeMap[templateId]
+  if (templateTypeMap[templateId]) {
+    return templateTypeMap[templateId]
   }
 
   return templateTypeMap[imageTemplateDefaultOrder[fallbackIndex]] || '详情图'

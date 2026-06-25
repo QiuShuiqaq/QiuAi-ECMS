@@ -17,6 +17,16 @@ export function createPurchaseOrderController({
 }) {
   let poller = null
 
+  function buildFetchPayload(currentOrder) {
+    if (typeof createConfig?.buildRefreshPayload === 'function') {
+      return createConfig.buildRefreshPayload(currentOrder) || {}
+    }
+
+    return {
+      id: currentOrder?.id
+    }
+  }
+
   async function create(input) {
     if (typeof createConfig?.guard === 'function') {
       const guardResult = await createConfig.guard(input)
@@ -55,7 +65,7 @@ export function createPurchaseOrderController({
 
     setRefreshing(true)
     try {
-      const nextOrder = await fetchOrder({ id: currentOrder.id })
+      const nextOrder = await fetchOrder(buildFetchPayload(currentOrder))
       setOrder(nextOrder)
 
       if (nextOrder?.status === 'paid') {

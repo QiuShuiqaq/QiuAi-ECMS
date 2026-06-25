@@ -1,26 +1,6 @@
 const { ipcMain } = require('electron')
 const ipcChannels = require('../../../shared/ipcChannels')
 
-function trimString (value = '') {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-async function getSessionToken (settingsService) {
-  const settings = await settingsService.getSettings()
-  return trimString(settings?.authPlatform?.sessionToken)
-}
-
-async function requireSessionToken (settingsService) {
-  const sessionToken = await getSessionToken(settingsService)
-  if (sessionToken) {
-    return sessionToken
-  }
-
-  const error = new Error('Remote authorization is required before using selection assistant features.')
-  error.code = 'REMOTE_AUTH_REQUIRED'
-  throw error
-}
-
 function registerSelectionIpc ({
   selectionCacheService
 }) {

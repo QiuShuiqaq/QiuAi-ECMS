@@ -107,7 +107,7 @@ function createSelectionCacheService({
     const remoteBoardMap = buildBoardMap(remoteManifest?.boards)
     const cachedBoardMap = buildBoardMap(cachedManifest?.boards)
 
-    for (const [boardKey, board] of cachedBoardMap.entries()) {
+    for (const [boardKey] of cachedBoardMap.entries()) {
       if (!remoteBoardMap.has(boardKey)) {
         const cachePath = buildBoardCachePath(boardKey)
         await fs.rm(cachePath, { force: true }).catch(() => {})

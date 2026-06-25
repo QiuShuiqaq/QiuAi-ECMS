@@ -246,7 +246,8 @@ function normalizeBrowserSettingsSummary (rawSummary = {}) {
 
 function getBrowserStudioSnapshot () {
   const savedSnapshot = readBrowserState(BROWSER_STUDIO_KEY, defaultBrowserStudioSnapshot)
-  const { themeMode: _legacyThemeMode, ...snapshotWithoutLegacyTheme } = savedSnapshot || {}
+  const snapshotWithoutLegacyTheme = { ...(savedSnapshot || {}) }
+  delete snapshotWithoutLegacyTheme.themeMode
 
   return {
     ...defaultBrowserStudioSnapshot,

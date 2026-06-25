@@ -680,55 +680,54 @@ async function focusPublishIssueField(project = {}, issue = {}) {
 
 function resolvePublishIssueFieldLabel(issue = {}) {
   const field = String(issue.field || '').trim()
-  if (!field) return 'Unknown Field'
-  if (field === 'title') return 'Title'
-  if (field === 'descriptionHtml') return 'Description'
-  if (field === 'brandText') return 'Brand'
-  if (field === 'bulletPoints') return 'Bullet Points'
-  if (field === 'media') return 'Media'
-  if (field === 'media[0]') return 'Primary Media'
-  if (field === 'media[0].publishReadyUrl') return 'Primary Media Publish URL'
-  if (field === 'variants') return 'SKU Variants'
-  if (field === 'platformDraft.categoryId') return 'Category ID'
+  if (!field) return '未知字段'
+  if (field === 'title') return '标题'
+  if (field === 'descriptionHtml') return '描述'
+  if (field === 'brandText') return '品牌'
+  if (field === 'bulletPoints') return '卖点'
+  if (field === 'media') return '素材'
+  if (field === 'media[0]') return '主素材'
+  if (field === 'media[0].publishReadyUrl') return '主素材发布地址'
+  if (field === 'variants') return 'SKU'
+  if (field === 'platformDraft.categoryId') return '类目 ID'
   if (field.startsWith('platformDraft.attributes.')) {
     const attributeKey = field.slice('platformDraft.attributes.'.length).trim()
-    return `Platform Attribute: ${attributeKey || 'unknown'}`
+    return `平台属性: ${attributeKey || '未知'}`
   }
-  if (field.includes('.priceAmount')) return 'Variant Price'
-  if (field.includes('.stockQuantity')) return 'Variant Stock'
-  if (field.includes('.barcode')) return 'Variant Barcode'
+  if (field.includes('.priceAmount')) return 'SKU 价格'
+  if (field.includes('.stockQuantity')) return 'SKU 库存'
+  if (field.includes('.barcode')) return 'SKU 条码'
   return field
 }
 
 function resolvePublishIssueSuggestedFix(issue = {}) {
   const field = String(issue.field || '').trim()
   if (!field) return ''
-  if (field === 'title') return 'Update the project title or mapped publish title before retrying.'
-  if (field === 'descriptionHtml') return 'Generate or edit the description so the publish draft has body content.'
-  if (field === 'brandText') return 'Fill the brand field in the project base info.'
-  if (field === 'bulletPoints') return 'Add at least one bullet point in the product copy section.'
-  if (field === 'media') return 'Add at least one image or video asset to the project.'
-  if (field === 'media[0]') return 'Place an image asset first so the primary media is an image.'
-  if (field === 'media[0].publishReadyUrl') return 'Use a generated media asset that includes a server-accessible publish URL before creating the publish task.'
-  if (field === 'variants') return 'Add at least one SKU variant before publishing.'
-  if (field === 'platformDraft.categoryId') return 'Fill the Category ID field in the publish draft section.'
+  if (field === 'title') return '补全标题后重试。'
+  if (field === 'descriptionHtml') return '补全描述后重试。'
+  if (field === 'brandText') return '补全品牌后重试。'
+  if (field === 'bulletPoints') return '至少补一条卖点。'
+  if (field === 'media') return '先补素材。'
+  if (field === 'media[0]') return '主素材先放图片。'
+  if (field === 'media[0].publishReadyUrl') return '先生成可发布的远程素材地址。'
+  if (field === 'variants') return '至少补一条 SKU。'
+  if (field === 'platformDraft.categoryId') return '补全类目 ID。'
   if (field.startsWith('platformDraft.attributes.')) {
     const attributeKey = field.slice('platformDraft.attributes.'.length).trim()
-    return `Fill the ${attributeKey || 'required'} platform attribute in the publish draft section.`
+    return `补全平台属性 ${attributeKey || '必填项'}。`
   }
-  if (field.includes('.priceAmount')) return 'Set a valid price for the first SKU variant.'
-  if (field.includes('.stockQuantity')) return 'Set stock greater than zero for the first SKU variant.'
-  if (field.includes('.barcode')) return 'Fill or correct the variant barcode if the platform requires it.'
+  if (field.includes('.priceAmount')) return '补全 SKU 价格。'
+  if (field.includes('.stockQuantity')) return '补全 SKU 库存。'
+  if (field.includes('.barcode')) return '补全 SKU 条码。'
   return ''
 }
 
 function resolvePublishPreviewIssueLabel(issue = {}) {
   const fieldLabel = resolvePublishIssueFieldLabel(issue)
-  const field = String(issue.field || '').trim()
   const code = String(issue.code || '').trim()
   const message = String(issue.message || '').trim()
   const prefix = [fieldLabel, code].filter(Boolean).join(' / ')
-  return prefix ? `${prefix}: ${message || 'Unknown issue'}` : (message || 'Unknown issue')
+  return prefix ? `${prefix}: ${message || '未知问题'}` : (message || '未知问题')
 }
 
 function resolveLatestTaskAttemptIssues(projectId = '') {
@@ -932,10 +931,10 @@ function resolveDraftReadinessLabel(projectId = '') {
   }
 
   if (readiness.isStale) {
-    return 'Draft Readiness: STALE'
+    return '草稿状态: 过期'
   }
 
-  return readiness.isReady ? 'Draft Readiness: READY' : 'Draft Readiness: INCOMPLETE'
+  return readiness.isReady ? '草稿状态: 完整' : '草稿状态: 不完整'
 }
 
 function resolveDraftReadinessMissingLabel(projectId = '') {
@@ -944,7 +943,7 @@ function resolveDraftReadinessMissingLabel(projectId = '') {
     return ''
   }
 
-  return `Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
+  return `缺失字段: ${readiness.missingFieldLabels.join(', ')}`
 }
 
 function resolveDraftReadinessStaleMessage(projectId = '') {
@@ -953,7 +952,7 @@ function resolveDraftReadinessStaleMessage(projectId = '') {
     return ''
   }
 
-  return readiness.staleMessage || 'Publish draft summary is outdated.'
+  return readiness.staleMessage || '草稿摘要已过期。'
 }
 
 function isRemotePublishMediaUrl(value = '') {
@@ -972,8 +971,8 @@ function resolveProjectPublishMediaStatus(project = {}) {
   if (remoteReadyCount > 0) {
     return {
       status: 'READY_REMOTE',
-      label: 'Publish Media: READY_REMOTE',
-      message: `Remote publish-ready assets: ${remoteReadyCount}. Create-listing can use server-accessible media.`,
+      label: '发布素材: 远程可用',
+      message: `远程可用素材 ${remoteReadyCount} 个。`,
       suggestion: ''
     }
   }
@@ -981,17 +980,17 @@ function resolveProjectPublishMediaStatus(project = {}) {
   if (totalMediaCount > 0) {
     return {
       status: 'LOCAL_ONLY',
-      label: 'Publish Media: LOCAL_ONLY',
-      message: 'Current media exists, but no generated asset has a server-accessible publish URL yet.',
-      suggestion: 'Generate or sync a remote media asset before previewing or creating the publish task.'
+      label: '发布素材: 仅本地',
+      message: '已有素材，但还没有远程可发布地址。',
+      suggestion: '先生成或同步远程素材。'
     }
   }
 
   return {
     status: 'MISSING',
-    label: 'Publish Media: MISSING',
-    message: 'No media asset is attached to the current project.',
-    suggestion: 'Add a source image or generate media before previewing or creating the publish task.'
+    label: '发布素材: 缺失',
+    message: '当前项目没有素材。',
+    suggestion: '先补样图或生成素材。'
   }
 }
 
@@ -1024,8 +1023,8 @@ function resolvePlatformDraftReadinessLabel(project = {}) {
   }
 
   return readiness.isReadyForCreateListing
-    ? `${readiness.platformLabel} Create Listing: READY`
-    : `${readiness.platformLabel} Create Listing: INCOMPLETE`
+    ? `${readiness.platformLabel} 发布状态: 完整`
+    : `${readiness.platformLabel} 发布状态: 不完整`
 }
 
 function resolvePlatformDraftReadinessMissingLabel(project = {}) {
@@ -1034,7 +1033,7 @@ function resolvePlatformDraftReadinessMissingLabel(project = {}) {
     return ''
   }
 
-  return `Platform Missing Fields: ${readiness.missingFieldLabels.join(', ')}`
+  return `平台缺失字段: ${readiness.missingFieldLabels.join(', ')}`
 }
 
 function resolvePlatformDraftReadinessIssues(project = {}) {
@@ -1066,6 +1065,18 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
 
         <button class="workbench-plus-button" type="button" @click="emit('create-project')">+</button>
       </header>
+
+      <div class="project-draft-card__flow-actions project-draft-card__flow-actions--global">
+        <button
+          v-for="generator in generatorShortcutOptions"
+          :key="`global-${generator.key}`"
+          class="secondary-action"
+          type="button"
+          @click="emit('open-generator', { project: null, menuKey: generator.key })"
+        >
+          {{ generator.label }}
+        </button>
+      </div>
 
       <div class="project-draft-grid project-draft-grid--warehouse">
         <article
@@ -1106,8 +1117,8 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
             </div>
 
             <button
-              class="project-draft-card__media"
               :ref="registerPublishFieldRef(item.project.id, 'media')"
+              class="project-draft-card__media"
               type="button"
               @click="emit('replace-project-image', item.project)"
             >
@@ -1226,12 +1237,12 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
             </div>
 
             <div v-if="resolveSelectedChannelAccountStatusLabel(item.project)" class="project-draft-card__meta">
-              <span>Account Status: {{ resolveSelectedChannelAccountStatusLabel(item.project) }}</span>
+              <span>账号状态: {{ resolveSelectedChannelAccountStatusLabel(item.project) }}</span>
               <span v-if="resolveSelectedChannelAccount(item.project)?.lastValidatedAt">
-                Last Validated: {{ resolveSelectedChannelAccount(item.project).lastValidatedAt }}
+                最近校验: {{ resolveSelectedChannelAccount(item.project).lastValidatedAt }}
               </span>
               <span v-if="!resolveSelectedChannelAccountReadiness(item.project).isReadyForSubmission">
-                Submission Readiness: {{ resolveSelectedChannelAccountReadiness(item.project).readinessReason || 'NOT_READY' }}
+                提交状态: {{ resolveSelectedChannelAccountReadiness(item.project).readinessReason || '未就绪' }}
               </span>
               <span v-if="resolveSelectedChannelAccountReadiness(item.project).readinessMessage">
                 {{ resolveSelectedChannelAccountReadiness(item.project).readinessMessage }}
@@ -1243,21 +1254,21 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               class="project-draft-card__publish-editor"
             >
               <div class="project-draft-card__publish-editor-header">
-                <strong>{{ resolveProjectPublishPlatformProfile(item.project).label }} Publish Draft</strong>
+                <strong>{{ resolveProjectPublishPlatformProfile(item.project).label }} 发布草稿</strong>
               </div>
 
               <div v-if="!hasServerPublishConfig(item.project)" class="project-draft-card__meta">
-                <span>Server publish config is required before previewing or creating publish tasks.</span>
+                <span>缺少服务端发布配置。</span>
               </div>
 
               <div class="project-task-card__config-grid">
                 <label class="project-task-card__field project-task-card__field--full">
-                  <span>Category ID</span>
+                  <span>类目 ID</span>
                   <input
                     :ref="registerPublishFieldRef(item.project.id, 'categoryId')"
                     :value="resolveProjectPlatformDraftCategoryId(item.project)"
                     type="text"
-                    placeholder="platform category id"
+                    placeholder="类目 ID"
                     @input="updateProjectPlatformDraftField(item.project, 'categoryId', $event.target.value)"
                   >
                 </label>
@@ -1283,13 +1294,13 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                     type="checkbox"
                     @change="updateProjectPlatformDraftAttribute(item.project, resolveProjectPublishPlatformProfile(item.project).manualReviewAttributeKey, $event.target.checked)"
                   >
-                  <span>Manual Review Required</span>
+                  <span>需要人工审核</span>
                 </label>
               </div>
 
               <div class="project-task-card__config-grid">
                 <label class="project-task-card__field">
-                  <span>Seller SKU</span>
+                  <span>卖家 SKU</span>
                   <input
                     :ref="registerPublishFieldRef(item.project.id, 'variant:sellerSkuCode')"
                     :value="resolveProjectPublishVariant(item.project, 0).sellerSkuCode || ''"
@@ -1299,7 +1310,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                   >
                 </label>
                 <label class="project-task-card__field">
-                  <span>Price</span>
+                  <span>价格</span>
                   <input
                     :ref="registerPublishFieldRef(item.project.id, 'variant:priceAmount')"
                     :value="resolveProjectPublishVariant(item.project, 0).priceAmount ?? ''"
@@ -1310,7 +1321,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                   >
                 </label>
                 <label class="project-task-card__field">
-                  <span>Stock</span>
+                  <span>库存</span>
                   <input
                     :ref="registerPublishFieldRef(item.project.id, 'variant:stockQuantity')"
                     :value="resolveProjectPublishVariant(item.project, 0).stockQuantity ?? 0"
@@ -1321,12 +1332,12 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                   >
                 </label>
                 <label class="project-task-card__field">
-                  <span>Barcode</span>
+                  <span>条码</span>
                   <input
                     :ref="registerPublishFieldRef(item.project.id, 'variant:barcode')"
                     :value="resolveProjectPublishVariant(item.project, 0).barcode || ''"
                     type="text"
-                    placeholder="optional"
+                    placeholder="选填"
                     @input="updateProjectPublishVariantField(item.project, 0, 'barcode', $event.target.value)"
                   >
                 </label>
@@ -1348,8 +1359,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               v-if="isPublishAutomationPending(item.project)"
               class="project-draft-card__meta"
             >
-              <span>Automation Status: PENDING_DEVELOPMENT</span>
-              <span>Automatic marketplace publishing is not enabled yet. Use draft sync, account checks, preview validation, and status diagnostics for now.</span>
+              <span>自动发布: 开发中</span>
             </div>
 
             <div class="project-draft-card__flow-actions">
@@ -1367,7 +1377,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                 :disabled="true"
                 @click="emit('publish-create-task', item.project)"
               >
-                Auto Publish Pending
+                自动发布开发中
               </button>
               <button
                 class="secondary-action"
@@ -1375,7 +1385,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                 :disabled="!resolveLatestTaskRemoteListingId(item.project.id) || getPublishState(item.project.id).isTaskLoading || !isPublishOperationEnabled(item.project, 'sync-status')"
                 @click="emit('publish-sync-task', item.project)"
               >
-                鍚屾瀹℃牳鐘舵€�
+                同步状态
               </button>
               <button
                 class="secondary-action"
@@ -1402,10 +1412,10 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               <span v-if="resolveLatestTaskExecutionMode(item.project.id)">执行模式: {{ resolveLatestTaskExecutionMode(item.project.id) }}</span>
               <span v-if="resolveDraftReadinessLabel(item.project.id)">{{ resolveDraftReadinessLabel(item.project.id) }}</span>
               <span v-if="resolvePlatformDraftReadinessLabel(item.project)">{{ resolvePlatformDraftReadinessLabel(item.project) }}</span>
-              <span v-if="resolveLatestTaskOutcome(item.project.id)">Attempt Outcome: {{ resolveLatestTaskOutcome(item.project.id) }}</span>
-              <span v-if="resolveLatestTaskRemoteListingId(item.project.id)">Remote Listing ID: {{ resolveLatestTaskRemoteListingId(item.project.id) }}</span>
-              <span v-if="resolveLatestTaskRemoteReviewStatus(item.project.id)">Review Status: {{ resolveLatestTaskRemoteReviewStatus(item.project.id) }}</span>
-              <span v-if="resolveLatestTaskPollingIntervalLabel(item.project.id)">Polling Advice: {{ resolveLatestTaskPollingIntervalLabel(item.project.id) }}</span>
+              <span v-if="resolveLatestTaskOutcome(item.project.id)">执行结果: {{ resolveLatestTaskOutcome(item.project.id) }}</span>
+              <span v-if="resolveLatestTaskRemoteListingId(item.project.id)">远程 Listing ID: {{ resolveLatestTaskRemoteListingId(item.project.id) }}</span>
+              <span v-if="resolveLatestTaskRemoteReviewStatus(item.project.id)">审核状态: {{ resolveLatestTaskRemoteReviewStatus(item.project.id) }}</span>
+              <span v-if="resolveLatestTaskPollingIntervalLabel(item.project.id)">轮询建议: {{ resolveLatestTaskPollingIntervalLabel(item.project.id) }}</span>
               <span v-if="getPublishState(item.project.id).latestTask?.lastErrorMessage">失败原因: {{ getPublishState(item.project.id).latestTask.lastErrorMessage }}</span>
             </div>
 
@@ -1437,7 +1447,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               class="project-draft-card__publish-preview"
             >
               <div class="project-draft-card__publish-preview-summary">
-                <span>Platform Readiness Issues</span>
+                <span>平台问题</span>
               </div>
 
               <ul class="project-draft-card__publish-issues">
@@ -1447,7 +1457,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
                   <span v-if="resolvePublishIssueSuggestedFix(issue)">
-                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                    {{ ` 建议: ${resolvePublishIssueSuggestedFix(issue)}` }}
                   </span>
                   <button
                     v-if="canLocatePublishIssue(item.project, issue)"
@@ -1455,7 +1465,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                     type="button"
                     @click="focusPublishIssueField(item.project, issue)"
                   >
-                    Locate Field
+                    定位字段
                   </button>
                 </li>
               </ul>
@@ -1472,7 +1482,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               v-if="resolveLatestTaskOperatorGuidanceSummary(item.project.id)"
               class="project-draft-card__meta"
             >
-              <span>Operator Guidance: {{ resolveLatestTaskOperatorGuidanceSummary(item.project.id) }}</span>
+              <span>处理建议: {{ resolveLatestTaskOperatorGuidanceSummary(item.project.id) }}</span>
             </div>
 
             <div
@@ -1480,7 +1490,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               class="project-draft-card__publish-preview"
             >
               <div class="project-draft-card__publish-preview-summary">
-                <span>Recovery Checklist</span>
+                <span>恢复清单</span>
               </div>
 
               <ul class="project-draft-card__publish-issues">
@@ -1532,7 +1542,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
                   <span v-if="resolvePublishIssueSuggestedFix(issue)">
-                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                    {{ ` 建议: ${resolvePublishIssueSuggestedFix(issue)}` }}
                   </span>
                   <button
                     v-if="canLocatePublishIssue(item.project, issue)"
@@ -1540,7 +1550,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                     type="button"
                     @click="focusPublishIssueField(item.project, issue)"
                   >
-                    Locate Field
+                    定位字段
                   </button>
                 </li>
               </ul>
@@ -1567,7 +1577,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                 >
                   {{ resolvePublishPreviewIssueLabel(issue) }}
                   <span v-if="resolvePublishIssueSuggestedFix(issue)">
-                    {{ ` Suggestion: ${resolvePublishIssueSuggestedFix(issue)}` }}
+                    {{ ` 建议: ${resolvePublishIssueSuggestedFix(issue)}` }}
                   </span>
                   <button
                     v-if="canLocatePublishIssue(item.project, issue)"
@@ -1575,7 +1585,7 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
                     type="button"
                     @click="focusPublishIssueField(item.project, issue)"
                   >
-                    Locate Field
+                    定位字段
                   </button>
                 </li>
               </ul>
