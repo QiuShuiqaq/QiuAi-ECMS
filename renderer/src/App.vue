@@ -52,11 +52,10 @@ import {
 
 const fallbackMenuItems = [
   { key: 'workbench', label: '工作台', section: '主线' },
-  { key: 'generation-center', label: '生成工作区', section: '主线' },
-  { key: 'results-center', label: '结果中心', section: '主线' },
-  { key: 'purchase-center', label: '充值/购买', section: '主线' },
-  { key: 'account-device', label: '账号与设备', section: '支持' },
-  { key: 'settings-center', label: '设置', section: '支持' }
+  { key: 'purchase-center', label: '购买中心', section: '主线' },
+  { key: 'prompt-library', label: '提示词库', section: '主线' },
+  { key: 'account-device', label: '账户与用量', section: '支持' },
+  { key: 'settings-center', label: '设置与支持', section: '支持' }
 ]
 
 const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
@@ -210,7 +209,7 @@ const activeMediaGeneratorView = computed(() => {
 })
 
 const isWorkspaceHome = computed(() => {
-  return activeMenu.value === 'generation-center' && !isWorkspaceGeneratorView.value
+  return (activeMenu.value === 'workbench' || activeMenu.value === 'generation-center') && !isWorkspaceGeneratorView.value
 })
 
 const currentTextResultItems = computed(() => {
@@ -2196,20 +2195,8 @@ onUnmounted(() => {
       </aside>
 
       <section class="shell-grid__workspace">
-        <WorkbenchOverviewPage
-          v-if="activeMenu === 'workbench'"
-          :activation-state="activationState"
-          :remote-service-capacity="remoteServiceCapacity"
-          :workspace-dashboard="workspaceDashboard"
-          :tasks="sortedRecentTasks"
-          :current-recharge-order="currentRechargeOrder"
-          :current-software-order="currentSoftwareOrder"
-          :current-compute-package-order="currentComputePackageOrder"
-          :project-count="productProjects.length"
-        />
-
         <GenerationCenterPage
-          v-else-if="isWorkspaceHome"
+          v-if="isWorkspaceHome"
           :product-projects="productProjects"
           :project-runs="projectRuns"
           :active-project-id="activeProductProjectId"
@@ -2321,7 +2308,7 @@ onUnmounted(() => {
         />
 
         <SettingsCenterPage
-          v-else-if="activeMenu === 'settings-center'"
+          v-else-if="activeMenu === 'prompt-library' || activeMenu === 'settings-center'"
           :prompt-templates="promptTemplates"
           @save-template="handleSavePromptTemplate"
           @remove-template="handleRemovePromptTemplate"

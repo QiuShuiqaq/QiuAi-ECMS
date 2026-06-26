@@ -11,11 +11,10 @@
   ],
   "primaryMenuItems": [
     { "key": "workbench", "label": "工作台", "section": "主线" },
-    { "key": "generation-center", "label": "生成工作区", "section": "主线" },
-    { "key": "results-center", "label": "结果中心", "section": "主线" },
-    { "key": "purchase-center", "label": "充值/购买", "section": "主线" },
-    { "key": "account-device", "label": "账号与设备", "section": "支持" },
-    { "key": "settings-center", "label": "设置", "section": "支持" }
+    { "key": "purchase-center", "label": "购买中心", "section": "主线" },
+    { "key": "prompt-library", "label": "提示词库", "section": "主线" },
+    { "key": "account-device", "label": "账户与用量", "section": "支持" },
+    { "key": "settings-center", "label": "设置与支持", "section": "支持" }
   ],
   "generatorViews": {
     "title-generate": {
