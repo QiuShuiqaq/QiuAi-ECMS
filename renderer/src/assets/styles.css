@@ -1797,9 +1797,20 @@ textarea {
   backdrop-filter: blur(16px);
 }
 
+.activation-gate__card--empty {
+  min-height: 320px;
+  place-items: center;
+}
+
 .activation-gate__header {
   display: grid;
   gap: 8px;
+}
+
+.activation-gate__header--centered {
+  max-width: 520px;
+  justify-items: center;
+  text-align: center;
 }
 
 .activation-gate__eyebrow {

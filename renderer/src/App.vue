@@ -1,7 +1,8 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
+import AuthorizationPurchaseModal from './components/AuthorizationPurchaseModal.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import GenerationCenterPage from './components/GenerationCenterPage.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
@@ -63,7 +64,7 @@ const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   : fallbackMenuItems
 
 const activeMenu = ref('workbench')
-const embeddedPurchaseCenterRef = ref(null)
+const authorizationPurchaseModalVisible = ref(false)
 const activeGeneratorMenu = ref('')
 const submitButtonState = ref('idle')
 const formDrafts = ref({})
@@ -126,7 +127,6 @@ const activationForm = ref({
   inviteCode: ''
 })
 const isActivationLoading = ref(true)
-const isActivationSubmitting = ref(false)
 const isRechargeSubmitting = ref(false)
 const isRechargeRefreshing = ref(false)
 const isCatalogLoading = ref(false)
@@ -1991,13 +1991,11 @@ function openPurchaseCenter() {
     activeMenu.value = 'purchase-center'
     return
   }
+  authorizationPurchaseModalVisible.value = true
+}
 
-  nextTick(() => {
-    embeddedPurchaseCenterRef.value?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    })
-  })
+function closeAuthorizationPurchaseModal() {
+  authorizationPurchaseModalVisible.value = false
 }
 
 function handleRechargeFormUpdate({ field, value }) {
@@ -2020,7 +2018,16 @@ async function handleCreateSoftwareOrder(productPackageId) {
   if (!productPackageId) {
     return
   }
+
+  const previousOrderId = currentSoftwareOrder.value?.id || ''
   await softwareOrderController?.create(productPackageId)
+
+  if (currentSoftwareOrder.value?.id && currentSoftwareOrder.value.id !== previousOrderId) {
+    await handleOpenSoftwareOrderLink()
+    if (!isActivated.value) {
+      authorizationPurchaseModalVisible.value = false
+    }
+  }
 }
 
 async function handleRefreshSoftwareOrder() {
@@ -2106,6 +2113,15 @@ onMounted(() => {
 })
 
 watch(
+  isActivated,
+  (activated) => {
+    if (activated) {
+      authorizationPurchaseModalVisible.value = false
+    }
+  }
+)
+
+watch(
   [isActivated, hasActiveStudioTasks],
   ([activated, hasActive]) => {
     if (activated && hasActive) {
@@ -2158,42 +2174,21 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <section v-if="isActivationLoading || !isActivated" class="activation-shell">
-      <div class="activation-shell__grid">
-        <ActivationGate
-          :activation-state="activationState"
-          :form-state="activationForm"
-          :is-loading="isActivationLoading"
-          :is-submitting="isActivationSubmitting"
-          @activate-remote="handleActivateRemote"
-          @copy-device-code="handleCopyDeviceCode"
-        />
+    <AuthorizationPurchaseModal
+      :visible="authorizationPurchaseModalVisible"
+      :form-state="activationForm"
+      :software-packages="softwarePackages"
+      :is-catalog-loading="isCatalogLoading"
+      :is-submitting="isSoftwareOrderSubmitting"
+      @close="closeAuthorizationPurchaseModal"
+      @submit-order="handleCreateSoftwareOrder"
+    />
 
-        <div ref="embeddedPurchaseCenterRef">
-          <PurchaseCenterPage
-            embedded
-            :activation-state="activationState"
-            :wallet-summary="activationState.walletSummary || null"
-            :software-packages="softwarePackages"
-            :compute-packages="[]"
-            :current-software-order="currentSoftwareOrder"
-            :current-compute-package-order="null"
-            :current-recharge-order="null"
-            :recharge-form="rechargeForm"
-            :is-catalog-loading="isCatalogLoading"
-            :is-recharge-submitting="false"
-            :is-software-order-submitting="isSoftwareOrderSubmitting"
-            :is-software-order-refreshing="isSoftwareOrderRefreshing"
-            :is-compute-package-order-submitting="false"
-            :is-compute-package-order-refreshing="false"
-            :is-recharge-refreshing="false"
-            @refresh-catalog="loadPurchaseCenterCatalog"
-            @create-software-order="handleCreateSoftwareOrder"
-            @refresh-software-order="handleRefreshSoftwareOrder"
-            @open-software-order="handleOpenSoftwareOrderLink"
-          />
-        </div>
-      </div>
+    <section v-if="isActivationLoading || !isActivated" class="activation-shell">
+      <ActivationGate
+        :activation-state="activationState"
+        :is-loading="isActivationLoading"
+      />
     </section>
 
     <section v-else class="shell-grid shell-grid--simple">

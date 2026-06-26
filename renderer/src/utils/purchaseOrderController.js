@@ -31,7 +31,7 @@ export function createPurchaseOrderController({
     if (typeof createConfig?.guard === 'function') {
       const guardResult = await createConfig.guard(input)
       if (guardResult === false) {
-        return
+        return null
       }
     }
 
@@ -41,17 +41,23 @@ export function createPurchaseOrderController({
       setOrder(nextOrder)
       startPolling()
 
+      if (typeof createConfig?.afterCreate === 'function') {
+        await createConfig.afterCreate(nextOrder)
+      }
+
       showActionFeedback({
         type: 'success',
         title: createConfig.successTitle,
         message: createConfig.successMessage
       })
+      return nextOrder
     } catch (error) {
       showActionFeedback({
         type: 'error',
         title: '创建失败',
         message: buildErrorMessage(error, createConfig.errorMessage)
       })
+      return null
     } finally {
       setSubmitting(false)
     }

@@ -17,6 +17,7 @@ describe('component sources', () => {
       'renderer/src/components/PurchaseCenterPage.vue',
       'renderer/src/components/PromptLibraryPanel.vue',
       'renderer/src/components/ActivationGate.vue',
+      'renderer/src/components/AuthorizationPurchaseModal.vue',
       'renderer/src/components/AppTopBar.vue'
     ]
 
@@ -29,6 +30,7 @@ describe('component sources', () => {
   it('keeps the top bar and activation gate aligned with the simplified activation flow', () => {
     const topbarSource = readSource('renderer/src/components/AppTopBar.vue')
     const activationSource = readSource('renderer/src/components/ActivationGate.vue')
+    const purchaseModalSource = readSource('renderer/src/components/AuthorizationPurchaseModal.vue')
 
     expect(topbarSource).toContain('cleanup-click')
     expect(topbarSource).toContain('recharge-click')
@@ -37,13 +39,20 @@ describe('component sources', () => {
     expect(topbarSource).toContain('purchaseLabel')
     expect(topbarSource).not.toContain('theme-change')
 
-    expect(activationSource).toContain('copy-device-code')
-    expect(activationSource).toContain('activationState.deviceCode')
-    expect(activationSource).toContain('customerName')
-    expect(activationSource).toContain('contact')
-    expect(activationSource).toContain('inviteCode')
+    expect(activationSource).toContain('statusText')
+    expect(activationSource).toContain('请购买授权激活设备')
+    expect(activationSource).not.toContain('copy-device-code')
+    expect(activationSource).not.toContain('activationState.deviceCode')
+    expect(activationSource).not.toContain('customerName')
+    expect(activationSource).not.toContain('contact')
+    expect(activationSource).not.toContain('inviteCode')
     expect(activationSource).not.toContain('import-license')
     expect(activationSource).not.toContain('refresh-license')
+
+    expect(purchaseModalSource).toContain("defineEmits(['close', 'submit-order'])")
+    expect(purchaseModalSource).toContain('selectedPackageId')
+    expect(purchaseModalSource).toContain('softwarePackages')
+    expect(purchaseModalSource).toContain('确认购买授权')
   })
 
   it('keeps workbench shortcuts and unified generator studio wired together', () => {
