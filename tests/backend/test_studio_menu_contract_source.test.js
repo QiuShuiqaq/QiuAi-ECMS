@@ -27,9 +27,8 @@ describe('studio menu contract source', () => {
     ])
     expect(config.primaryMenuItems.map((item) => item.key)).toEqual([
       'workbench',
-      'generation-center',
-      'results-center',
       'purchase-center',
+      'prompt-library',
       'account-device',
       'settings-center'
     ])
@@ -47,7 +46,7 @@ describe('studio menu contract source', () => {
     expect(appSource).toContain("import studioMenuConfig from '../../shared/studio-menu-config.json'")
     expect(appSource).toContain('const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)')
     expect(appSource).toContain("const activeMenu = ref('workbench')")
-    expect(appSource).toContain("activeMenu.value === 'generation-center'")
+    expect(appSource).toContain("activeMenu.value === 'workbench' || activeMenu.value === 'generation-center'")
     expect(generatorViewsSource).toContain("import studioMenuConfig from '../../../shared/studio-menu-config.json'")
     expect(generatorViewsSource).toContain('export const generatorViewMap = studioMenuConfig.generatorViews || {}')
     expect(generatorViewsSource).toContain('export const generatorShortcutOptions = Object.entries(generatorViewMap).map')

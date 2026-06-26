@@ -39,18 +39,15 @@ export function createRechargeOrderController({
       }),
       successTitle: '订单已创建',
       successMessage: '请继续完成支付',
-      errorMessage: '充值订单创建失败'
+      errorMessage: '创建充值订单失败'
     },
     successConfig: {
-      refreshActions: () => [
-        loadStudioSnapshot(),
-        loadActivationState()
-      ],
-      paidTitle: '到账成功',
-      paidMessage: '余额已更新',
-      openTitle: '已打开',
-      openMessage: '支付链接已在新窗口打开',
-      refreshErrorMessage: '订单状态查询失败'
+      refreshActions: () => [loadStudioSnapshot(), loadActivationState()],
+      paidTitle: '充值已到账',
+      paidMessage: '钱包余额已更新',
+      openTitle: '已打开支付链接',
+      openMessage: '支付链接已在浏览器中打开',
+      refreshErrorMessage: '刷新充值订单失败'
     }
   })
 }
@@ -102,7 +99,7 @@ export function createSoftwareOrderController({
       }),
       successTitle: '授权订单已创建',
       successMessage: '请继续完成支付',
-      errorMessage: '授权订单创建失败'
+      errorMessage: '创建授权订单失败'
     },
     successConfig: {
       refreshActions: () => {
@@ -121,10 +118,10 @@ export function createSoftwareOrderController({
         ]
       },
       paidTitle: '授权已到账',
-      paidMessage: '已同步最新授权状态',
-      openTitle: '已打开支付',
-      openMessage: '授权订单支付链接已在浏览器打开',
-      refreshErrorMessage: '授权订单查询失败'
+      paidMessage: '当前设备会自动尝试激活',
+      openTitle: '已打开支付链接',
+      openMessage: '授权支付链接已在浏览器中打开',
+      refreshErrorMessage: '刷新授权订单失败'
     }
   })
 }
@@ -166,8 +163,8 @@ export function createComputePackageOrderController({
         if (targetPackage?.canPurchase === false) {
           showActionFeedback({
             type: 'error',
-            title: '无法购买',
-            message: targetPackage.purchaseBlockedReason || '当前授权版本不可购买该算力包'
+            title: '当前不可购买',
+            message: targetPackage.purchaseBlockedReason || '当前授权版本不能购买该算力包'
           })
           return false
         }
@@ -179,19 +176,15 @@ export function createComputePackageOrderController({
       }),
       successTitle: '算力包订单已创建',
       successMessage: '请继续完成支付',
-      errorMessage: '算力包订单创建失败'
+      errorMessage: '创建算力包订单失败'
     },
     successConfig: {
-      refreshActions: () => [
-        loadActivationState(),
-        loadStudioSnapshot(),
-        loadPurchaseCenterCatalog()
-      ],
+      refreshActions: () => [loadActivationState(), loadStudioSnapshot(), loadPurchaseCenterCatalog()],
       paidTitle: '算力包已到账',
-      paidMessage: '已同步最新算力余额',
-      openTitle: '已打开支付',
-      openMessage: '算力包订单支付链接已在浏览器打开',
-      refreshErrorMessage: '算力包订单查询失败'
+      paidMessage: '算力余额和服务档位已同步',
+      openTitle: '已打开支付链接',
+      openMessage: '算力包支付链接已在浏览器中打开',
+      refreshErrorMessage: '刷新算力包订单失败'
     }
   })
 }

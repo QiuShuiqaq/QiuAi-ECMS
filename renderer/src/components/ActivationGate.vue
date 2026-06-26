@@ -20,10 +20,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits([
-  'activate-remote',
-  'copy-device-code'
-])
+const emit = defineEmits(['activate-remote', 'copy-device-code'])
 
 const statusLabel = computed(() => {
   if (props.isLoading) return '校验中'
@@ -31,7 +28,6 @@ const statusLabel = computed(() => {
   if (props.activationState.status === 'expired') return '已过期'
   if (props.activationState.status === 'device_mismatch') return '设备不匹配'
   if (props.activationState.status === 'invalid') return '授权无效'
-  if (props.activationState.status === 'not_logged_in') return '待激活'
   return '待授权'
 })
 
@@ -48,13 +44,14 @@ function submitActivation() {
   <section class="activation-gate">
     <div class="activation-gate__card">
       <div class="activation-gate__header">
-        <span class="activation-gate__eyebrow">Device Authorization</span>
-        <strong>QiuAi 授权</strong>
+        <span class="activation-gate__eyebrow">Device License</span>
+        <strong>设备授权</strong>
+        <p>先填写用户名和手机号，再完成授权购买或激活。</p>
       </div>
 
       <div class="activation-gate__meta-grid">
         <div class="activation-gate__status">
-          <span class="activation-gate__status-label">状态</span>
+          <span class="activation-gate__status-label">当前状态</span>
           <span class="activation-gate__status-pill">{{ statusLabel }}</span>
         </div>
 
@@ -66,25 +63,31 @@ function submitActivation() {
 
       <div class="activation-gate__form">
         <label class="activation-gate__field">
-          <span>姓名</span>
-          <input v-model="formState.customerName" type="text" placeholder="输入姓名">
+          <span>用户名</span>
+          <input v-model="formState.customerName" type="text" placeholder="请输入用户名">
         </label>
 
         <label class="activation-gate__field">
-          <span>联系方式</span>
-          <input v-model="formState.contact" type="text" placeholder="输入手机号或微信">
-        </label>
-
-        <label class="activation-gate__field">
-          <span>邀请码</span>
-          <input v-model="formState.inviteCode" type="text" placeholder="可留空">
-        </label>
-
-        <label class="activation-gate__field">
-          <span>设备码</span>
-          <textarea :value="activationState.deviceCode || ''" readonly rows="3" />
+          <span>手机号</span>
+          <input v-model="formState.contact" type="text" placeholder="请输入手机号">
         </label>
       </div>
+
+      <details class="activation-gate__advanced">
+        <summary>更多设置</summary>
+
+        <div class="activation-gate__form activation-gate__form--advanced">
+          <label class="activation-gate__field">
+            <span>邀请码</span>
+            <input v-model="formState.inviteCode" type="text" placeholder="没有可留空">
+          </label>
+
+          <label class="activation-gate__field">
+            <span>设备码</span>
+            <textarea :value="activationState.deviceCode || ''" readonly rows="3" />
+          </label>
+        </div>
+      </details>
 
       <div class="activation-gate__actions">
         <button
@@ -93,7 +96,7 @@ function submitActivation() {
           :disabled="isLoading || isSubmitting"
           @click="submitActivation"
         >
-          {{ isSubmitting ? '激活中' : '立即激活' }}
+          {{ isSubmitting ? '提交中' : '立即激活' }}
         </button>
 
         <button type="button" class="secondary-action" @click="emit('copy-device-code')">

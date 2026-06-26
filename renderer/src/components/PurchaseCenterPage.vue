@@ -96,15 +96,15 @@ const walletCards = computed(() => {
   ]
 })
 
+const isActivated = computed(() => props.activationState?.status === 'activated')
+
 const licenseStatusLabel = computed(() => {
   const status = String(props.activationState?.status || '')
-  if (status === 'activated') return '已激活'
+  if (status === 'activated') return '已授权'
   if (status === 'expired') return '已过期'
   if (status === 'device_mismatch') return '设备不匹配'
-  return '待激活'
+  return '未授权'
 })
-
-const canUseLockedCommerce = computed(() => props.activationState?.status === 'activated')
 
 function formatAmount(value) {
   const numericValue = Number(value || 0)
@@ -134,14 +134,14 @@ function resolvePackageFeatures(pkg = {}) {
   const primaryServicePlan = pkg.primaryServicePlan || null
 
   if (pkg.durationDays) features.push(`时长 ${pkg.durationDays} 天`)
-  if (pkg.deviceLimit) features.push(`设备 ${pkg.deviceLimit}`)
+  if (pkg.deviceLimit) features.push(`设备数 ${pkg.deviceLimit}`)
   if (Array.isArray(pkg.entitlementSummary) && pkg.entitlementSummary.length) {
     features.push(...pkg.entitlementSummary)
   }
   if (Number(pkg.includedTextBalanceCny || 0) > 0) features.push(`文本余额 ${formatAmount(pkg.includedTextBalanceCny)}`)
   if (Number(pkg.includedImageBalanceCny || 0) > 0) features.push(`图片余额 ${formatAmount(pkg.includedImageBalanceCny)}`)
   if (Number(pkg.includedVideoBalanceCny || 0) > 0) features.push(`视频余额 ${formatAmount(pkg.includedVideoBalanceCny)}`)
-  if (pkg.overageEnabled) features.push('支持充值')
+  if (pkg.overageEnabled) features.push('支持直充')
   if (pkg.tier === 'MEMBER') features.push('会员算力')
   if (pkg.tier === 'STANDARD') features.push('标准算力')
   if (primaryServicePlan?.tier) features.push(`服务档位 ${primaryServicePlan.tier}`)
@@ -162,17 +162,23 @@ function updateRechargeField(field, value) {
   <section class="purchase-center" :class="{ 'purchase-center--embedded': embedded }">
     <header class="purchase-center__hero">
       <div class="purchase-center__hero-main">
-        <span class="purchase-center__eyebrow">Purchase Center</span>
-        <h1>购买中心</h1>
+        <span class="purchase-center__eyebrow">Recharge Center</span>
+        <h1>充值中心</h1>
+        <p v-if="isActivated">
+          当前设备已授权，可以购买算力包或直接充值钱包。
+        </p>
+        <p v-else>
+          先购买授权套餐。付款完成后，当前设备会自动尝试激活。
+        </p>
       </div>
 
       <div class="purchase-center__hero-side">
         <div class="purchase-center__license-card">
-          <span>当前授权</span>
-          <strong>{{ activationState.customerName || '未命名客户' }}</strong>
+          <span>当前状态</span>
+          <strong>{{ activationState.customerName || '未登录设备' }}</strong>
           <div class="purchase-center__license-meta">
             <span>{{ licenseStatusLabel }}</span>
-            <span>到期 {{ activationState.expiresAt ? formatDateTime(activationState.expiresAt) : '长期或未设置' }}</span>
+            <span>到期 {{ activationState.expiresAt ? formatDateTime(activationState.expiresAt) : '未授权或长期' }}</span>
           </div>
         </div>
 
@@ -186,11 +192,65 @@ function updateRechargeField(field, value) {
       </div>
     </header>
 
-    <section v-if="canUseLockedCommerce" class="purchase-center__section">
+    <section class="purchase-center__section">
+      <div class="purchase-center__section-header">
+        <div>
+          <span class="purchase-center__section-kicker">Software License</span>
+          <h2>授权套餐</h2>
+        </div>
+      </div>
+
+      <div class="purchase-center__package-list">
+        <article v-for="pkg in softwarePackages" :key="pkg.id" class="purchase-center__package-card">
+          <div class="purchase-center__package-main">
+            <div class="purchase-center__package-heading">
+              <strong>{{ pkg.name }}</strong>
+              <span>{{ pkg.productName }}</span>
+            </div>
+            <p>{{ pkg.description || '适合当前软件授权使用。' }}</p>
+            <div class="purchase-center__feature-row">
+              <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
+            </div>
+          </div>
+
+          <div class="purchase-center__package-side">
+            <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
+            <small>{{ pkg.currency || 'CNY' }}</small>
+            <button class="primary-action" type="button" :disabled="isSoftwareOrderSubmitting" @click="emit('create-software-order', pkg.id)">
+              {{ isSoftwareOrderSubmitting ? '创建中' : '购买授权' }}
+            </button>
+          </div>
+        </article>
+
+        <article v-if="!softwarePackages.length" class="purchase-center__empty">
+          <strong>暂无授权套餐</strong>
+        </article>
+      </div>
+
+      <div v-if="currentSoftwareOrder" class="purchase-center__order-panel">
+        <div class="purchase-center__order-info">
+          <strong>最近授权订单</strong>
+          <span>订单号 {{ currentSoftwareOrder.merchantOrderNo }}</span>
+          <span>状态 {{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
+          <span>金额 {{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
+        </div>
+
+        <div class="purchase-center__order-actions">
+          <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">
+            {{ isSoftwareOrderRefreshing ? '刷新中' : '刷新订单' }}
+          </button>
+          <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">
+            打开支付
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="isActivated" class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
           <span class="purchase-center__section-kicker">Recharge</span>
-          <h2>充值</h2>
+          <h2>钱包直充</h2>
         </div>
       </div>
 
@@ -225,7 +285,7 @@ function updateRechargeField(field, value) {
           </label>
           <label class="purchase-center__field">
             <span>优惠码</span>
-            <input :value="rechargeForm.couponCode" type="text" placeholder="选填" @input="updateRechargeField('couponCode', $event.target.value)">
+            <input :value="rechargeForm.couponCode" type="text" placeholder="可选" @input="updateRechargeField('couponCode', $event.target.value)">
           </label>
         </div>
 
@@ -243,11 +303,11 @@ function updateRechargeField(field, value) {
       </div>
     </section>
 
-    <section v-if="canUseLockedCommerce" class="purchase-center__section">
+    <section v-if="isActivated" class="purchase-center__section">
       <div class="purchase-center__section-header">
         <div>
           <span class="purchase-center__section-kicker">Compute Plans</span>
-          <h2>算力套餐</h2>
+          <h2>算力包</h2>
         </div>
         <button class="secondary-action" type="button" :disabled="isCatalogLoading" @click="emit('refresh-catalog')">
           {{ isCatalogLoading ? '刷新中' : '刷新套餐' }}
@@ -261,7 +321,7 @@ function updateRechargeField(field, value) {
               <strong>{{ pkg.name }}</strong>
               <span>{{ pkg.productName }}</span>
             </div>
-            <p>{{ pkg.description || '--' }}</p>
+            <p>{{ pkg.description || '适合补充生成余额和服务能力。' }}</p>
             <div class="purchase-center__feature-row">
               <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
             </div>
@@ -271,22 +331,22 @@ function updateRechargeField(field, value) {
             <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
             <small>{{ pkg.currency || 'CNY' }}</small>
             <button class="primary-action" type="button" :disabled="isComputePackageOrderSubmitting || pkg.canPurchase === false" @click="emit('create-compute-package-order', pkg.id)">
-              {{ pkg.canPurchase === false ? '当前不可购买' : (isComputePackageOrderSubmitting ? '创建中' : '购买套餐') }}
+              {{ pkg.canPurchase === false ? '当前不可购买' : (isComputePackageOrderSubmitting ? '创建中' : '购买算力包') }}
             </button>
             <small v-if="pkg.canPurchase === false" class="purchase-center__blocked-tip">
-              {{ pkg.purchaseBlockedReason || '当前授权不可购买' }}
+              {{ pkg.purchaseBlockedReason || '当前授权版本不可购买' }}
             </small>
           </div>
         </article>
 
         <article v-if="!computePackages.length" class="purchase-center__empty">
-          <strong>暂无算力套餐</strong>
+          <strong>暂无算力包</strong>
         </article>
       </div>
 
       <div v-if="currentComputePackageOrder" class="purchase-center__order-panel">
         <div class="purchase-center__order-info">
-          <strong>最近算力订单</strong>
+          <strong>最近算力包订单</strong>
           <span>订单 {{ currentComputePackageOrder.merchantOrderNo }}</span>
           <span>状态 {{ resolveOrderStatusLabel(currentComputePackageOrder.status) }}</span>
           <span>金额 {{ formatAmount(currentComputePackageOrder.amountCny) }} CNY</span>
@@ -297,60 +357,6 @@ function updateRechargeField(field, value) {
             {{ isComputePackageOrderRefreshing ? '刷新中' : '刷新订单' }}
           </button>
           <button class="secondary-action" type="button" :disabled="!currentComputePackageOrder.paymentPayload?.mockPayUrl" @click="emit('open-compute-package-order')">
-            打开支付
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="purchase-center__section">
-      <div class="purchase-center__section-header">
-        <div>
-          <span class="purchase-center__section-kicker">Software License</span>
-          <h2>软件授权</h2>
-        </div>
-      </div>
-
-      <div class="purchase-center__package-list">
-        <article v-for="pkg in softwarePackages" :key="pkg.id" class="purchase-center__package-card">
-          <div class="purchase-center__package-main">
-            <div class="purchase-center__package-heading">
-              <strong>{{ pkg.name }}</strong>
-              <span>{{ pkg.productName }}</span>
-            </div>
-            <p>{{ pkg.description || '--' }}</p>
-            <div class="purchase-center__feature-row">
-              <span v-for="feature in resolvePackageFeatures(pkg)" :key="`${pkg.id}-${feature}`">{{ feature }}</span>
-            </div>
-          </div>
-
-          <div class="purchase-center__package-side">
-            <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
-            <small>{{ pkg.currency || 'CNY' }}</small>
-            <button class="primary-action" type="button" :disabled="isSoftwareOrderSubmitting" @click="emit('create-software-order', pkg.id)">
-              {{ isSoftwareOrderSubmitting ? '创建中' : '购买授权' }}
-            </button>
-          </div>
-        </article>
-
-        <article v-if="!softwarePackages.length" class="purchase-center__empty">
-          <strong>暂无授权套餐</strong>
-        </article>
-      </div>
-
-      <div v-if="currentSoftwareOrder" class="purchase-center__order-panel">
-        <div class="purchase-center__order-info">
-          <strong>最近授权订单</strong>
-          <span>订单 {{ currentSoftwareOrder.merchantOrderNo }}</span>
-          <span>状态 {{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
-          <span>金额 {{ formatAmount(currentSoftwareOrder.amountCny || currentSoftwareOrder.effectiveSalePriceCny) }} CNY</span>
-        </div>
-
-        <div class="purchase-center__order-actions">
-          <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">
-            {{ isSoftwareOrderRefreshing ? '刷新中' : '刷新订单' }}
-          </button>
-          <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">
             打开支付
           </button>
         </div>
@@ -380,6 +386,12 @@ function updateRechargeField(field, value) {
 .purchase-center__hero-main h1,
 .purchase-center__section-header h2 {
   margin: 0;
+}
+
+.purchase-center__hero-main p {
+  margin: 12px 0 0;
+  color: rgba(205, 214, 238, 0.76);
+  line-height: 1.6;
 }
 
 .purchase-center__eyebrow,

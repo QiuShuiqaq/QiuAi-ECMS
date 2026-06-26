@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
@@ -63,6 +63,7 @@ const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   : fallbackMenuItems
 
 const activeMenu = ref('workbench')
+const embeddedPurchaseCenterRef = ref(null)
 const activeGeneratorMenu = ref('')
 const submitButtonState = ref('idle')
 const formDrafts = ref({})
@@ -1988,7 +1989,15 @@ function openPurchaseCenter() {
   activeGeneratorMenu.value = ''
   if (isActivated.value) {
     activeMenu.value = 'purchase-center'
+    return
   }
+
+  nextTick(() => {
+    embeddedPurchaseCenterRef.value?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  })
 }
 
 function handleRechargeFormUpdate({ field, value }) {
@@ -2160,28 +2169,30 @@ onUnmounted(() => {
           @copy-device-code="handleCopyDeviceCode"
         />
 
-        <PurchaseCenterPage
-          embedded
-          :activation-state="activationState"
-          :wallet-summary="activationState.walletSummary || null"
-          :software-packages="softwarePackages"
-          :compute-packages="[]"
-          :current-software-order="currentSoftwareOrder"
-          :current-compute-package-order="null"
-          :current-recharge-order="null"
-          :recharge-form="rechargeForm"
-          :is-catalog-loading="isCatalogLoading"
-          :is-recharge-submitting="false"
-          :is-software-order-submitting="isSoftwareOrderSubmitting"
-          :is-software-order-refreshing="isSoftwareOrderRefreshing"
-          :is-compute-package-order-submitting="false"
-          :is-compute-package-order-refreshing="false"
-          :is-recharge-refreshing="false"
-          @refresh-catalog="loadPurchaseCenterCatalog"
-          @create-software-order="handleCreateSoftwareOrder"
-          @refresh-software-order="handleRefreshSoftwareOrder"
-          @open-software-order="handleOpenSoftwareOrderLink"
-        />
+        <div ref="embeddedPurchaseCenterRef">
+          <PurchaseCenterPage
+            embedded
+            :activation-state="activationState"
+            :wallet-summary="activationState.walletSummary || null"
+            :software-packages="softwarePackages"
+            :compute-packages="[]"
+            :current-software-order="currentSoftwareOrder"
+            :current-compute-package-order="null"
+            :current-recharge-order="null"
+            :recharge-form="rechargeForm"
+            :is-catalog-loading="isCatalogLoading"
+            :is-recharge-submitting="false"
+            :is-software-order-submitting="isSoftwareOrderSubmitting"
+            :is-software-order-refreshing="isSoftwareOrderRefreshing"
+            :is-compute-package-order-submitting="false"
+            :is-compute-package-order-refreshing="false"
+            :is-recharge-refreshing="false"
+            @refresh-catalog="loadPurchaseCenterCatalog"
+            @create-software-order="handleCreateSoftwareOrder"
+            @refresh-software-order="handleRefreshSoftwareOrder"
+            @open-software-order="handleOpenSoftwareOrderLink"
+          />
+        </div>
       </div>
     </section>
 

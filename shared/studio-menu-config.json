@@ -1,41 +1,37 @@
 {
-  "runtimeTaskMenuKeys": [
-    "workspace",
-    "series-generate",
-    "video-generate"
-  ],
+  "runtimeTaskMenuKeys": ["workspace", "series-generate", "video-generate"],
   "runtimeTaskMenuItems": [
     { "key": "workspace", "label": "工作台" },
     { "key": "series-generate", "label": "套图生成" },
     { "key": "video-generate", "label": "视频生成" }
   ],
   "primaryMenuItems": [
-    { "key": "workbench", "label": "工作台", "section": "主线" },
-    { "key": "purchase-center", "label": "购买中心", "section": "主线" },
-    { "key": "prompt-library", "label": "提示词库", "section": "主线" },
-    { "key": "account-device", "label": "账户与用量", "section": "支持" },
-    { "key": "settings-center", "label": "设置与支持", "section": "支持" }
+    { "key": "workbench", "label": "工作台", "section": "主功能" },
+    { "key": "purchase-center", "label": "充值中心", "section": "主功能" },
+    { "key": "prompt-library", "label": "提示词", "section": "支持" },
+    { "key": "account-device", "label": "账号设备", "section": "支持" },
+    { "key": "settings-center", "label": "设置", "section": "支持" }
   ],
   "generatorViews": {
     "title-generate": {
-      "title": "Title Generate",
+      "title": "标题生成",
       "mode": "text",
       "textKind": "title",
       "shortcutLabel": "标题"
     },
     "description-generate": {
-      "title": "Description Generate",
+      "title": "描述生成",
       "mode": "text",
       "textKind": "description",
       "shortcutLabel": "描述"
     },
     "series-generate": {
-      "title": "Series Generate",
+      "title": "套图生成",
       "mode": "image",
       "shortcutLabel": "套图"
     },
     "video-generate": {
-      "title": "Video Generate",
+      "title": "视频生成",
       "mode": "video",
       "shortcutLabel": "视频"
     }

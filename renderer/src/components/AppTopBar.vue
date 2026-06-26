@@ -58,10 +58,6 @@ const activeContactGroup = computed(() => {
   return contactGroups.find((item) => item.key === activeContactKey.value) || null
 })
 
-function onCleanupClick() {
-  emit('cleanup-click')
-}
-
 function openContactPreview(contactKey) {
   activeContactKey.value = contactKey
 }
@@ -82,20 +78,16 @@ function closeContactPreview() {
     </div>
 
     <div class="topbar-right-actions">
-      <button
-        class="topbar-recharge-button"
-        type="button"
-        @click="emit('recharge-click')"
-      >
+      <button class="topbar-recharge-button" type="button" @click="emit('recharge-click')">
         {{ purchaseLabel }}
       </button>
 
       <div v-if="activationSummary" class="topbar-activation-pill">
-        <span>已激活</span>
-        <strong>{{ activationSummary.customerName || '已授权设备' }}</strong>
+        <span>已授权</span>
+        <strong>{{ activationSummary.customerName || '当前设备' }}</strong>
       </div>
 
-      <button class="topbar-clean-button" type="button" aria-label="清理缓存" @click="onCleanupClick">
+      <button class="topbar-clean-button" type="button" aria-label="清理缓存" @click="emit('cleanup-click')">
         清理缓存
       </button>
 

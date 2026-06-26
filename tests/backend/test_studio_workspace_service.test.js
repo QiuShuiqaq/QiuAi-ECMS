@@ -68,9 +68,8 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.themeMode).toBe('dark')
     expect(snapshot.menuItems.map((item) => item.key)).toEqual([
       'workbench',
-      'generation-center',
-      'results-center',
       'purchase-center',
+      'prompt-library',
       'account-device',
       'settings-center'
     ])

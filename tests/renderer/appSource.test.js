@@ -31,7 +31,7 @@ describe('App source', () => {
     expect(source).not.toContain("key: 'title-generator'")
     expect(source).not.toContain("key: 'description-generator'")
     expect(source).not.toContain("key: 'account-usage'")
-    expect(source).not.toContain("key: 'prompt-library'")
+    expect(source).toContain("key: 'prompt-library'")
 
     expect(sidebarSource).toContain('groupedMenuItems')
     expect(sidebarSource).toContain('sidebar-group')
@@ -117,7 +117,7 @@ describe('App source', () => {
     expect(platformClientSource).toContain('getRuntimeSnapshot: getStudioRuntimeSnapshot')
   })
 
-  it('keeps four generator entry views under generation-center while runtime tasks stay minimal', () => {
+  it('keeps four generator entry views and runtime tasks aligned with the simplified shell', () => {
     const source = readSource('renderer/src/App.vue')
     const generatorSource = readSource('renderer/src/components/GeneratorStudioPage.vue')
     const textGeneratorSource = readSource('renderer/src/components/TextGeneratorPage.vue')
@@ -128,10 +128,12 @@ describe('App source', () => {
     expect(generatorViewSource).toContain('export const generatorViewMap = studioMenuConfig.generatorViews || {}')
     expect(generatorViewSource).toContain('export function resolveGeneratorView(menuKey) {')
     expect(source).toContain("if (activeMenu.value !== 'generation-center') {")
-    expect(source).toContain("return activeMenu.value === 'generation-center' && !isWorkspaceGeneratorView.value")
+    expect(source).toContain("return (activeMenu.value === 'workbench' || activeMenu.value === 'generation-center') && !isWorkspaceGeneratorView.value")
     expect(source).toContain("if (menuKey === 'generation-center' && formDrafts.value.workspace?.projectId)")
     expect(source).toContain("activeMenu.value = 'generation-center'")
     expect(source).toContain('activeGeneratorMenu.value = menuKey')
+    expect(source).toContain('const isWorkspaceHome = computed(() => {')
+    expect(source).toContain('v-if="isWorkspaceHome"')
     expect(source).toContain('v-else-if="activeTextGeneratorView"')
     expect(source).toContain('v-else-if="activeMediaGeneratorView"')
     expect(source).toContain(':title="activeTextGeneratorView.title"')
@@ -163,14 +165,14 @@ describe('App source', () => {
     const settingsSource = readSource('renderer/src/components/SettingsCenterPage.vue')
     const purchaseControllerConfigSource = readSource('renderer/src/utils/purchaseControllerConfigs.js')
 
-    expect(source).toContain("v-if=\"activeMenu === 'workbench'\"")
+    expect(source).toContain('v-if="isWorkspaceHome"')
     expect(source).toContain(':current-recharge-order="currentRechargeOrder"')
     expect(source).toContain(':current-software-order="currentSoftwareOrder"')
     expect(source).toContain(':current-compute-package-order="currentComputePackageOrder"')
     expect(source).toContain("v-else-if=\"activeMenu === 'results-center'\"")
     expect(source).toContain("v-else-if=\"activeMenu === 'purchase-center'\"")
     expect(source).toContain("v-else-if=\"activeMenu === 'account-device'\"")
-    expect(source).toContain("v-else-if=\"activeMenu === 'settings-center'\"")
+    expect(source).toContain("v-else-if=\"activeMenu === 'prompt-library' || activeMenu === 'settings-center'\"")
     expect(source).toContain('@refresh-catalog="loadPurchaseCenterCatalog"')
     expect(source).toContain('@update-recharge-form="handleRechargeFormUpdate"')
     expect(source).toContain('@create-recharge="handleCreateRecharge"')
