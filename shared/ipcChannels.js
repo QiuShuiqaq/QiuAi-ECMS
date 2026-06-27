@@ -5,6 +5,8 @@ module.exports = {
   LICENSE_LIST_PACKAGES: 'license:list-packages',
   LICENSE_CREATE_ORDER: 'license:create-order',
   LICENSE_GET_ORDER: 'license:get-order',
+  LICENSE_GET_USER_AGREEMENT_STATUS: 'license:get-user-agreement-status',
+  LICENSE_ACCEPT_USER_AGREEMENT: 'license:accept-user-agreement',
   COMPUTE_PACKAGE_LIST: 'compute-package:list',
   COMPUTE_PACKAGE_CREATE_ORDER: 'compute-package:create-order',
   COMPUTE_PACKAGE_GET_ORDER: 'compute-package:get-order',

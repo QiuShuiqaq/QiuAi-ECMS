@@ -1,5 +1,9 @@
 const { ipcMain } = require('electron')
 const ipcChannels = require('../../../shared/ipcChannels')
+const {
+  buildUserAgreementState,
+  createAcceptedAgreementRecord
+} = require('../services/userAgreementService')
 
 function trimString(value = '') {
   return typeof value === 'string' ? value.trim() : ''
@@ -19,7 +23,7 @@ async function saveRemoteAuthPlatformState({ settingsService, activationPayload 
 }
 
 async function getSessionToken(settingsService) {
-  const settings = await settingsService.getSettings()
+  const settings = settingsService.getSettings()
   return trimString(settings?.authPlatform?.sessionToken)
 }
 
@@ -32,6 +36,16 @@ async function requireSessionToken(settingsService) {
   const error = new Error('Remote authorization is required before using commerce features.')
   error.code = 'REMOTE_AUTH_REQUIRED'
   throw error
+}
+
+async function getUserAgreementStatus({ authorizationService, settingsService }) {
+  const activationStatus = await authorizationService.getActivationStatus()
+  const settings = settingsService.getSettings()
+
+  return buildUserAgreementState(
+    settings?.compliance?.userAgreement,
+    activationStatus
+  )
 }
 
 async function buildSoftwareOrderPayload({ settingsService, authorizationService, payload = {} }) {
@@ -57,6 +71,33 @@ function registerLicenseIpc({
 
   ipcMain.handle(ipcChannels.LICENSE_GET_DEVICE_CODE, () => {
     return authorizationService.getDeviceCodePayload()
+  })
+
+  ipcMain.handle(ipcChannels.LICENSE_GET_USER_AGREEMENT_STATUS, async () => {
+    return getUserAgreementStatus({
+      authorizationService,
+      settingsService
+    })
+  })
+
+  ipcMain.handle(ipcChannels.LICENSE_ACCEPT_USER_AGREEMENT, async () => {
+    const activationStatus = await authorizationService.getActivationStatus()
+    if (activationStatus.status !== 'activated') {
+      const error = new Error('Device must be activated before accepting the user agreement.')
+      error.code = 'USER_AGREEMENT_ACTIVATION_REQUIRED'
+      throw error
+    }
+
+    await settingsService.saveSettings({
+      compliance: {
+        userAgreement: createAcceptedAgreementRecord(activationStatus)
+      }
+    })
+
+    return getUserAgreementStatus({
+      authorizationService,
+      settingsService
+    })
   })
 
   ipcMain.handle(ipcChannels.LICENSE_REMOTE_ACTIVATE, async (_event, payload = {}) => {

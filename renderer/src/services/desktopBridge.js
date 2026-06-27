@@ -1,5 +1,8 @@
+import studioMenuConfig from '../../../shared/studio-menu-config.json'
+
 const BROWSER_STUDIO_KEY = 'qiuai-browser-studio'
 const BROWSER_PROMPTS_KEY = 'qiuai-browser-prompts'
+const BROWSER_USER_AGREEMENT_KEY = 'qiuai-browser-user-agreement'
 const BROWSER_CREDIT_HISTORY_LIMIT = 20
 const BROWSER_RUNTIME_MENU_KEYS = new Set(studioMenuConfig.runtimeTaskMenuKeys || ['workspace', 'series-generate', 'video-generate'])
 
@@ -63,6 +66,17 @@ const defaultBrowserActivationState = {
   message: 'QiuAi desktop bridge is unavailable.',
   nextAction: 'activate-license',
   remoteStatus: 'bridge_unavailable'
+}
+
+const defaultBrowserUserAgreementState = {
+  version: 'QIUAI-ECMS-USER-NOTICE-v1.0',
+  accepted: false,
+  acceptedAt: '',
+  shouldShow: false,
+  userId: '',
+  licenseId: '',
+  deviceCode: 'QAI-BROWSER-MODE',
+  customerName: ''
 }
 
 function createBridgeUnavailableError () {
@@ -299,6 +313,26 @@ function getBrowserActivationState() {
   }
 }
 
+function getBrowserUserAgreementState() {
+  const state = readBrowserState(BROWSER_USER_AGREEMENT_KEY, defaultBrowserUserAgreementState)
+  return {
+    ...defaultBrowserUserAgreementState,
+    ...(state && typeof state === 'object' ? state : {})
+  }
+}
+
+function acceptBrowserUserAgreement() {
+  const nextState = {
+    ...defaultBrowserUserAgreementState,
+    accepted: true,
+    acceptedAt: new Date().toISOString(),
+    shouldShow: false
+  }
+
+  writeBrowserState(BROWSER_USER_AGREEMENT_KEY, nextState)
+  return nextState
+}
+
 function getBrowserPromptTemplates() {
   const storedTemplates = readBrowserState(BROWSER_PROMPTS_KEY, defaultBrowserPromptTemplates)
   const normalizedTemplates = mergeDefaultBrowserPromptTemplates(storedTemplates)
@@ -502,6 +536,22 @@ export function getActivationStatus () {
   }
 
   return invoke(getChannel('LICENSE_GET_STATUS'))
+}
+
+export function getUserAgreementStatus () {
+  if (!hasBridge()) {
+    return Promise.resolve(getBrowserUserAgreementState())
+  }
+
+  return invoke(getChannel('LICENSE_GET_USER_AGREEMENT_STATUS'))
+}
+
+export function acceptUserAgreement () {
+  if (!hasBridge()) {
+    return Promise.resolve(acceptBrowserUserAgreement())
+  }
+
+  return invoke(getChannel('LICENSE_ACCEPT_USER_AGREEMENT'))
 }
 
 export function activateRemoteLicense (payload) {
@@ -710,6 +760,3 @@ export function clearStudioRuntimeState () {
 
   return invoke(getChannel('STUDIO_CLEAR_RUNTIME_STATE'))
 }
-
-
-import studioMenuConfig from '../../../shared/studio-menu-config.json'

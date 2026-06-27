@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
 import AuthorizationPurchaseModal from './components/AuthorizationPurchaseModal.vue'
+import UserAgreementModal from './components/UserAgreementModal.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
 import GenerationCenterPage from './components/GenerationCenterPage.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
@@ -43,6 +44,7 @@ import { clearStudioRuntimeState } from './services/desktopBridge'
 import {
   activationClient,
   catalogClient,
+  complianceClient,
   commerceClient,
   promptLibraryClient,
   publishClient,
@@ -126,7 +128,19 @@ const activationForm = ref({
   contact: '',
   inviteCode: ''
 })
+const userAgreementState = ref({
+  version: 'QIUAI-ECMS-USER-NOTICE-v1.0',
+  accepted: false,
+  acceptedAt: '',
+  shouldShow: false,
+  userId: '',
+  licenseId: '',
+  deviceCode: '',
+  customerName: ''
+})
 const isActivationLoading = ref(true)
+const isActivationSubmitting = ref(false)
+const isUserAgreementSubmitting = ref(false)
 const isRechargeSubmitting = ref(false)
 const isRechargeRefreshing = ref(false)
 const isCatalogLoading = ref(false)
@@ -233,6 +247,7 @@ const activationSummary = computed(() => {
 })
 
 const isActivated = computed(() => activationState.value.status === 'activated')
+const canUseActivatedWorkspace = computed(() => isActivated.value && !userAgreementState.value.shouldShow)
 
 const remoteServiceCapacity = computed(() => {
   return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
@@ -498,6 +513,37 @@ async function loadActivationState() {
     }
   } finally {
     isActivationLoading.value = false
+  }
+}
+
+async function loadUserAgreementState() {
+  if (activationState.value.status !== 'activated') {
+    userAgreementState.value = {
+      version: 'QIUAI-ECMS-USER-NOTICE-v1.0',
+      accepted: false,
+      acceptedAt: '',
+      shouldShow: false,
+      userId: '',
+      licenseId: '',
+      deviceCode: '',
+      customerName: ''
+    }
+    return
+  }
+
+  try {
+    userAgreementState.value = await complianceClient.getUserAgreementStatus()
+  } catch {
+    userAgreementState.value = {
+      version: 'QIUAI-ECMS-USER-NOTICE-v1.0',
+      accepted: false,
+      acceptedAt: '',
+      shouldShow: true,
+      userId: activationState.value.userId || '',
+      licenseId: activationState.value.licenseId || '',
+      deviceCode: activationState.value.deviceCode || '',
+      customerName: activationState.value.customerName || ''
+    }
   }
 }
 
@@ -1938,21 +1984,57 @@ async function handleActivateRemote(payload) {
     })
 
     if (activationState.value.status === 'activated') {
+      await loadUserAgreementState()
+
+      if (userAgreementState.value.shouldShow) {
+        showActionFeedback({
+          type: 'success',
+          title: '????',
+          message: '???????????'
+        })
+        return
+      }
+
       await loadActivatedWorkspace()
       showActionFeedback({
         type: 'success',
-        title: '激活成功',
-        message: '当前设备已授权'
+        title: '????',
+        message: '?????????'
       })
     }
   } catch (error) {
     showActionFeedback({
       type: 'error',
-      title: '激活失败',
-      message: buildErrorMessage(error, '设备激活失败')
+      title: '????',
+      message: buildErrorMessage(error, '??????')
     })
   } finally {
     isActivationSubmitting.value = false
+  }
+}
+
+async function handleAcceptUserAgreement() {
+  isUserAgreementSubmitting.value = true
+  try {
+    userAgreementState.value = await complianceClient.acceptUserAgreement()
+
+    if (canUseActivatedWorkspace.value) {
+      await loadActivatedWorkspace()
+    }
+
+    showActionFeedback({
+      type: 'success',
+      title: '?????',
+      message: '??????????'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '????',
+      message: buildErrorMessage(error, '????????')
+    })
+  } finally {
+    isUserAgreementSubmitting.value = false
   }
 }
 
@@ -2083,6 +2165,7 @@ softwareOrderController = createSoftwareOrderController({
   buildErrorMessage,
   activateRemoteLicense: activationClient.activate,
   loadActivationState,
+  loadUserAgreementState,
   loadStudioSnapshot,
   loadPurchaseCenterCatalog
 })
@@ -2106,7 +2189,8 @@ onMounted(() => {
   void (async () => {
     await loadActivationState()
     await loadPurchaseCenterCatalog()
-    if (isActivated.value) {
+    await loadUserAgreementState()
+    if (canUseActivatedWorkspace.value) {
       await loadActivatedWorkspace()
     }
   })()
@@ -2183,6 +2267,14 @@ onUnmounted(() => {
       @close="closeAuthorizationPurchaseModal"
       @submit-order="handleCreateSoftwareOrder"
     />
+
+    <UserAgreementModal
+      :visible="userAgreementState.shouldShow"
+      :agreement-state="userAgreementState"
+      :is-submitting="isUserAgreementSubmitting"
+      @accept="handleAcceptUserAgreement"
+    />
+
 
     <section v-if="isActivationLoading || !isActivated" class="activation-shell">
       <ActivationGate

@@ -50,7 +50,8 @@ function registerIpc() {
     getStoredState: () => studioWorkspaceService.getRuntimeSnapshot()
   })
   const activationGuard = createActivationGuardService({
-    authorizationService
+    authorizationService,
+    settingsService
   })
   const promptTemplateService = createPromptTemplateStoreService({ store: promptStore })
   const studioTaskManagerService = createStudioTaskManagerService()

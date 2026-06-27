@@ -18,6 +18,7 @@ describe('component sources', () => {
       'renderer/src/components/PromptLibraryPanel.vue',
       'renderer/src/components/ActivationGate.vue',
       'renderer/src/components/AuthorizationPurchaseModal.vue',
+      'renderer/src/components/UserAgreementModal.vue',
       'renderer/src/components/AppTopBar.vue'
     ]
 
@@ -31,6 +32,7 @@ describe('component sources', () => {
     const topbarSource = readSource('renderer/src/components/AppTopBar.vue')
     const activationSource = readSource('renderer/src/components/ActivationGate.vue')
     const purchaseModalSource = readSource('renderer/src/components/AuthorizationPurchaseModal.vue')
+    const agreementModalSource = readSource('renderer/src/components/UserAgreementModal.vue')
 
     expect(topbarSource).toContain('cleanup-click')
     expect(topbarSource).toContain('recharge-click')
@@ -40,9 +42,10 @@ describe('component sources', () => {
     expect(topbarSource).not.toContain('theme-change')
 
     expect(activationSource).toContain('statusText')
-    expect(activationSource).toContain('请购买授权激活设备')
+    expect(activationSource).toContain('titleText')
+    expect(activationSource).toContain('deviceCodeText')
+    expect(activationSource).toContain('activationState.deviceCode')
     expect(activationSource).not.toContain('copy-device-code')
-    expect(activationSource).not.toContain('activationState.deviceCode')
     expect(activationSource).not.toContain('customerName')
     expect(activationSource).not.toContain('contact')
     expect(activationSource).not.toContain('inviteCode')
@@ -52,7 +55,11 @@ describe('component sources', () => {
     expect(purchaseModalSource).toContain("defineEmits(['close', 'submit-order'])")
     expect(purchaseModalSource).toContain('selectedPackageId')
     expect(purchaseModalSource).toContain('softwarePackages')
-    expect(purchaseModalSource).toContain('确认购买授权')
+    expect(purchaseModalSource).toContain('submitOrder')
+    expect(agreementModalSource).toContain("defineEmits(['accept'])")
+    expect(agreementModalSource).toContain('agreementState')
+    expect(agreementModalSource).toContain('isSubmitting')
+    expect(agreementModalSource).toContain('user-agreement-modal')
   })
 
   it('keeps workbench shortcuts and unified generator studio wired together', () => {

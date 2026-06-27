@@ -1,4 +1,5 @@
 import {
+  acceptUserAgreement,
   activateRemoteLicense,
   createComputePackageOrder,
   createPublishTask,
@@ -10,6 +11,7 @@ import {
   exportStudioProjectBundle,
   exportStudioResults,
   getActivationStatus,
+  getUserAgreementStatus,
   getComputePackageOrder,
   getPublishClientConfig,
   getPublishDraft,
@@ -42,6 +44,11 @@ import {
 export const activationClient = {
   getStatus: getActivationStatus,
   activate: activateRemoteLicense
+}
+
+export const complianceClient = {
+  getUserAgreementStatus,
+  acceptUserAgreement
 }
 
 export const catalogClient = {

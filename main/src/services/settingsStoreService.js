@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const { normalizeCompliance } = require('./userAgreementService')
 
 const SETTINGS_KEY = 'userSettings'
 const CREDIT_HISTORY_LIMIT = 20
@@ -46,6 +47,17 @@ const defaultAuthPlatform = {
   remoteServiceCapacity: null
 }
 
+const defaultCompliance = {
+  userAgreement: {
+    version: '',
+    accepted: false,
+    acceptedAt: '',
+    userId: '',
+    licenseId: '',
+    deviceCode: ''
+  }
+}
+
 function normalizeAuthPlatformBaseUrl(baseUrl = '') {
   const normalizedBaseUrl = typeof baseUrl === 'string' && baseUrl.trim()
     ? baseUrl.trim().replace(/\/+$/, '')
@@ -70,7 +82,8 @@ const defaultSettings = {
   downloadCleanupEnabled: true,
   dashboardCreditState: defaultDashboardCreditState,
   creditState: defaultCreditState,
-  authPlatform: defaultAuthPlatform
+  authPlatform: defaultAuthPlatform,
+  compliance: defaultCompliance
 }
 
 function normalizeThemeMode() {
@@ -355,7 +368,8 @@ function normalizeSettings(rawSettings = {}) {
     downloadCleanupEnabled,
     dashboardCreditState,
     creditState,
-    authPlatform
+    authPlatform,
+    compliance
   } = mergedSettings
 
   return {
@@ -367,7 +381,8 @@ function normalizeSettings(rawSettings = {}) {
     downloadCleanupEnabled: normalizeDownloadCleanupEnabled(downloadCleanupEnabled),
     dashboardCreditState: normalizeDashboardCreditState(dashboardCreditState),
     creditState: normalizeCreditState(creditState),
-    authPlatform: normalizeAuthPlatform(authPlatform)
+    authPlatform: normalizeAuthPlatform(authPlatform),
+    compliance: normalizeCompliance(compliance)
   }
 }
 
@@ -435,5 +450,6 @@ module.exports = {
   defaultSettings,
   defaultCreditState,
   defaultDashboardCreditState,
-  defaultAuthPlatform
+  defaultAuthPlatform,
+  defaultCompliance
 }

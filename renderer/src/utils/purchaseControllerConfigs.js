@@ -64,6 +64,7 @@ export function createSoftwareOrderController({
   buildErrorMessage,
   activateRemoteLicense,
   loadActivationState,
+  loadUserAgreementState,
   loadStudioSnapshot,
   loadPurchaseCenterCatalog
 }) {
@@ -113,6 +114,7 @@ export function createSoftwareOrderController({
         return [
           activateRemoteLicense(activationPayload).catch(() => null),
           loadActivationState(),
+          loadUserAgreementState(),
           loadStudioSnapshot(),
           loadPurchaseCenterCatalog()
         ]
