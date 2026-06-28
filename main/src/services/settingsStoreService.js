@@ -58,6 +58,24 @@ const defaultCompliance = {
   }
 }
 
+function trimString(value = '') {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function isTruthyEnvValue(value = '') {
+  const normalizedValue = trimString(value).toLowerCase()
+  return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes' || normalizedValue === 'on'
+}
+
+function buildDevBypassAuthPlatformDefaults() {
+  return {
+    enabled: isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || ''),
+    sessionToken: trimString(process.env.DEV_PLATFORM_SESSION_TOKEN),
+    lastUserId: trimString(process.env.DEV_TEST_USER_ID),
+    lastLicenseId: trimString(process.env.DEV_TEST_LICENSE_ID)
+  }
+}
+
 function normalizeAuthPlatformBaseUrl(baseUrl = '') {
   const normalizedBaseUrl = typeof baseUrl === 'string' && baseUrl.trim()
     ? baseUrl.trim().replace(/\/+$/, '')
@@ -260,12 +278,17 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
 
 function normalizeAuthPlatform(rawAuthPlatform = {}) {
   const source = rawAuthPlatform && typeof rawAuthPlatform === 'object' ? rawAuthPlatform : {}
+  const devBypassDefaults = buildDevBypassAuthPlatformDefaults()
+  const sourceSessionToken = typeof source.sessionToken === 'string' ? source.sessionToken.trim() : ''
+  const sourceLastUserId = typeof source.lastUserId === 'string' ? source.lastUserId.trim() : ''
+  const sourceLastLicenseId = typeof source.lastLicenseId === 'string' ? source.lastLicenseId.trim() : ''
+
   return {
-    enabled: source.enabled !== false,
+    enabled: devBypassDefaults.enabled ? true : source.enabled !== false,
     baseUrl: normalizeAuthPlatformBaseUrl(source.baseUrl),
-    sessionToken: typeof source.sessionToken === 'string' ? source.sessionToken.trim() : '',
-    lastUserId: typeof source.lastUserId === 'string' ? source.lastUserId.trim() : '',
-    lastLicenseId: typeof source.lastLicenseId === 'string' ? source.lastLicenseId.trim() : '',
+    sessionToken: sourceSessionToken || (devBypassDefaults.enabled ? devBypassDefaults.sessionToken : ''),
+    lastUserId: sourceLastUserId || (devBypassDefaults.enabled ? devBypassDefaults.lastUserId : ''),
+    lastLicenseId: sourceLastLicenseId || (devBypassDefaults.enabled ? devBypassDefaults.lastLicenseId : ''),
     lastSyncedAt: typeof source.lastSyncedAt === 'string' ? source.lastSyncedAt : '',
     remoteServiceCapacity: source.remoteServiceCapacity && typeof source.remoteServiceCapacity === 'object'
       ? source.remoteServiceCapacity

@@ -2,6 +2,7 @@ import studioMenuConfig from '../../../shared/studio-menu-config.json'
 
 const BROWSER_STUDIO_KEY = 'qiuai-browser-studio'
 const BROWSER_PROMPTS_KEY = 'qiuai-browser-prompts'
+const BROWSER_PROJECT_TEMPLATES_KEY = 'qiuai-browser-project-templates'
 const BROWSER_USER_AGREEMENT_KEY = 'qiuai-browser-user-agreement'
 const BROWSER_CREDIT_HISTORY_LIMIT = 20
 const BROWSER_RUNTIME_MENU_KEYS = new Set(studioMenuConfig.runtimeTaskMenuKeys || ['workspace', 'series-generate', 'video-generate'])
@@ -69,7 +70,8 @@ const defaultBrowserActivationState = {
 }
 
 const defaultBrowserUserAgreementState = {
-  version: 'QIUAI-ECMS-USER-NOTICE-v1.0',
+  title: '用户须知与使用协议暨责任认定书',
+  version: 'QIUAI-ECMS-USER-NOTICE-v4.0',
   accepted: false,
   acceptedAt: '',
   shouldShow: false,
@@ -350,6 +352,107 @@ function normalizeBrowserPromptTemplate(template = {}) {
   }
 }
 
+function getBrowserProjectTemplates() {
+  return readBrowserState(BROWSER_PROJECT_TEMPLATES_KEY, [])
+}
+
+function saveBrowserProjectTemplates(templates = []) {
+  writeBrowserState(BROWSER_PROJECT_TEMPLATES_KEY, Array.isArray(templates) ? templates : [])
+  return getBrowserProjectTemplates()
+}
+
+function saveBrowserProjectTemplateFromProject(payload = {}) {
+  const snapshot = getBrowserStudioSnapshot()
+  const project = (snapshot.productProjects || []).find((item) => item.id === payload.projectId)
+  if (!project) {
+    throw new Error('Project was not found.')
+  }
+
+  const template = {
+    id: `browser-project-template-${Date.now()}`,
+    projectId: String(project.id || ''),
+    name: String(payload.name || project.name || project.baseInfo?.productName || '未命名模板').trim(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    sourceImage: project.assets?.sourceImages?.[0] || null,
+    generatedTitle: String(project.content?.selectedTitle || '').trim(),
+    generatedDescription: String(project.content?.selectedDescription || '').trim(),
+    generatedImages: Array.isArray(project.assets?.generatedImages) ? project.assets.generatedImages : [],
+    generatedVideo: project.assets?.generatedVideo || null,
+    parameters: {
+      title: {
+        prompt: String(project.generationConfig?.titlePrompt || '').trim(),
+        maxChars: Number(project.generationConfig?.titleMaxChars || 0) || 0,
+        quantity: Number(project.generationConfig?.titleQuantity || 0) || 0
+      },
+      description: {
+        prompt: String(project.generationConfig?.descriptionPrompt || '').trim(),
+        maxChars: Number(project.generationConfig?.descriptionMaxChars || 0) || 0,
+        quantity: Number(project.generationConfig?.descriptionQuantity || 0) || 0
+      },
+      image: {
+        prompt: String(project.generationConfig?.imagePrompt || '').trim(),
+        templateId: String(project.generationConfig?.imageTemplateId || '').trim(),
+        model: String(project.generationConfig?.imageModel || '').trim(),
+        size: String(project.generationConfig?.imageSize || '').trim(),
+        generateCount: Number(project.generationConfig?.generateCount || 0) || 0
+      },
+      video: {
+        prompt: String(project.generationConfig?.videoPrompt || '').trim(),
+        templateId: String(project.generationConfig?.videoTemplateId || '').trim(),
+        model: String(project.generationConfig?.videoModel || '').trim(),
+        duration: String(project.generationConfig?.videoDuration || '').trim(),
+        resolution: String(project.generationConfig?.videoResolution || '').trim(),
+        motionStrength: String(project.generationConfig?.videoMotionStrength || '').trim(),
+        aspectRatio: String(project.generationConfig?.videoAspectRatio || '').trim()
+      }
+    },
+    summary: {
+      productName: String(project.baseInfo?.productName || project.name || '').trim(),
+      language: String(project.baseInfo?.language || '').trim(),
+      platformTargetsText: Array.isArray(project.platformTarget) ? project.platformTarget.join(', ') : ''
+    }
+  }
+
+  const nextTemplates = [template, ...getBrowserProjectTemplates()]
+  saveBrowserProjectTemplates(nextTemplates)
+  return template
+}
+
+function updateBrowserProjectTemplate(payload = {}) {
+  const currentTemplates = getBrowserProjectTemplates()
+  const targetId = String(payload.id || '').trim()
+  const currentTemplate = currentTemplates.find((item) => item.id === targetId)
+  if (!currentTemplate) {
+    throw new Error('Template was not found.')
+  }
+
+  const nextTemplate = {
+    ...currentTemplate,
+    ...JSON.parse(JSON.stringify(payload)),
+    id: currentTemplate.id,
+    updatedAt: new Date().toISOString()
+  }
+  const nextTemplates = [nextTemplate, ...currentTemplates.filter((item) => item.id !== targetId)]
+  saveBrowserProjectTemplates(nextTemplates)
+  return nextTemplate
+}
+
+function removeBrowserProjectTemplate(payload = {}) {
+  const targetId = String(payload.id || '').trim()
+  saveBrowserProjectTemplates(getBrowserProjectTemplates().filter((item) => item.id !== targetId))
+  return { ok: true }
+}
+
+function applyBrowserProjectTemplate(payload = {}) {
+  const targetId = String(payload.id || '').trim()
+  const template = getBrowserProjectTemplates().find((item) => item.id === targetId)
+  if (!template) {
+    throw new Error('Template was not found.')
+  }
+  return template
+}
+
 function migrateLegacyBrowserPromptTemplate(template = {}) {
   const normalized = normalizeBrowserPromptTemplate(template)
 
@@ -486,6 +589,46 @@ export function removePromptTemplate (payload) {
   return invoke(getChannel('PROMPTS_REMOVE'), payload)
 }
 
+export function listProjectTemplates () {
+  if (!hasBridge()) {
+    return Promise.resolve(getBrowserProjectTemplates())
+  }
+
+  return invoke(getChannel('PROJECT_TEMPLATES_LIST'))
+}
+
+export function saveProjectTemplateFromProject (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(saveBrowserProjectTemplateFromProject(payload))
+  }
+
+  return invoke(getChannel('PROJECT_TEMPLATES_SAVE_FROM_PROJECT'), payload)
+}
+
+export function updateProjectTemplate (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(updateBrowserProjectTemplate(payload))
+  }
+
+  return invoke(getChannel('PROJECT_TEMPLATES_UPDATE'), payload)
+}
+
+export function removeProjectTemplate (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(removeBrowserProjectTemplate(payload))
+  }
+
+  return invoke(getChannel('PROJECT_TEMPLATES_REMOVE'), payload)
+}
+
+export function applyProjectTemplate (payload) {
+  if (!hasBridge()) {
+    return Promise.resolve(applyBrowserProjectTemplate(payload))
+  }
+
+  return invoke(getChannel('PROJECT_TEMPLATES_APPLY'), payload)
+}
+
 export function getStudioSnapshot () {
   if (!hasBridge()) {
     return Promise.resolve(getBrowserStudioSnapshot())
@@ -560,6 +703,14 @@ export function activateRemoteLicense (payload) {
   }
 
   return invoke(getChannel('LICENSE_REMOTE_ACTIVATE'), payload)
+}
+
+export function clearLocalAuthorization () {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('LICENSE_CLEAR_LOCAL_AUTH'))
 }
 
 export function listSoftwarePackages () {

@@ -22,13 +22,39 @@ function buildNextAction(status = '') {
   return 'activate-license'
 }
 
+function trimString(value = '') {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function isTruthyEnvValue(value = '') {
+  const normalizedValue = trimString(value).toLowerCase()
+  return normalizedValue === '1' || normalizedValue === 'true' || normalizedValue === 'yes' || normalizedValue === 'on'
+}
+
+function isDevBypassLicenseEnabled() {
+  return isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || '')
+}
+
+function buildDevBypassConfig() {
+  return {
+    enabled: isDevBypassLicenseEnabled(),
+    sessionToken: trimString(process.env.DEV_PLATFORM_SESSION_TOKEN),
+    userId: trimString(process.env.DEV_TEST_USER_ID) || 'dev-user',
+    licenseId: trimString(process.env.DEV_TEST_LICENSE_ID) || 'dev-license',
+    customerName: trimString(process.env.DEV_TEST_USER_NAME) || 'Dev Test User',
+    inviteCode: trimString(process.env.DEV_TEST_INVITE_CODE),
+    activatedAt: trimString(process.env.DEV_TEST_ACTIVATED_AT) || '2026-01-01T00:00:00.000Z',
+    expiresAt: trimString(process.env.DEV_TEST_EXPIRES_AT) || '2099-12-31T23:59:59.999Z'
+  }
+}
+
 function buildPersistedAuthPlatformPatch(remoteConfig = {}, remoteStatus = {}, remoteServiceCapacity = null) {
   return {
     ...remoteConfig,
     enabled: true,
-    sessionToken: String(remoteStatus?.sessionToken || remoteConfig?.sessionToken || '').trim(),
-    lastUserId: String(remoteStatus?.userId || '').trim(),
-    lastLicenseId: String(remoteStatus?.licenseId || '').trim(),
+    sessionToken: trimString(remoteStatus?.sessionToken || remoteConfig?.sessionToken || ''),
+    lastUserId: trimString(remoteStatus?.userId || ''),
+    lastLicenseId: trimString(remoteStatus?.licenseId || ''),
     lastSyncedAt: new Date().toISOString(),
     remoteServiceCapacity: remoteServiceCapacity || null
   }
@@ -54,29 +80,30 @@ function createAuthorizationState(overrides = {}) {
     message: '',
     nextAction: 'activate-license',
     remoteStatus: '',
+    devBypassLicense: false,
     ...overrides
   }
 }
 
 function mapRemoteActivationState(remoteStatus = {}) {
-  const normalizedStatus = String(remoteStatus?.status || '').trim() || 'not_logged_in'
+  const normalizedStatus = trimString(remoteStatus?.status || '') || 'not_logged_in'
   return createAuthorizationState({
     status: normalizedStatus,
-    mode: String(remoteStatus?.mode || 'server-license').trim() || 'server-license',
-    authType: String(remoteStatus?.authType || 'session-token').trim() || 'session-token',
+    mode: trimString(remoteStatus?.mode || 'server-license') || 'server-license',
+    authType: trimString(remoteStatus?.authType || 'session-token') || 'session-token',
     canUseApp: remoteStatus?.canUseApp === true || normalizedStatus === 'activated',
-    customerName: String(remoteStatus?.customerName || '').trim(),
-    userId: String(remoteStatus?.userId || '').trim(),
-    licenseId: String(remoteStatus?.licenseId || '').trim(),
-    inviteCode: String(remoteStatus?.inviteCode || '').trim(),
-    deviceCode: String(remoteStatus?.deviceCode || '').trim(),
-    activatedAt: String(remoteStatus?.activatedAt || '').trim(),
-    expiresAt: String(remoteStatus?.expiresAt || '').trim(),
-    sessionToken: String(remoteStatus?.sessionToken || '').trim(),
+    customerName: trimString(remoteStatus?.customerName || ''),
+    userId: trimString(remoteStatus?.userId || ''),
+    licenseId: trimString(remoteStatus?.licenseId || ''),
+    inviteCode: trimString(remoteStatus?.inviteCode || ''),
+    deviceCode: trimString(remoteStatus?.deviceCode || ''),
+    activatedAt: trimString(remoteStatus?.activatedAt || ''),
+    expiresAt: trimString(remoteStatus?.expiresAt || ''),
+    sessionToken: trimString(remoteStatus?.sessionToken || ''),
     walletSummary: remoteStatus?.walletSummary || null,
     activePackage: remoteStatus?.activePackage || null,
-    message: String(remoteStatus?.message || '').trim(),
-    nextAction: String(remoteStatus?.nextAction || buildNextAction(normalizedStatus)).trim(),
+    message: trimString(remoteStatus?.message || ''),
+    nextAction: trimString(remoteStatus?.nextAction || buildNextAction(normalizedStatus)),
     remoteStatus: normalizedStatus
   })
 }
@@ -91,10 +118,36 @@ function createAuthorizationService({
     throw new Error('remoteLicensePlatformClient is required.')
   }
 
+  async function getDevBypassActivationStatus() {
+    const devConfig = buildDevBypassConfig()
+    if (!devConfig.enabled) {
+      return null
+    }
+
+    return createAuthorizationState({
+      status: 'activated',
+      mode: 'dev-bypass',
+      authType: 'dev-session-token',
+      canUseApp: true,
+      customerName: devConfig.customerName,
+      userId: devConfig.userId,
+      licenseId: devConfig.licenseId,
+      inviteCode: devConfig.inviteCode,
+      deviceCode: trimString(await getDeviceCode()),
+      activatedAt: devConfig.activatedAt,
+      expiresAt: devConfig.expiresAt,
+      sessionToken: devConfig.sessionToken,
+      message: 'development license bypass enabled',
+      nextAction: 'enter-app',
+      remoteStatus: 'activated',
+      devBypassLicense: true
+    })
+  }
+
   async function getRemoteActivationStatus() {
     const remoteConfig = getRemoteConfig() || {}
     const enabled = remoteConfig.enabled !== false
-    const sessionToken = String(remoteConfig.sessionToken || '').trim()
+    const sessionToken = trimString(remoteConfig.sessionToken || '')
 
     if (!enabled || !sessionToken) {
       return createAuthorizationState({
@@ -140,7 +193,7 @@ function createAuthorizationService({
         authType: 'session-token',
         canUseApp: false,
         deviceCode: await getDeviceCode(),
-        message: String(error?.message || 'remote license platform unavailable').trim(),
+        message: trimString(error?.message || 'remote license platform unavailable'),
         nextAction: 'activate-license',
         remoteStatus: 'request_failed',
         remoteServiceCapacity: getRemoteConfig()?.remoteServiceCapacity || null
@@ -149,12 +202,17 @@ function createAuthorizationService({
   }
 
   async function getActivationStatus() {
+    const devBypassActivationStatus = await getDevBypassActivationStatus()
+    if (devBypassActivationStatus) {
+      return devBypassActivationStatus
+    }
+
     return getRemoteActivationStatus()
   }
 
   async function getDeviceCodePayload() {
     return {
-      deviceCode: String(await getDeviceCode()).trim()
+      deviceCode: trimString(await getDeviceCode())
     }
   }
 
@@ -166,5 +224,6 @@ function createAuthorizationService({
 
 module.exports = {
   createAuthorizationService,
-  createAuthorizationState
+  createAuthorizationState,
+  isDevBypassLicenseEnabled
 }

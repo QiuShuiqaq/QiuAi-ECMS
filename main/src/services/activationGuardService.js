@@ -1,12 +1,14 @@
-const { isAgreementAcceptedForActivation } = require('./userAgreementService')
-
-function createActivationGuardService({ authorizationService, settingsService }) {
+function createActivationGuardService({ authorizationService, settingsService, remoteLicensePlatformClient }) {
   if (!authorizationService || typeof authorizationService.getActivationStatus !== 'function') {
     throw new Error('authorizationService is required.')
   }
 
   if (!settingsService || typeof settingsService.getSettings !== 'function') {
     throw new Error('settingsService is required.')
+  }
+
+  if (!remoteLicensePlatformClient || typeof remoteLicensePlatformClient.getUserAgreementStatus !== 'function') {
+    throw new Error('remoteLicensePlatformClient is required.')
   }
 
   async function getActivationStatus() {
@@ -16,12 +18,20 @@ function createActivationGuardService({ authorizationService, settingsService })
   async function assertActivated() {
     const activationStatus = await getActivationStatus()
     if (!activationStatus.canUseApp && activationStatus.status !== 'activated') {
-      throw new Error(activationStatus.message || '未检测到有效授权')
+      throw new Error(activationStatus.message || 'No valid authorization was detected.')
     }
 
-    const agreementRecord = settingsService.getSettings()?.compliance?.userAgreement || {}
-    if (!isAgreementAcceptedForActivation(agreementRecord, activationStatus)) {
-      const error = new Error('请先阅读并同意用户须知后再使用软件。')
+    if (activationStatus?.devBypassLicense === true) {
+      return activationStatus
+    }
+
+    const sessionToken = String(settingsService.getSettings()?.authPlatform?.sessionToken || '').trim()
+    const agreementState = sessionToken
+      ? await remoteLicensePlatformClient.getUserAgreementStatus({ sessionToken }).catch(() => null)
+      : null
+
+    if (agreementState?.accepted !== true) {
+      const error = new Error('User agreement must be accepted before using the app.')
       error.code = 'USER_AGREEMENT_REQUIRED'
       throw error
     }

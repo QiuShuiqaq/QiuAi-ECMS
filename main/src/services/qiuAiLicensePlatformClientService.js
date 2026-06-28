@@ -67,6 +67,13 @@ function normalizeRechargeOrderPayload(payload = {}) {
   }
 }
 
+function normalizeUserAgreementAcceptPayload(payload = {}) {
+  return {
+    sessionToken: trimString(payload.sessionToken),
+    agreementVersion: trimString(payload.agreementVersion)
+  }
+}
+
 function normalizeSelectionSitesPayload (payload = {}) {
   return {
     platform: trimString(payload.platform),
@@ -320,6 +327,20 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function getUserAgreementStatus({ sessionToken = '' } = {}) {
+    return request('get', '/api/activation/agreement-status', {
+      params: {
+        sessionToken: trimString(sessionToken)
+      }
+    })
+  }
+
+  async function acceptUserAgreement(payload = {}) {
+    return request('post', '/api/activation/agreement-accept', {
+      data: normalizeUserAgreementAcceptPayload(payload)
+    })
+  }
+
   async function listSoftwarePackages({ sessionToken = '' } = {}) {
     return request('get', '/api/packages', {
       params: {
@@ -503,7 +524,9 @@ function createQiuAiLicensePlatformClientService({
 
   const activation = {
     getStatus: getAuthorizationStatus,
-    activate: activateLicense
+    activate: activateLicense,
+    getUserAgreementStatus,
+    acceptUserAgreement
   }
 
   const wallet = {
@@ -567,12 +590,14 @@ function createQiuAiLicensePlatformClientService({
     generation,
     publish,
     activateLicense,
+    acceptUserAgreement,
     createComputePackageOrder,
     createGenerationJob,
     createRechargeOrder,
     createSoftwareOrder,
     downloadGenerationArtifact,
     getAuthorizationStatus,
+    getUserAgreementStatus,
     getComputePackageOrder,
     getGenerationJob,
     getPublishClientConfig,

@@ -179,6 +179,7 @@ describe('App source', () => {
     expect(source).toContain(':current-compute-package-order="currentComputePackageOrder"')
     expect(source).toContain('<AuthorizationPurchaseModal')
     expect(source).toContain('<UserAgreementModal')
+    expect(source).toContain('<PurchaseCenterPage')
     expect(source).toContain('@submit-order="handleCreateSoftwareOrder"')
     expect(source).toContain('@accept="handleAcceptUserAgreement"')
     expect(source).not.toContain('embeddedPurchaseCenterRef')
@@ -192,6 +193,8 @@ describe('App source', () => {
     expect(source).toContain('rechargeOrderController = createRechargeOrderController({')
     expect(source).toContain('softwareOrderController = createSoftwareOrderController({')
     expect(source).toContain('computePackageOrderController = createComputePackageOrderController({')
+    expect(source).toContain('@purchase-license-click="openLicensePurchase"')
+    expect(source).toContain('@purchase-compute-click="openComputePurchase"')
 
     expect(overviewSource).toContain('DataCenterPage')
     expect(overviewSource).toContain('const walletCards = computed(() => {')

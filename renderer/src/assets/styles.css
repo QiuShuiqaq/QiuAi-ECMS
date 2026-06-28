@@ -3368,6 +3368,24 @@ textarea {
   background: linear-gradient(135deg, rgba(132, 247, 190, 0.18), rgba(108, 155, 255, 0.16));
   color: #f7fffb;
   font-weight: 600;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.topbar-recharge-button:hover {
+  border-color: rgba(132, 247, 190, 0.42);
+  background: linear-gradient(135deg, rgba(132, 247, 190, 0.28), rgba(108, 155, 255, 0.24));
+  box-shadow: 0 10px 24px rgba(22, 28, 48, 0.28);
+  transform: translateY(-1px);
+}
+
+.topbar-recharge-button--secondary {
+  border-color: rgba(118, 173, 255, 0.2);
+  background: linear-gradient(135deg, rgba(118, 173, 255, 0.16), rgba(255, 255, 255, 0.06));
+}
+
+.topbar-recharge-button--secondary:hover {
+  border-color: rgba(118, 173, 255, 0.38);
+  background: linear-gradient(135deg, rgba(118, 173, 255, 0.26), rgba(255, 255, 255, 0.1));
 }
 
 .sidebar-shell__groups {

@@ -10,7 +10,7 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['copy-device-code'])
+const emit = defineEmits(['copy-device-code', 'activate-permission', 'clear-permission'])
 
 function resolveField(value, fallback = '--') {
   const text = String(value || '').trim()
@@ -23,13 +23,13 @@ function resolveField(value, fallback = '--') {
     <header class="account-device-page__hero">
       <div>
         <span class="account-device-page__eyebrow">Account</span>
-        <h1>账号与设备</h1>
+        <h1>账户设备</h1>
       </div>
     </header>
 
     <div class="account-device-page__grid">
       <article class="account-device-page__card">
-        <span>客户名</span>
+        <span>用户名</span>
         <strong>{{ resolveField(activationState.customerName) }}</strong>
       </article>
       <article class="account-device-page__card">
@@ -49,7 +49,17 @@ function resolveField(value, fallback = '--') {
     <section class="account-device-page__panel">
       <header class="account-device-page__panel-header">
         <strong>设备</strong>
-        <button class="secondary-action" type="button" @click="emit('copy-device-code')">复制设备码</button>
+        <div class="account-device-page__panel-actions">
+          <button class="secondary-action" type="button" @click="emit('activate-permission')">
+            权限激活
+          </button>
+          <button class="secondary-action" type="button" @click="emit('clear-permission')">
+            权限解除
+          </button>
+          <button class="secondary-action" type="button" @click="emit('copy-device-code')">
+            复制设备码
+          </button>
+        </div>
       </header>
       <div class="account-device-page__detail-list">
         <div>
@@ -154,6 +164,12 @@ function resolveField(value, fallback = '--') {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+.account-device-page__panel-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .account-device-page__detail-list {

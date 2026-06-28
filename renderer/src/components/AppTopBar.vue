@@ -13,14 +13,10 @@ defineProps({
   rechargeEnabled: {
     type: Boolean,
     default: false
-  },
-  purchaseLabel: {
-    type: String,
-    default: '购买授权'
   }
 })
 
-const emit = defineEmits(['cleanup-click', 'recharge-click'])
+const emit = defineEmits(['cleanup-click', 'purchase-license-click', 'purchase-compute-click', 'purchase-recharge-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -78,8 +74,16 @@ function closeContactPreview() {
     </div>
 
     <div class="topbar-right-actions">
-      <button class="topbar-recharge-button" type="button" @click="emit('recharge-click')">
-        {{ purchaseLabel }}
+      <button class="topbar-recharge-button" type="button" @click="emit('purchase-license-click')">
+        授权购买
+      </button>
+
+      <button class="topbar-recharge-button topbar-recharge-button--secondary" type="button" @click="emit('purchase-compute-click')">
+        算力购买
+      </button>
+
+      <button class="topbar-recharge-button topbar-recharge-button--secondary" type="button" @click="emit('purchase-recharge-click')">
+        算力直充
       </button>
 
       <div v-if="activationSummary" class="topbar-activation-pill">

@@ -1,16 +1,20 @@
 {
   "runtimeTaskMenuKeys": ["workspace", "series-generate", "video-generate"],
   "runtimeTaskMenuItems": [
-    { "key": "workspace", "label": "工作台" },
+    { "key": "workspace", "label": "工作中心" },
     { "key": "series-generate", "label": "套图生成" },
     { "key": "video-generate", "label": "视频生成" }
   ],
   "primaryMenuItems": [
-    { "key": "workbench", "label": "工作台", "section": "主功能" },
-    { "key": "purchase-center", "label": "充值中心", "section": "主功能" },
-    { "key": "prompt-library", "label": "提示词", "section": "支持" },
-    { "key": "account-device", "label": "账号设备", "section": "支持" },
-    { "key": "settings-center", "label": "设置", "section": "支持" }
+    { "key": "work-center", "label": "工作中心", "section": "工作区" },
+    { "key": "data-center", "label": "数据中心", "section": "工作区" },
+    { "key": "template-center", "label": "模板中心", "section": "工作区" },
+    { "key": "title-generate", "label": "标题生成", "section": "生成区" },
+    { "key": "description-generate", "label": "描述生成", "section": "生成区" },
+    { "key": "series-generate", "label": "套图生成", "section": "生成区" },
+    { "key": "video-generate", "label": "视频生成", "section": "生成区" },
+    { "key": "prompt-library", "label": "提示词库", "section": "支持区" },
+    { "key": "account-device", "label": "账户设备", "section": "支持区" }
   ],
   "generatorViews": {
     "title-generate": {

@@ -35,10 +35,12 @@ describe('component sources', () => {
     const agreementModalSource = readSource('renderer/src/components/UserAgreementModal.vue')
 
     expect(topbarSource).toContain('cleanup-click')
-    expect(topbarSource).toContain('recharge-click')
+    expect(topbarSource).toContain('purchase-license-click')
+    expect(topbarSource).toContain('purchase-compute-click')
     expect(topbarSource).toContain('contact-preview-modal')
     expect(topbarSource).toContain('topbar-clean-button')
-    expect(topbarSource).toContain('purchaseLabel')
+    expect(topbarSource).toContain('授权购买')
+    expect(topbarSource).toContain('算力购买')
     expect(topbarSource).not.toContain('theme-change')
 
     expect(activationSource).toContain('statusText')

@@ -94,6 +94,42 @@ describe('settingsStoreService', () => {
     })
   })
 
+  it('injects dev bypass auth defaults when the local bypass flag is enabled', async () => {
+    const previousEnv = {
+      DEV_BYPASS_LICENSE: process.env.DEV_BYPASS_LICENSE,
+      DEV_PLATFORM_SESSION_TOKEN: process.env.DEV_PLATFORM_SESSION_TOKEN,
+      DEV_TEST_USER_ID: process.env.DEV_TEST_USER_ID,
+      DEV_TEST_LICENSE_ID: process.env.DEV_TEST_LICENSE_ID
+    }
+
+    process.env.DEV_BYPASS_LICENSE = 'true'
+    process.env.DEV_PLATFORM_SESSION_TOKEN = 'dev-session-1'
+    process.env.DEV_TEST_USER_ID = 'dev-user-1'
+    process.env.DEV_TEST_LICENSE_ID = 'dev-license-1'
+
+    try {
+      const store = createMemoryStore()
+
+      const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+      const service = createSettingsStoreService({ store })
+
+      expect(service.getSettings().authPlatform).toMatchObject({
+        enabled: true,
+        sessionToken: 'dev-session-1',
+        lastUserId: 'dev-user-1',
+        lastLicenseId: 'dev-license-1'
+      })
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (typeof value === 'undefined') {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  })
+
   it('rejects invalid workspace upload directories and accepts clearing them', async () => {
     const store = createMemoryStore()
 

@@ -19,23 +19,39 @@ const emit = defineEmits([
 ])
 
 const isTitleMode = computed(() => props.textKind === 'title')
-const quantityField = computed(() => isTitleMode.value ? 'titleQuantity' : 'descriptionQuantity')
-const maxCharsField = computed(() => isTitleMode.value ? 'titleMaxChars' : 'descriptionMaxChars')
-const promptField = computed(() => isTitleMode.value ? 'titlePrompt' : 'descriptionPrompt')
-const selectedText = computed(() => {
-  return isTitleMode.value
-    ? String(props.draft.selectedTitle || '').trim()
-    : String(props.draft.selectedDescription || '').trim()
-})
+const quantityField = computed(() => (isTitleMode.value ? 'titleQuantity' : 'descriptionQuantity'))
+const maxCharsField = computed(() => (isTitleMode.value ? 'titleMaxChars' : 'descriptionMaxChars'))
+const promptField = computed(() => (isTitleMode.value ? 'titlePrompt' : 'descriptionPrompt'))
+const selectedField = computed(() => (isTitleMode.value ? 'selectedTitle' : 'selectedDescription'))
 
 const filteredTemplates = computed(() => {
   const category = isTitleMode.value ? '标题' : '描述'
   return (props.promptTemplates || []).filter((item) => item.category === category)
 })
 
-const currentPromptValue = computed(() => props.draft[promptField.value] || '')
+const currentPromptValue = computed(() => String(props.draft[promptField.value] || ''))
 const currentQuantity = computed(() => Math.max(1, Number(props.draft[quantityField.value]) || 1))
 const currentMaxChars = computed(() => Math.max(1, Number(props.draft[maxCharsField.value]) || 1))
+const selectedText = computed(() => String(props.draft[selectedField.value] || '').trim())
+
+const resultCards = computed(() => {
+  return (props.resultItems || []).map((item, index) => ({
+    id: item.id || `text-result-${index + 1}`,
+    title: item.title || `${props.title} ${index + 1}`,
+    content: String(item.content || '').trim(),
+    isSelected: String(item.content || '').trim() === selectedText.value
+  }))
+})
+
+const exportCards = computed(() => {
+  return (props.exportItems || []).map((item, index) => ({
+    id: item.id || `text-export-${index + 1}`,
+    name: item.name || item.groupTitle || `导出结果 ${index + 1}`,
+    status: item.status || '已保存',
+    itemCount: Number(item.itemCount || 0),
+    raw: item
+  }))
+})
 
 function updateField(field, value) {
   emit('update-draft', { field, value })
@@ -45,219 +61,212 @@ function handleTemplateChange(templateId) {
   const template = filteredTemplates.value.find((item) => item.id === templateId)
   updateField(promptField.value, template?.prompt || '')
 }
+
+function handleExportAll() {
+  emit('export-results', {
+    selectedExportIds: exportCards.value.map((item) => item.id)
+  })
+}
 </script>
 
 <template>
-  <section class="text-generator-page">
-    <article class="text-generator-page__panel">
-      <header class="text-generator-page__header">
+  <section class="generator-studio-page text-studio-page">
+    <article class="generator-column generator-column--settings">
+      <header class="generator-column__header">
         <strong>参数设置</strong>
         <h2>{{ title }}</h2>
       </header>
 
-      <div class="text-generator-page__form">
-        <label class="text-generator-page__field">
-          <span>任务名称</span>
-          <input :value="draft.taskName || ''" type="text" @input="updateField('taskName', $event.target.value)">
-        </label>
-
-        <label class="text-generator-page__field">
-          <span>商品名称</span>
-          <input :value="draft.productName || ''" type="text" @input="updateField('productName', $event.target.value)">
-        </label>
-
-        <label class="text-generator-page__field">
-          <span>目标平台</span>
-          <input :value="draft.platformTargetsText || ''" type="text" @input="updateField('platformTargetsText', $event.target.value)">
-        </label>
-
-        <label class="text-generator-page__field">
-          <span>语言</span>
-          <input :value="draft.language || 'zh-CN'" type="text" @input="updateField('language', $event.target.value)">
-        </label>
-
-        <label class="text-generator-page__field text-generator-page__field--full">
-          <span>关键词</span>
-          <input :value="draft.keywordsText || ''" type="text" @input="updateField('keywordsText', $event.target.value)">
-        </label>
-
-        <div class="text-generator-page__grid">
-          <label class="text-generator-page__field">
-            <span>生成数量</span>
-            <input :value="currentQuantity" type="number" min="1" max="50" @input="updateField(quantityField, $event.target.value)">
-          </label>
-
-          <label class="text-generator-page__field">
-            <span>最大字数</span>
-            <input :value="currentMaxChars" type="number" min="1" max="500" @input="updateField(maxCharsField, $event.target.value)">
-          </label>
-
-          <label class="text-generator-page__field text-generator-page__field--full">
-            <span>提示词模板</span>
-            <select @change="handleTemplateChange($event.target.value)">
-              <option value="">选择模板</option>
-              <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
-            </select>
-          </label>
+      <div class="generator-form">
+        <div class="generator-form__group">
+          <div class="generator-form__row">
+            <span class="generator-form__label">任务名称</span>
+            <input :value="draft.taskName || ''" type="text" placeholder="任务名称" @input="updateField('taskName', $event.target.value)">
+          </div>
+          <div class="generator-form__row">
+            <span class="generator-form__label">商品名称</span>
+            <input :value="draft.productName || ''" type="text" placeholder="商品名称" @input="updateField('productName', $event.target.value)">
+          </div>
         </div>
 
-        <label class="text-generator-page__field text-generator-page__field--full">
-          <span>任务要求</span>
-          <textarea :value="currentPromptValue" rows="8" @input="updateField(promptField, $event.target.value)"></textarea>
-        </label>
+        <div class="generator-form__group">
+          <div class="generator-form__row">
+            <span class="generator-form__label">目标平台</span>
+            <input :value="draft.platformTargetsText || ''" type="text" placeholder="如 Amazon / Temu / Shopee" @input="updateField('platformTargetsText', $event.target.value)">
+          </div>
+          <div class="generator-form__row">
+            <span class="generator-form__label">语言</span>
+            <input :value="draft.language || 'zh-CN'" type="text" placeholder="zh-CN" @input="updateField('language', $event.target.value)">
+          </div>
+        </div>
+
+        <div class="generator-form__row">
+          <span class="generator-form__label">关键词</span>
+          <input :value="draft.keywordsText || ''" type="text" placeholder="关键词，用逗号分隔" @input="updateField('keywordsText', $event.target.value)">
+        </div>
+
+        <div class="generator-form__group">
+          <div class="generator-form__row">
+            <span class="generator-form__label">生成数量</span>
+            <input :value="currentQuantity" type="number" min="1" max="50" @input="updateField(quantityField, $event.target.value)">
+          </div>
+          <div class="generator-form__row">
+            <span class="generator-form__label">最大字数</span>
+            <input :value="currentMaxChars" type="number" min="1" max="500" @input="updateField(maxCharsField, $event.target.value)">
+          </div>
+        </div>
+
+        <div class="generator-form__row">
+          <span class="generator-form__label">提示词模板</span>
+          <select @change="handleTemplateChange($event.target.value)">
+            <option value="">选择模板</option>
+            <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
+          </select>
+        </div>
+
+        <div class="generator-form__card">
+          <textarea :value="currentPromptValue" rows="12" placeholder="输入标题或描述生成要求" @input="updateField(promptField, $event.target.value)"></textarea>
+        </div>
 
         <button class="primary-action" type="button" @click="emit('submit-task')">生成</button>
       </div>
     </article>
 
-    <article class="text-generator-page__panel">
-      <header class="text-generator-page__header">
-        <strong>结果</strong>
-        <h2>{{ resultItems.length }} 条</h2>
+    <article class="generator-column generator-column--preview">
+      <header class="generator-column__header">
+        <strong>结果预览</strong>
+        <h2>{{ resultCards.length }} 条</h2>
       </header>
 
-      <div v-if="selectedText" class="text-generator-page__selected">
-        <span>当前采用</span>
-        <button class="secondary-action" type="button" @click="emit('copy-text', selectedText)">复制当前采用内容</button>
-      </div>
+      <div class="text-preview-layout">
+        <section v-if="selectedText" class="latest-task-progress text-preview__selected">
+          <header class="latest-task-progress__header">
+            <div>
+              <h3>当前采用内容</h3>
+            </div>
+            <button class="secondary-action" type="button" @click="emit('copy-text', selectedText)">复制</button>
+          </header>
+          <div class="generator-preview__text">{{ selectedText }}</div>
+        </section>
 
-      <div class="text-generator-page__result-list">
-        <article v-for="item in resultItems" :key="item.id" class="text-generator-page__result-card">
-          <div class="text-generator-page__result-copy">
-            <strong>{{ item.title || '结果' }}</strong>
-            <p>{{ item.content || '' }}</p>
+        <section class="latest-task-progress generator-preview-panel">
+          <header class="latest-task-progress__header">
+            <div>
+              <h3>候选结果</h3>
+            </div>
+          </header>
+
+          <div class="text-preview-list">
+            <article v-for="item in resultCards" :key="item.id" class="text-preview-card" :class="{ 'text-preview-card--selected': item.isSelected }">
+              <div class="text-preview-card__copy">
+                <strong>{{ item.title }}</strong>
+                <p>{{ item.content || '暂无内容' }}</p>
+              </div>
+              <button class="secondary-action" type="button" @click="emit('copy-text', item.content)">复制</button>
+            </article>
+
+            <div v-if="!resultCards.length" class="product-result-empty">
+              <span>暂无结果</span>
+            </div>
           </div>
-          <button class="secondary-action" type="button" @click="emit('copy-text', item.content || '')">复制</button>
-        </article>
-
-        <div v-if="!resultItems.length" class="text-generator-page__empty">暂无结果</div>
+        </section>
       </div>
     </article>
 
-    <article class="text-generator-page__panel">
-      <header class="text-generator-page__header">
-        <strong>导出</strong>
-        <h2>{{ exportItems.length }} 组</h2>
+    <article class="generator-column generator-column--export">
+      <header class="generator-column__header">
+        <strong>结果导出</strong>
+        <h2>{{ exportCards.length }} 组</h2>
       </header>
 
-      <div class="text-generator-page__export-list">
-        <article v-for="item in exportItems" :key="item.id" class="text-generator-page__export-card">
-          <div>
-            <strong>{{ item.name || item.groupTitle || '结果包' }}</strong>
-            <span>{{ item.status || '已保存' }}</span>
-          </div>
-          <button class="secondary-action" type="button" @click="emit('open-export-item', item)">打开</button>
-        </article>
+      <div class="generator-export">
+        <div v-if="exportCards.length" class="generator-export__list">
+          <article v-for="item in exportCards" :key="item.id" class="generator-export__item">
+            <div class="generator-export__copy">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.status }}{{ item.itemCount ? ` / ${item.itemCount}` : '' }}</span>
+            </div>
 
-        <div v-if="!exportItems.length" class="text-generator-page__empty">暂无导出包</div>
+            <button class="secondary-action" type="button" @click="emit('open-export-item', item.raw)">打开</button>
+          </article>
+        </div>
+
+        <div v-else class="product-result-empty product-result-empty--compact">
+          <span>暂无导出结果</span>
+        </div>
+
+        <div class="generator-export__actions">
+          <button class="primary-action" type="button" @click="handleExportAll">打包导出</button>
+        </div>
       </div>
-
-      <button class="primary-action" type="button" @click="emit('export-results')">打包导出</button>
     </article>
   </section>
 </template>
 
 <style scoped>
-.text-generator-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 320px;
-  gap: 18px;
+.text-studio-page .generator-column--preview {
+  min-width: 0;
 }
 
-.text-generator-page__panel {
+.text-preview-layout {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 22px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(14, 18, 30, 0.88);
 }
 
-.text-generator-page__header h2,
-.text-generator-page__header strong {
-  margin: 0;
+.text-preview__selected {
+  gap: 14px;
 }
 
-.text-generator-page__header {
+.text-preview-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
-.text-generator-page__form,
-.text-generator-page__result-list,
-.text-generator-page__export-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.text-generator-page__field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.text-generator-page__field span,
-.text-generator-page__selected span,
-.text-generator-page__export-card span {
-  color: rgba(205, 214, 238, 0.76);
-}
-
-.text-generator-page__field input,
-.text-generator-page__field select,
-.text-generator-page__field textarea {
-  width: 100%;
-}
-
-.text-generator-page__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.text-generator-page__field--full {
-  grid-column: 1 / -1;
-}
-
-.text-generator-page__selected,
-.text-generator-page__result-card,
-.text-generator-page__export-card {
+.text-preview-card {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 16px;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(9, 13, 23, 0.72);
 }
 
-.text-generator-page__result-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.text-preview-card--selected {
+  border-color: rgba(100, 186, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(100, 186, 255, 0.18) inset;
 }
 
-.text-generator-page__result-copy p {
+.text-preview-card__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-preview-card__copy strong {
+  color: rgba(246, 248, 252, 0.98);
+}
+
+.text-preview-card__copy p {
   margin: 0;
   color: rgba(226, 232, 244, 0.88);
   white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
 }
 
-.text-generator-page__export-card div {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.text-generator-page__empty {
-  padding: 20px 0;
-  color: rgba(205, 214, 238, 0.72);
+.product-result-empty--compact {
+  min-height: 120px;
 }
 
 @media (max-width: 1320px) {
-  .text-generator-page {
-    grid-template-columns: 1fr;
+  .text-preview-card {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

@@ -109,4 +109,59 @@ describe('authorization service', () => {
       effectiveImageConcurrency: 4
     })
   })
+
+  it('returns a local activated state when dev bypass is enabled', async () => {
+    const previousEnv = {
+      DEV_BYPASS_LICENSE: process.env.DEV_BYPASS_LICENSE,
+      DEV_PLATFORM_SESSION_TOKEN: process.env.DEV_PLATFORM_SESSION_TOKEN,
+      DEV_TEST_USER_ID: process.env.DEV_TEST_USER_ID,
+      DEV_TEST_LICENSE_ID: process.env.DEV_TEST_LICENSE_ID,
+      DEV_TEST_USER_NAME: process.env.DEV_TEST_USER_NAME
+    }
+
+    process.env.DEV_BYPASS_LICENSE = 'true'
+    process.env.DEV_PLATFORM_SESSION_TOKEN = 'dev-session-1'
+    process.env.DEV_TEST_USER_ID = 'dev-user-1'
+    process.env.DEV_TEST_LICENSE_ID = 'dev-license-1'
+    process.env.DEV_TEST_USER_NAME = 'Local Dev User'
+
+    try {
+      const remoteClient = {
+        getAuthorizationStatus: vi.fn()
+      }
+
+      const service = createAuthorizationService({
+        remoteLicensePlatformClient: remoteClient,
+        getRemoteConfig: () => ({
+          enabled: false,
+          sessionToken: ''
+        }),
+        getDeviceCode: vi.fn().mockResolvedValue('QAI-DEV-DEVICE')
+      })
+
+      const result = await service.getActivationStatus()
+
+      expect(remoteClient.getAuthorizationStatus).not.toHaveBeenCalled()
+      expect(result).toMatchObject({
+        status: 'activated',
+        mode: 'dev-bypass',
+        authType: 'dev-session-token',
+        canUseApp: true,
+        customerName: 'Local Dev User',
+        userId: 'dev-user-1',
+        licenseId: 'dev-license-1',
+        sessionToken: 'dev-session-1',
+        deviceCode: 'QAI-DEV-DEVICE',
+        devBypassLicense: true
+      })
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (typeof value === 'undefined') {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  })
 })

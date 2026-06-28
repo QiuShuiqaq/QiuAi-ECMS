@@ -1,6 +1,7 @@
 import {
   acceptUserAgreement,
   activateRemoteLicense,
+  clearLocalAuthorization,
   createComputePackageOrder,
   createPublishTask,
   createRechargeOrder,
@@ -10,8 +11,10 @@ import {
   deleteStudioProject,
   exportStudioProjectBundle,
   exportStudioResults,
+  applyProjectTemplate,
   getActivationStatus,
   getUserAgreementStatus,
+  listProjectTemplates,
   getComputePackageOrder,
   getPublishClientConfig,
   getPublishDraft,
@@ -33,17 +36,21 @@ import {
   openExternalResource,
   openOutputDirectory,
   pickStudioInputAssets,
+  removeProjectTemplate,
   removePromptTemplate,
   retryPublishTask,
+  saveProjectTemplateFromProject,
   savePromptTemplate,
   saveStudioDraft,
+  updateProjectTemplate,
   upsertPublishDraft,
   updateStudioProject
 } from './desktopBridge'
 
 export const activationClient = {
   getStatus: getActivationStatus,
-  activate: activateRemoteLicense
+  activate: activateRemoteLicense,
+  clearLocalAuth: clearLocalAuthorization
 }
 
 export const complianceClient = {
@@ -88,6 +95,14 @@ export const promptLibraryClient = {
   listTemplates: listPromptTemplates,
   saveTemplate: savePromptTemplate,
   removeTemplate: removePromptTemplate
+}
+
+export const projectTemplateClient = {
+  listTemplates: listProjectTemplates,
+  saveFromProject: saveProjectTemplateFromProject,
+  updateTemplate: updateProjectTemplate,
+  removeTemplate: removeProjectTemplate,
+  applyTemplate: applyProjectTemplate
 }
 
 export const workspaceClient = {

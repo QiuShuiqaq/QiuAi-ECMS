@@ -14,7 +14,7 @@ const props = defineProps({
 
 const emit = defineEmits(['menu-select'])
 
-const groupOrder = ['主功能', '支持']
+const groupOrder = ['工作区', '生成区', '支持区']
 
 const groupedMenuItems = computed(() => {
   return groupOrder

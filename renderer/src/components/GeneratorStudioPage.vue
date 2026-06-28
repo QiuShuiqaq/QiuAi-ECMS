@@ -644,3 +644,30 @@ function formatTaskLabel(task) {
     </article>
   </section>
 </template>
+
+<style scoped>
+.generator-column--export {
+  display: flex;
+  flex-direction: column;
+}
+
+.generator-export {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.generator-export__list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.generator-export__actions {
+  margin-top: auto;
+  padding-top: 16px;
+}
+</style>
