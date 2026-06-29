@@ -26,11 +26,16 @@ describe('studio menu contract source', () => {
       'video-generate'
     ])
     expect(config.primaryMenuItems.map((item) => item.key)).toEqual([
-      'workbench',
-      'purchase-center',
+      'work-center',
+      'selection-center',
+      'data-center',
+      'template-center',
+      'title-generate',
+      'description-generate',
+      'series-generate',
+      'video-generate',
       'prompt-library',
-      'account-device',
-      'settings-center'
+      'account-device'
     ])
     expect(Object.keys(config.generatorViews)).toEqual([
       'title-generate',
@@ -45,8 +50,8 @@ describe('studio menu contract source', () => {
 
     expect(appSource).toContain("import studioMenuConfig from '../../shared/studio-menu-config.json'")
     expect(appSource).toContain('const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)')
-    expect(appSource).toContain("const activeMenu = ref('workbench')")
-    expect(appSource).toContain("activeMenu.value === 'workbench' || activeMenu.value === 'generation-center'")
+    expect(appSource).toContain("const activeMenu = ref('work-center')")
+    expect(appSource).toContain("v-else-if=\"activeMenu === 'selection-center'\"")
     expect(generatorViewsSource).toContain("import studioMenuConfig from '../../../shared/studio-menu-config.json'")
     expect(generatorViewsSource).toContain('export const generatorViewMap = studioMenuConfig.generatorViews || {}')
     expect(generatorViewsSource).toContain('export const generatorShortcutOptions = Object.entries(generatorViewMap).map')

@@ -22,8 +22,6 @@ function createWorkspaceTaskExecutionService({
   normalizeProjectRuns,
   upsertProjectRun,
   workspaceProjectRunService,
-  settleCreditsForTask,
-  refundCreditsForTask,
   settingsService,
   safeRuntimeLog,
   runtimeLogger
@@ -280,15 +278,6 @@ function createWorkspaceTaskExecutionService({
         activeProjectRunId: currentProjectRunAfterExecution?.id || null
       })
 
-      const settledCreditState = settleCreditsForTask({
-        creditState: settingsService.getSettings().creditState,
-        taskId,
-        updatedAt: getNow()
-      })
-      await settingsService.saveSettings({
-        creditState: settledCreditState
-      })
-
       await safeRuntimeLog(runtimeLogger, {
         level: 'info',
         event: 'studio-task-succeeded',
@@ -326,15 +315,6 @@ function createWorkspaceTaskExecutionService({
             )
           : null,
         activeProjectRunId: currentProjectRun?.id || null
-      })
-
-      const refundedCreditState = refundCreditsForTask({
-        creditState: settingsService.getSettings().creditState,
-        taskId,
-        updatedAt: getNow()
-      })
-      await settingsService.saveSettings({
-        creditState: refundedCreditState
       })
 
       await safeRuntimeLog(runtimeLogger, {

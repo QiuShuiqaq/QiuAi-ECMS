@@ -32,7 +32,8 @@ function isTruthyEnvValue(value = '') {
 }
 
 function isDevBypassLicenseEnabled() {
-  return isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || '')
+  return isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || '') &&
+    Boolean(trimString(process.env.DEV_PLATFORM_SESSION_TOKEN))
 }
 
 function buildDevBypassConfig() {
@@ -57,6 +58,35 @@ function buildPersistedAuthPlatformPatch(remoteConfig = {}, remoteStatus = {}, r
     lastLicenseId: trimString(remoteStatus?.licenseId || ''),
     lastSyncedAt: new Date().toISOString(),
     remoteServiceCapacity: remoteServiceCapacity || null
+  }
+}
+
+function buildLoggedOutAuthPlatformPatch(remoteConfig = {}) {
+  return {
+    ...remoteConfig,
+    enabled: true,
+    sessionToken: '',
+    lastUserId: '',
+    lastLicenseId: '',
+    lastSyncedAt: new Date().toISOString(),
+    remoteServiceCapacity: null
+  }
+}
+
+function buildActivationPayloadFromPersistedConfig(remoteConfig = {}, deviceCode = '') {
+  const customerName = trimString(remoteConfig?.customerName || '')
+  const contact = trimString(remoteConfig?.contact || '')
+
+  if (!customerName || !contact) {
+    return null
+  }
+
+  return {
+    customerName,
+    contact,
+    inviteCode: trimString(remoteConfig?.inviteCode || ''),
+    deviceName: 'QiuAi Desktop',
+    deviceFingerprint: trimString(deviceCode)
   }
 }
 
@@ -108,6 +138,10 @@ function mapRemoteActivationState(remoteStatus = {}) {
   })
 }
 
+function shouldClearPersistedSessionForStatus(status = '') {
+  return ['not_logged_in', 'invalid', 'expired', 'device_mismatch'].includes(trimString(status))
+}
+
 function createAuthorizationService({
   remoteLicensePlatformClient,
   settingsService,
@@ -148,17 +182,18 @@ function createAuthorizationService({
     const remoteConfig = getRemoteConfig() || {}
     const enabled = remoteConfig.enabled !== false
     const sessionToken = trimString(remoteConfig.sessionToken || '')
+    const deviceCode = await getDeviceCode()
 
     if (!enabled || !sessionToken) {
       return createAuthorizationState({
-        deviceCode: await getDeviceCode()
+        deviceCode
       })
     }
 
     try {
       const remoteStatus = await remoteLicensePlatformClient.getAuthorizationStatus({
         sessionToken,
-        deviceFingerprint: await getDeviceCode()
+        deviceFingerprint: deviceCode
       })
 
       let remoteServiceCapacity = null
@@ -182,22 +217,84 @@ function createAuthorizationService({
         }).catch(() => {})
       }
 
+      if (shouldClearPersistedSessionForStatus(remoteStatus?.status)) {
+        if (settingsService && typeof settingsService.saveSettings === 'function') {
+          await settingsService.saveSettings({
+            authPlatform: buildLoggedOutAuthPlatformPatch(remoteConfig)
+          }).catch(() => {})
+        }
+      }
+
       return {
         ...mapRemoteActivationState(remoteStatus),
         remoteServiceCapacity
       }
     } catch (error) {
+      const statusCode = Number(error?.details?.statusCode || 0)
+      const shouldRetryActivate = statusCode === 401
+      const shouldClearPersistedSession = statusCode === 401 || statusCode === 404
+
+      if (shouldRetryActivate && typeof remoteLicensePlatformClient.activateLicense === 'function') {
+        const activationPayload = buildActivationPayloadFromPersistedConfig(remoteConfig, deviceCode)
+
+        if (activationPayload) {
+          try {
+            const reactivatedStatus = await remoteLicensePlatformClient.activateLicense(activationPayload)
+            let remoteServiceCapacity = null
+            const reactivatedSessionToken = trimString(reactivatedStatus?.sessionToken || '')
+
+            if (
+              reactivatedSessionToken &&
+              typeof remoteLicensePlatformClient.getServiceCapacityProfile === 'function'
+            ) {
+              try {
+                remoteServiceCapacity = await remoteLicensePlatformClient.getServiceCapacityProfile({
+                  sessionToken: reactivatedSessionToken
+                })
+              } catch {
+                remoteServiceCapacity = null
+              }
+            }
+
+            if (settingsService && typeof settingsService.saveSettings === 'function') {
+              await settingsService.saveSettings({
+                authPlatform: buildPersistedAuthPlatformPatch(
+                  remoteConfig,
+                  reactivatedStatus,
+                  remoteServiceCapacity
+                )
+              }).catch(() => {})
+            }
+
+            return {
+              ...mapRemoteActivationState(reactivatedStatus),
+              remoteServiceCapacity
+            }
+          } catch {
+            // Fall through to the logged-out state when automatic reactivation fails.
+          }
+        }
+      }
+
+      if (shouldClearPersistedSession && settingsService && typeof settingsService.saveSettings === 'function') {
+        await settingsService.saveSettings({
+          authPlatform: buildLoggedOutAuthPlatformPatch(remoteConfig)
+        }).catch(() => {})
+      }
+
       return createAuthorizationState({
         status: 'not_logged_in',
         mode: 'server-license',
         authType: 'session-token',
         canUseApp: false,
-        deviceCode: await getDeviceCode(),
+        deviceCode,
         message: trimString(error?.message || 'remote license platform unavailable'),
         nextAction: 'activate-license',
         remoteStatus: 'request_failed',
         remoteServiceCapacity: getRemoteConfig()?.remoteServiceCapacity || null
       })
+    } finally {
+      // no-op
     }
   }
 

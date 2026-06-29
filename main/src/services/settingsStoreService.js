@@ -20,6 +20,8 @@ const defaultCreditState = {
 const defaultDashboardCreditState = {
   text: {
     balanceCny: 0,
+    subscriptionBalanceCny: 0,
+    permanentBalanceCny: 0,
     lastSyncedAt: '',
     syncStatus: 'idle'
   },
@@ -27,11 +29,15 @@ const defaultDashboardCreditState = {
     totalCredits: 0,
     remainingCredits: 0,
     balanceCny: 0,
+    subscriptionBalanceCny: 0,
+    permanentBalanceCny: 0,
     lastSyncedAt: '',
     syncStatus: 'idle'
   },
   video: {
     balanceCny: 0,
+    subscriptionBalanceCny: 0,
+    permanentBalanceCny: 0,
     lastSyncedAt: '',
     syncStatus: 'idle'
   }
@@ -43,6 +49,9 @@ const defaultAuthPlatform = {
   sessionToken: '',
   lastUserId: '',
   lastLicenseId: '',
+  customerName: '',
+  contact: '',
+  inviteCode: '',
   lastSyncedAt: '',
   remoteServiceCapacity: null
 }
@@ -68,8 +77,10 @@ function isTruthyEnvValue(value = '') {
 }
 
 function buildDevBypassAuthPlatformDefaults() {
+  const enabled = isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || '') &&
+    Boolean(trimString(process.env.DEV_PLATFORM_SESSION_TOKEN))
   return {
-    enabled: isTruthyEnvValue(process.env.DEV_BYPASS_LICENSE || ''),
+    enabled,
     sessionToken: trimString(process.env.DEV_PLATFORM_SESSION_TOKEN),
     lastUserId: trimString(process.env.DEV_TEST_USER_ID),
     lastLicenseId: trimString(process.env.DEV_TEST_LICENSE_ID)
@@ -237,6 +248,8 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
     return {
       text: {
         balanceCny: 0,
+        subscriptionBalanceCny: 0,
+        permanentBalanceCny: 0,
         lastSyncedAt: '',
         syncStatus: 'idle'
       },
@@ -244,11 +257,15 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
         totalCredits: normalizeNonNegativeInteger(source.totalCredits),
         remainingCredits: normalizeNonNegativeInteger(source.remainingCredits),
         balanceCny: Math.max(0, Number(source.balanceCny) || 0),
+        subscriptionBalanceCny: 0,
+        permanentBalanceCny: Math.max(0, Number(source.balanceCny) || 0),
         lastSyncedAt: '',
         syncStatus: 'success'
       },
       video: {
         balanceCny: 0,
+        subscriptionBalanceCny: 0,
+        permanentBalanceCny: 0,
         lastSyncedAt: '',
         syncStatus: 'idle'
       }
@@ -258,6 +275,8 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
   return {
     text: {
       balanceCny: Math.max(0, Number(source.text?.balanceCny) || 0),
+      subscriptionBalanceCny: Math.max(0, Number(source.text?.subscriptionBalanceCny) || 0),
+      permanentBalanceCny: Math.max(0, Number(source.text?.permanentBalanceCny) || 0),
       lastSyncedAt: typeof source.text?.lastSyncedAt === 'string' ? source.text.lastSyncedAt : '',
       syncStatus: typeof source.text?.syncStatus === 'string' ? source.text.syncStatus : 'idle'
     },
@@ -265,11 +284,15 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
       totalCredits: normalizeNonNegativeInteger(source.image?.totalCredits),
       remainingCredits: normalizeNonNegativeInteger(source.image?.remainingCredits),
       balanceCny: Math.max(0, Number(source.image?.balanceCny) || 0),
+      subscriptionBalanceCny: Math.max(0, Number(source.image?.subscriptionBalanceCny) || 0),
+      permanentBalanceCny: Math.max(0, Number(source.image?.permanentBalanceCny) || 0),
       lastSyncedAt: typeof source.image?.lastSyncedAt === 'string' ? source.image.lastSyncedAt : '',
       syncStatus: typeof source.image?.syncStatus === 'string' ? source.image.syncStatus : 'idle'
     },
     video: {
       balanceCny: Math.max(0, Number(source.video?.balanceCny) || 0),
+      subscriptionBalanceCny: Math.max(0, Number(source.video?.subscriptionBalanceCny) || 0),
+      permanentBalanceCny: Math.max(0, Number(source.video?.permanentBalanceCny) || 0),
       lastSyncedAt: typeof source.video?.lastSyncedAt === 'string' ? source.video.lastSyncedAt : '',
       syncStatus: typeof source.video?.syncStatus === 'string' ? source.video.syncStatus : 'idle'
     }
@@ -289,6 +312,9 @@ function normalizeAuthPlatform(rawAuthPlatform = {}) {
     sessionToken: sourceSessionToken || (devBypassDefaults.enabled ? devBypassDefaults.sessionToken : ''),
     lastUserId: sourceLastUserId || (devBypassDefaults.enabled ? devBypassDefaults.lastUserId : ''),
     lastLicenseId: sourceLastLicenseId || (devBypassDefaults.enabled ? devBypassDefaults.lastLicenseId : ''),
+    customerName: typeof source.customerName === 'string' ? source.customerName.trim() : '',
+    contact: typeof source.contact === 'string' ? source.contact.trim() : '',
+    inviteCode: typeof source.inviteCode === 'string' ? source.inviteCode.trim() : '',
     lastSyncedAt: typeof source.lastSyncedAt === 'string' ? source.lastSyncedAt : '',
     remoteServiceCapacity: source.remoteServiceCapacity && typeof source.remoteServiceCapacity === 'object'
       ? source.remoteServiceCapacity

@@ -16,7 +16,7 @@ defineProps({
   }
 })
 
-const emit = defineEmits(['cleanup-click', 'purchase-license-click', 'purchase-compute-click', 'purchase-recharge-click'])
+const emit = defineEmits(['cleanup-click', 'purchase-license-click', 'purchase-compute-click', 'purchase-recharge-click', 'show-model-pricing-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
 const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
@@ -84,6 +84,10 @@ function closeContactPreview() {
 
       <button class="topbar-recharge-button topbar-recharge-button--secondary" type="button" @click="emit('purchase-recharge-click')">
         算力直充
+      </button>
+
+      <button class="topbar-recharge-button topbar-recharge-button--secondary" type="button" @click="emit('show-model-pricing-click')">
+        模型价格
       </button>
 
       <div v-if="activationSummary" class="topbar-activation-pill">

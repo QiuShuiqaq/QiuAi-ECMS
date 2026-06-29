@@ -7,6 +7,7 @@
   ],
   "primaryMenuItems": [
     { "key": "work-center", "label": "工作中心", "section": "工作区" },
+    { "key": "selection-center", "label": "选品中心", "section": "工作区" },
     { "key": "data-center", "label": "数据中心", "section": "工作区" },
     { "key": "template-center", "label": "模板中心", "section": "工作区" },
     { "key": "title-generate", "label": "标题生成", "section": "生成区" },

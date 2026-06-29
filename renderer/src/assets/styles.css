@@ -49,7 +49,7 @@ body {
 }
 
 .shell-grid--simple {
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 10vw) minmax(0, 1fr);
 }
 
 .activation-shell {
@@ -60,7 +60,7 @@ body {
 }
 
 .shell-grid__workspace {
-  padding: 18px;
+  padding: 16px 18px 18px;
 }
 
 .product-workbench,
@@ -878,8 +878,8 @@ select optgroup {
 
 .generator-studio-page {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr) minmax(260px, 0.78fr);
-  gap: 18px;
+  grid-template-columns: minmax(280px, 25fr) minmax(420px, 50fr) minmax(220px, 15fr);
+  gap: 12px;
   min-height: 0;
   overflow: hidden;
 }
@@ -887,8 +887,12 @@ select optgroup {
 .generator-column {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  padding: 18px;
+  padding: 14px;
   min-height: 0;
+  border-radius: 26px;
+  background: rgba(16, 15, 27, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
 }
 
 .generator-column--settings {
@@ -1522,7 +1526,7 @@ textarea {
 
 .shell-grid {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 10vw) minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   overflow: hidden;

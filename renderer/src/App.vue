@@ -4,6 +4,7 @@ import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
 import AuthorizationPurchaseModal from './components/AuthorizationPurchaseModal.vue'
 import CommerceOrderModal from './components/CommerceOrderModal.vue'
+import ModelPricingModal from './components/ModelPricingModal.vue'
 import PermissionActivationModal from './components/PermissionActivationModal.vue'
 import UserAgreementModal from './components/UserAgreementModal.vue'
 import WorkspaceSidebar from './components/WorkspaceSidebar.vue'
@@ -15,6 +16,7 @@ import ProjectTemplateCenterPage from './components/ProjectTemplateCenterPage.vu
 import AccountDevicePage from './components/AccountDevicePage.vue'
 import SettingsCenterPage from './components/SettingsCenterPage.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
+import SelectionCenterPage from './components/SelectionCenterPage.vue'
 import studioMenuConfig from '../../shared/studio-menu-config.json'
 import {
   buildProjectGeneratorDraft,
@@ -65,6 +67,7 @@ const legacyFallbackMenuItems = [
 ]
 
 const fallbackMenuItems = [
+  { key: 'selection-center', label: 'Selection Center', section: '工作区' },
   { key: 'work-center', label: '工作中心', section: '工作区' },
   { key: 'data-center', label: '数据中心', section: '工作区' },
   { key: 'template-center', label: '模板中心', section: '工作区' },
@@ -79,12 +82,11 @@ const fallbackMenuItems = [
 const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   ? studioMenuConfig.primaryMenuItems
   : fallbackMenuItems
-void legacyFallbackMenuItems
-
 const activeMenu = ref('work-center')
 const authorizationPurchaseModalVisible = ref(false)
 const commerceOrderModalVisible = ref(false)
 const commerceOrderModalMode = ref('software')
+const modelPricingModalVisible = ref(false)
 const permissionActivationModalVisible = ref(false)
 const activeGeneratorMenu = ref('')
 const submitButtonState = ref('idle')
@@ -105,10 +107,11 @@ const selectionItemsState = ref({
   items: [],
   totalItems: 0,
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   isLoading: false,
   error: ''
 })
+const selectionUpdateStatus = ref('')
 const publishState = ref({})
 const publishConfigState = ref({
   platformOptions: publishPlatformOptions,
@@ -143,6 +146,7 @@ const activationState = ref({
   message: '',
   mode: 'server-license'
 })
+const isDataCenterRefreshingBalances = ref(false)
 const activationForm = ref({
   customerName: '',
   contact: '',
@@ -190,6 +194,8 @@ const actionNotice = reactive({
 const runtimePollingIntervalMs = 1500
 let runtimePollingTimer = null
 let runtimePollingInFlight = false
+let selectionManifestPollingTimer = null
+let selectionManifestPollingInFlight = false
 const publishTaskPollingProfile = {
   fastMs: 5000,
   runningMs: 15000,
@@ -276,6 +282,67 @@ const remoteServiceCapacity = computed(() => {
   return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
 })
 
+function getWalletBalanceSummary() {
+  const walletSummary = activationState.value?.walletSummary || {}
+  const resolveBalance = (resourceKey, legacyField) => {
+    const splitBalance = walletSummary?.splitBalances?.[resourceKey]
+    if (splitBalance && typeof splitBalance === 'object') {
+      return Math.max(0, Number(splitBalance.totalBalanceCny) || 0)
+    }
+
+    const subscription = Math.max(0, Number(walletSummary?.subscriptionBalances?.[resourceKey]) || 0)
+    const permanent = Math.max(0, Number(walletSummary?.permanentBalances?.[resourceKey]) || 0)
+    const combined = subscription + permanent
+    if (combined > 0) {
+      return combined
+    }
+
+    return Math.max(0, Number(walletSummary?.[legacyField]) || 0)
+  }
+
+  return {
+    text: resolveBalance('text', 'textBalanceCny'),
+    image: resolveBalance('image', 'imageBalanceCny'),
+    video: resolveBalance('video', 'videoBalanceCny')
+  }
+}
+
+function assertClientSideBalanceForTask({ menuKey, draft, textKind = '' } = {}) {
+  const balance = getWalletBalanceSummary()
+
+  if (menuKey === 'workspace' && textKind) {
+    if (balance.text <= 0) {
+      return textKind === 'description'
+        ? '文本余额不足，无法发起描述生成任务'
+        : '文本余额不足，无法发起标题生成任务'
+    }
+    return ''
+  }
+
+  if (menuKey === 'series-generate' && balance.image <= 0) {
+    return '图片余额不足，无法发起套图生成任务'
+  }
+
+  if (menuKey === 'video-generate' && balance.video <= 0) {
+    return '视频余额不足，无法发起视频生成任务'
+  }
+
+  if (menuKey === 'workspace') {
+    const enabledSteps = draft?.enabledSteps || {}
+    if ((enabledSteps.title || enabledSteps.description) && balance.text <= 0) {
+      return '文本余额不足，无法发起当前项目任务'
+    }
+    if (enabledSteps.image && draft?.sourceImage && balance.image <= 0) {
+      return '图片余额不足，无法发起当前项目任务'
+    }
+    if (enabledSteps.video && balance.video <= 0) {
+      return '视频余额不足，无法发起当前项目任务'
+    }
+  }
+
+  return ''
+}
+
 function showActionFeedback({ type = 'success', title = '', message = '' }) {
   actionNotice.visible = true
   actionNotice.type = type
@@ -302,6 +369,43 @@ function ensureActivatedOrPromptPurchase(message = '请先购买授权并激活�
 
 function buildErrorMessage(error, fallback = '请求失败') {
   return String(error?.message || fallback)
+}
+
+function applyProjectPatchLocally(project = {}, patch = {}) {
+  const currentProject = project && typeof project === 'object' ? project : {}
+  const nextPatch = patch && typeof patch === 'object' ? patch : {}
+  const baseInfoPatch = nextPatch.baseInfo && typeof nextPatch.baseInfo === 'object' ? nextPatch.baseInfo : {}
+  const generationConfigPatch = nextPatch.generationConfig && typeof nextPatch.generationConfig === 'object'
+    ? nextPatch.generationConfig
+    : {}
+  const assetsPatch = nextPatch.assets && typeof nextPatch.assets === 'object' ? nextPatch.assets : {}
+  const contentPatch = nextPatch.content && typeof nextPatch.content === 'object' ? nextPatch.content : {}
+  const metadataPatch = nextPatch.metadata && typeof nextPatch.metadata === 'object' ? nextPatch.metadata : {}
+
+  return {
+    ...currentProject,
+    ...nextPatch,
+    baseInfo: {
+      ...(currentProject.baseInfo || {}),
+      ...baseInfoPatch
+    },
+    generationConfig: {
+      ...(currentProject.generationConfig || {}),
+      ...generationConfigPatch
+    },
+    assets: {
+      ...(currentProject.assets || {}),
+      ...assetsPatch
+    },
+    content: {
+      ...(currentProject.content || {}),
+      ...contentPatch
+    },
+    metadata: {
+      ...(currentProject.metadata || {}),
+      ...metadataPatch
+    }
+  }
 }
 
 function applyStudioRuntimeSnapshot(snapshot = {}) {
@@ -394,6 +498,20 @@ function stopPublishTaskPolling() {
     window.clearTimeout(publishTaskPollingTimer)
     publishTaskPollingTimer = null
   }
+}
+
+function stopSelectionManifestPolling() {
+  if (selectionManifestPollingTimer) {
+    window.clearTimeout(selectionManifestPollingTimer)
+    selectionManifestPollingTimer = null
+  }
+}
+
+function queueSelectionManifestPolling(delayMs = 5000) {
+  stopSelectionManifestPolling()
+  selectionManifestPollingTimer = window.setTimeout(() => {
+    void refreshSelectionManifest({ silent: true })
+  }, delayMs)
 }
 
 function queueRuntimePolling(delayMs = runtimePollingIntervalMs) {
@@ -600,8 +718,96 @@ async function loadActivatedWorkspace() {
   ])
 }
 
+async function handleRefreshDataCenterBalances() {
+  if (isDataCenterRefreshingBalances.value) {
+    return
+  }
+
+  isDataCenterRefreshingBalances.value = true
+  try {
+    await loadActivationState()
+    await loadPurchaseCenterCatalog()
+    showActionFeedback({
+      type: 'success',
+      title: '\u4f59\u989d\u5df2\u5237\u65b0',
+      message: '\u5f53\u524d\u8d26\u53f7\u7684\u4f59\u989d\u72b6\u6001\u5df2\u66f4\u65b0'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '\u5237\u65b0\u5931\u8d25',
+      message: buildErrorMessage(error, '\u4f59\u989d\u72b6\u6001\u5237\u65b0\u5931\u8d25')
+    })
+  } finally {
+    isDataCenterRefreshingBalances.value = false
+  }
+}
+
+function getSelectionUpdateState() {
+  return selectionManifest.value?.updateState || {}
+}
+
+function showSelectionUpdateFeedback(manifest = {}, { silent = false } = {}) {
+  const nextStatus = String(manifest?.updateState?.status || '').trim()
+  const previousStatus = String(selectionUpdateStatus.value || '').trim()
+  selectionUpdateStatus.value = nextStatus
+
+  if (silent || !nextStatus || nextStatus === previousStatus) {
+    return
+  }
+
+  if (nextStatus === 'updating') {
+    showActionFeedback({
+      type: 'success',
+      title: '选品数据开始更新',
+      message: '更新期间请不要操作选品中心'
+    })
+    return
+  }
+
+  if (nextStatus === 'success' && previousStatus === 'updating') {
+    showActionFeedback({
+      type: 'success',
+      title: '选品数据更新完成',
+      message: '现在可以正常使用选品中心'
+    })
+    return
+  }
+
+  if (nextStatus === 'failed' || nextStatus === 'risk-stop') {
+    showActionFeedback({
+      type: 'error',
+      title: '选品数据更新异常',
+      message: manifest?.updateState?.message || '请联系管理员'
+    })
+  }
+}
+
+async function refreshSelectionManifest({ silent = false } = {}) {
+  if (selectionManifestPollingInFlight) {
+    return selectionManifest.value
+  }
+
+  selectionManifestPollingInFlight = true
+  try {
+    const manifest = await selectionClient.getManifest()
+    selectionManifest.value = manifest || { generatedAt: '', boards: [] }
+    showSelectionUpdateFeedback(selectionManifest.value, { silent })
+  } finally {
+    selectionManifestPollingInFlight = false
+  }
+
+  if (selectionManifest.value?.updateState?.isUpdating) {
+    queueSelectionManifestPolling()
+  } else {
+    stopSelectionManifestPolling()
+  }
+
+  return selectionManifest.value
+}
+
 async function loadSelectionAssistantState() {
-  selectionManifest.value = await selectionClient.getManifest()
+  await refreshSelectionManifest()
   selectionPlatforms.value = await selectionClient.listPlatforms()
   await refreshSelectionSites(selectionItemsState.value.platform)
   await refreshSelectionItems()
@@ -665,6 +871,7 @@ async function refreshSelectionItems(overrides = {}) {
   }
 
   try {
+    await refreshSelectionManifest({ silent: true })
     const payload = await selectionClient.listItems({
       platform: nextState.platform,
       boardType: nextState.boardType,
@@ -716,6 +923,9 @@ function handleMenuSelect(menuKey) {
   activeGeneratorMenu.value = ''
   if (menuKey === 'work-center' && formDrafts.value.workspace?.projectId) {
     activeProductProjectId.value = formDrafts.value.workspace.projectId
+  }
+  if (menuKey === 'prompt-library' && (!Array.isArray(promptTemplates.value) || promptTemplates.value.length === 0)) {
+    void loadPromptTemplateState()
   }
   activeMenu.value = menuKey
 }
@@ -817,6 +1027,9 @@ async function handleReplaceProjectImage(project) {
         }
       }
     })
+    await persistDraft('workspace', {
+      sourceImage: result.files[0]
+    })
     invalidateProjectPublishState(project.id, {
       markDraftSummaryStale: true
     })
@@ -831,11 +1044,30 @@ async function handleReplaceProjectImage(project) {
 }
 
 async function handleProjectUpdate({ projectId, patch }) {
+  const normalizedProjectId = String(projectId || '').trim()
+  const existingProject = (productProjects.value || []).find((item) => String(item?.id || '').trim() === normalizedProjectId)
+
+  if (existingProject) {
+    const optimisticProject = applyProjectPatchLocally(existingProject, patch)
+    productProjects.value = [
+      optimisticProject,
+      ...(productProjects.value || []).filter((item) => String(item?.id || '').trim() !== normalizedProjectId)
+    ]
+    activeProductProjectId.value = normalizedProjectId
+  }
+
   try {
-    await workspaceClient.updateProject({
+    const updatedProject = await workspaceClient.updateProject({
       projectId,
       patch
     })
+    if (updatedProject?.id) {
+      productProjects.value = [
+        updatedProject,
+        ...(productProjects.value || []).filter((item) => item?.id !== updatedProject.id)
+      ]
+      activeProductProjectId.value = updatedProject.id
+    }
     const affectsPublishDraft = doesPatchAffectPublishDraft(patch)
     invalidateProjectPublishState(projectId, {
       clearDraftSummary: affectsPublishDraft ? false : true,
@@ -865,6 +1097,15 @@ async function handleProjectDelete(projectId) {
 }
 
 async function handleSelectionQueryChange(patch = {}) {
+  if (getSelectionUpdateState().isUpdating) {
+    showActionFeedback({
+      type: 'error',
+      title: '选品数据更新中',
+      message: '请等待当前更新完成后再操作'
+    })
+    return
+  }
+
   const nextPlatform = Object.prototype.hasOwnProperty.call(patch, 'platform')
     ? patch.platform
     : selectionItemsState.value.platform
@@ -873,18 +1114,57 @@ async function handleSelectionQueryChange(patch = {}) {
     await refreshSelectionSites(nextPlatform)
   }
 
+  const shouldResetPage = (
+    Object.prototype.hasOwnProperty.call(patch, 'platform') ||
+    Object.prototype.hasOwnProperty.call(patch, 'boardType') ||
+    Object.prototype.hasOwnProperty.call(patch, 'siteCode') ||
+    Object.prototype.hasOwnProperty.call(patch, 'keyword')
+  )
+
   await refreshSelectionItems({
     ...patch,
     platform: nextPlatform,
-    page: 1,
+    page: shouldResetPage
+      ? 1
+      : (Object.prototype.hasOwnProperty.call(patch, 'page') ? patch.page : selectionItemsState.value.page),
     siteCode: nextPlatform === 'shopee'
       ? (Object.prototype.hasOwnProperty.call(patch, 'siteCode') ? patch.siteCode : selectionItemsState.value.siteCode)
       : ''
   })
 }
 
+async function handleSelectionOpenSource(target = '') {
+  const normalizedTarget = String(target || '').trim()
+  if (!normalizedTarget) {
+    return
+  }
+
+  try {
+    await shellClient.openExternalResource({ target: normalizedTarget })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '打开失败',
+      message: buildErrorMessage(error, '无法打开源地址')
+    })
+  }
+}
+
 async function handleSelectionImport({ item, mode }) {
   if (!item?.id) {
+    return
+  }
+
+  if (!ensureActivatedOrPromptPurchase('请先购买授权激活设备后再导入商品')) {
+    return
+  }
+
+  if (getSelectionUpdateState().isUpdating) {
+    showActionFeedback({
+      type: 'error',
+      title: '选品数据更新中',
+      message: '更新期间暂时不能导入项目'
+    })
     return
   }
 
@@ -953,6 +1233,26 @@ async function handleSelectionImport({ item, mode }) {
     if (nextProjectId) {
       activeProductProjectId.value = nextProjectId
     }
+    await persistDraft('workspace', {
+      projectId: nextProjectId,
+      projectName: detail.title || '',
+      taskName: detail.title || '',
+      productName: detail.title || '',
+      platformTargetsText: String(detail.platform || 'temu').trim().toLowerCase() || 'temu',
+      language: 'zh-CN',
+      category: detail.categoryText || '',
+      highlightsText: highlights.join(', '),
+      keywordsText: Array.isArray(detail.extractedKeywords) ? detail.extractedKeywords.join(', ') : '',
+      selectionSource: patch.metadata.selectionSource,
+      sourceImage: detail.primaryImageUrl
+        ? {
+            name: `${detail.id || 'selection-item'}.jpg`,
+            preview: detail.primaryImageUrl,
+            url: detail.primaryImageUrl
+          }
+        : null
+    })
+    activeMenu.value = 'work-center'
     showActionFeedback({
       type: 'success',
       title: '已导入',
@@ -1698,6 +1998,18 @@ async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
   submitButtonState.value = 'pending'
   try {
     const draft = formDrafts.value[menuKey] || {}
+    const balanceError = assertClientSideBalanceForTask({
+      menuKey,
+      draft
+    })
+    if (balanceError) {
+      showActionFeedback({
+        type: 'error',
+        title: '余额不足',
+        message: balanceError
+      })
+      return
+    }
     const validationError = validateGeneratorTaskDraft({
       menuKey,
       draft,
@@ -1760,9 +2072,23 @@ async function handleSubmitTextGenerator(textKind = 'title') {
 
   submitButtonState.value = 'pending'
   try {
+    const textDraft = buildStandaloneTextDraft(textKind)
+    const balanceError = assertClientSideBalanceForTask({
+      menuKey: 'workspace',
+      draft: textDraft,
+      textKind
+    })
+    if (balanceError) {
+      showActionFeedback({
+        type: 'error',
+        title: '余额不足',
+        message: balanceError
+      })
+      return
+    }
     await workspaceClient.createTask({
       menuKey: 'workspace',
-      draft: buildStandaloneTextDraft(textKind)
+      draft: textDraft
     })
     await loadStudioSnapshot()
     showActionFeedback({
@@ -1792,9 +2118,22 @@ async function handleRunProject(project) {
 
   submitButtonState.value = 'pending'
   try {
+    const projectDraft = buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})
+    const balanceError = assertClientSideBalanceForTask({
+      menuKey: 'workspace',
+      draft: projectDraft
+    })
+    if (balanceError) {
+      showActionFeedback({
+        type: 'error',
+        title: '余额不足',
+        message: balanceError
+      })
+      return
+    }
     await workspaceClient.createTask({
       menuKey: 'workspace',
-      draft: buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})
+      draft: projectDraft
     })
     await loadStudioSnapshot()
     showActionFeedback({
@@ -2230,12 +2569,21 @@ function openRechargePurchase() {
   commerceOrderModalVisible.value = true
 }
 
+function openModelPricingModal() {
+  activeGeneratorMenu.value = ''
+  modelPricingModalVisible.value = true
+}
+
 function closeAuthorizationPurchaseModal() {
   authorizationPurchaseModalVisible.value = false
 }
 
 function closeCommerceOrderModal() {
   commerceOrderModalVisible.value = false
+}
+
+function closeModelPricingModal() {
+  modelPricingModalVisible.value = false
 }
 
 function closePermissionActivationModal() {
@@ -2422,6 +2770,7 @@ computePackageOrderController = createComputePackageOrderController({
 onMounted(() => {
   void (async () => {
     await loadActivationState()
+    await loadPromptTemplateState()
     await loadPurchaseCenterCatalog()
     await loadUserAgreementState()
     if (canUseActivatedWorkspace.value) {
@@ -2468,6 +2817,7 @@ watch(
 onUnmounted(() => {
   stopRuntimePolling()
   stopPublishTaskPolling()
+  stopSelectionManifestPolling()
   rechargeOrderController?.stopPolling()
   softwareOrderController?.stopPolling()
   computePackageOrderController?.stopPolling()
@@ -2484,6 +2834,7 @@ onUnmounted(() => {
       @purchase-license-click="openLicensePurchase"
       @purchase-compute-click="openComputePurchase"
       @purchase-recharge-click="openRechargePurchase"
+      @show-model-pricing-click="openModelPricingModal"
     />
 
     <div v-if="actionNotice.visible" class="app-notice-layer" role="status" aria-live="polite">
@@ -2519,6 +2870,11 @@ onUnmounted(() => {
       @submit-compute-order="handleCreateComputePackageOrder"
       @submit-recharge-order="handleCreateRecharge"
       @update-recharge-form="handleRechargeFormUpdate"
+    />
+
+    <ModelPricingModal
+      :visible="modelPricingModalVisible"
+      @close="closeModelPricingModal"
     />
 
     <PermissionActivationModal
@@ -2559,7 +2915,9 @@ onUnmounted(() => {
           :project-runs="projectRuns"
           :active-project-id="activeProductProjectId"
           :focus-project-id="activeProductProjectId"
+          :draft="workspaceDraft"
           :submit-button-state="submitButtonState"
+          :prompt-templates="promptTemplates"
           :publish-state="publishState"
           :selection-manifest="selectionManifest"
           :selection-platforms="selectionPlatforms"
@@ -2567,6 +2925,7 @@ onUnmounted(() => {
           :selection-state="selectionItemsState"
           @create-project="handleCreateProject"
           @run-project="handleRunProject"
+          @update-draft="handleTextGeneratorDraftUpdate"
           @save-project-template="handleSaveProjectTemplate"
           @replace-project-image="handleReplaceProjectImage"
           @update-project="handleProjectUpdate"
@@ -2587,12 +2946,28 @@ onUnmounted(() => {
           @publish-retry-task="handlePublishRetryTask"
           @selection-query-change="handleSelectionQueryChange"
           @selection-import="handleSelectionImport"
+          @selection-open-source="handleSelectionOpenSource"
+        />
+
+        <SelectionCenterPage
+          v-else-if="activeMenu === 'selection-center'"
+          :active-project-id="activeProductProjectId"
+          :active-project-name="productProjects.find((item) => item.id === activeProductProjectId)?.name || productProjects.find((item) => item.id === activeProductProjectId)?.baseInfo?.productName || ''"
+          :selection-manifest="selectionManifest"
+          :selection-platforms="selectionPlatforms"
+          :selection-sites="selectionSites"
+          :selection-state="selectionItemsState"
+          @selection-query-change="handleSelectionQueryChange"
+          @selection-import="handleSelectionImport"
+          @selection-open-source="handleSelectionOpenSource"
         />
 
         <DataCenterPage
           v-else-if="activeMenu === 'data-center'"
           :activation-state="activationState"
+          :is-refreshing-balances="isDataCenterRefreshingBalances"
           :product-projects="productProjects"
+          @refresh-balances="handleRefreshDataCenterBalances"
         />
 
         <ProjectTemplateCenterPage

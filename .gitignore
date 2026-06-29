@@ -13,6 +13,9 @@ DATA/dev-stderr.log
 DATA/taskmanager.json
 DATA/input/
 DATA/output/
+DATA/selection-cache/
+DATA/selection-cache-v2/
+tmp_generation_center_snapshot.txt
 
 renderer/dist/
 runtime-logs/

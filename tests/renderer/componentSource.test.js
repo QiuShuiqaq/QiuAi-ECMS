@@ -70,10 +70,14 @@ describe('component sources', () => {
     const generatorSource = readSource('renderer/src/components/GeneratorStudioPage.vue')
     const generatorViewSource = readSource('renderer/src/utils/generatorViews.js')
 
-    expect(generationCenterSource).toContain('generation-center-page__shortcut-grid')
+    expect(generationCenterSource).toContain('work-center-studio')
+    expect(generationCenterSource).toContain('generator-column--settings')
+    expect(generationCenterSource).toContain('generator-column--preview')
+    expect(generationCenterSource).toContain('generator-column--export')
+    expect(generationCenterSource).toContain('if (!candidateId) return null')
+    expect(generationCenterSource).toContain('function resolveProjectLanguage(project = {})')
     expect(generationCenterSource).toContain("emit('open-generator', { project, menuKey })")
-    expect(generationCenterSource).toContain("emit('create-project')")
-    expect(generationCenterSource).toContain('ProductWorkbench')
+    expect(generationCenterSource).toContain("emit('run-project', project)")
 
     expect(workbenchSource).toContain('workbench-plus-button')
     expect(workbenchSource).toContain('project-draft-grid')

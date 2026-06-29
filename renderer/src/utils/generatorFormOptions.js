@@ -66,7 +66,7 @@ export const seriesImageTemplateOptions = [
   { imageType: '换角度', templateId: 'image-angle' },
   { imageType: '换场景', templateId: 'image-change-scene' },
   { imageType: '换模特', templateId: 'image-change-model' },
-  { imageType: '全替换', templateId: 'image-replace-all' }
+  { imageType: '全量替换', templateId: 'image-replace-all' }
 ]
 
 export const imageTemplateTypeMap = Object.fromEntries(

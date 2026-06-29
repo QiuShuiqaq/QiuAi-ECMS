@@ -10,7 +10,7 @@ function trimString(value = '') {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-async function saveRemoteAuthPlatformState({ settingsService, activationPayload }) {
+async function saveRemoteAuthPlatformState({ settingsService, activationPayload, requestPayload = {} }) {
   const nowIso = new Date().toISOString()
   return settingsService.saveSettings({
     authPlatform: {
@@ -18,6 +18,9 @@ async function saveRemoteAuthPlatformState({ settingsService, activationPayload 
       sessionToken: trimString(activationPayload?.sessionToken),
       lastUserId: trimString(activationPayload?.userId),
       lastLicenseId: trimString(activationPayload?.licenseId),
+      customerName: trimString(activationPayload?.customerName || requestPayload?.customerName),
+      contact: trimString(activationPayload?.contact || requestPayload?.contact),
+      inviteCode: trimString(activationPayload?.inviteCode || requestPayload?.inviteCode),
       lastSyncedAt: nowIso
     }
   })
@@ -30,6 +33,9 @@ async function clearRemoteAuthPlatformState({ settingsService }) {
       sessionToken: '',
       lastUserId: '',
       lastLicenseId: '',
+      customerName: '',
+      contact: '',
+      inviteCode: '',
       lastSyncedAt: '',
       remoteServiceCapacity: null
     },
@@ -80,38 +86,11 @@ async function getUserAgreementStatus({ authorizationService, settingsService })
     }
   }
 
-  if (activationStatus?.status !== 'activated') {
-    const settings = settingsService.getSettings()
-    return buildUserAgreementState(
-      settings?.compliance?.userAgreement,
-      activationStatus
-    )
-  }
-
-  const sessionToken = await requireSessionToken(settingsService)
-  const remoteState = await remoteLicensePlatformClient.getUserAgreementStatus({
-    sessionToken
-  })
-
-  await settingsService.saveSettings({
-    compliance: {
-      userAgreement: {
-        title: trimString(remoteState?.title || '用户须知与使用协议暨责任认定书'),
-        version: trimString(remoteState?.version),
-        accepted: remoteState?.accepted === true,
-        acceptedAt: trimString(remoteState?.acceptedAt),
-        userId: trimString(remoteState?.userId),
-        licenseId: trimString(remoteState?.licenseId),
-        deviceCode: trimString(remoteState?.deviceCode),
-        source: trimString(remoteState?.source || 'DESKTOP_QIUAI')
-      }
-    }
-  })
-
-  return {
-    ...remoteState,
-    customerName: trimString(activationStatus?.customerName)
-  }
+  const settings = settingsService.getSettings()
+  return buildUserAgreementState(
+    settings?.compliance?.userAgreement,
+    activationStatus
+  )
 }
 
 async function buildSoftwareOrderPayload({ settingsService, authorizationService, payload = {} }) {
@@ -142,7 +121,6 @@ function registerLicenseIpc({
   ipcMain.handle(ipcChannels.LICENSE_GET_USER_AGREEMENT_STATUS, async () => {
     return getUserAgreementStatus({
       authorizationService,
-      remoteLicensePlatformClient,
       settingsService
     })
   })
@@ -152,7 +130,6 @@ function registerLicenseIpc({
     if (activationStatus?.devBypassLicense === true || isDevBypassLicenseEnabled()) {
       return getUserAgreementStatus({
         authorizationService,
-        remoteLicensePlatformClient,
         settingsService
       })
     }
@@ -163,47 +140,34 @@ function registerLicenseIpc({
       throw error
     }
 
-    const sessionToken = await requireSessionToken(settingsService)
-    const currentState = await getUserAgreementStatus({
-      authorizationService,
-      remoteLicensePlatformClient,
-      settingsService
-    })
-    const acceptedState = await remoteLicensePlatformClient.acceptUserAgreement({
-      sessionToken,
-      agreementVersion: trimString(currentState?.version)
-    })
-
     await settingsService.saveSettings({
       compliance: {
-        userAgreement: {
-          ...createAcceptedAgreementRecord(activationStatus, trimString(acceptedState?.acceptedAt) || new Date().toISOString()),
-          title: trimString(acceptedState?.title || '用户须知与使用协议暨责任认定书'),
-          source: trimString(acceptedState?.source || 'DESKTOP_QIUAI')
-        }
+        userAgreement: createAcceptedAgreementRecord(activationStatus)
       }
     })
 
-    return {
-      ...acceptedState,
-      customerName: trimString(activationStatus?.customerName)
-    }
+    return getUserAgreementStatus({
+      authorizationService,
+      settingsService
+    })
   })
 
   ipcMain.handle(ipcChannels.LICENSE_REMOTE_ACTIVATE, async (_event, payload = {}) => {
     const deviceCodePayload = await authorizationService.getDeviceCodePayload()
-    const activationPayload = await remoteLicensePlatformClient.activateLicense({
+    const requestPayload = {
       customerName: trimString(payload.customerName),
       contact: trimString(payload.contact),
       inviteCode: trimString(payload.inviteCode),
       durationDays: payload.durationDays,
       deviceName: trimString(payload.deviceName || 'QiuAi Desktop'),
       deviceFingerprint: trimString(deviceCodePayload?.deviceCode)
-    })
+    }
+    const activationPayload = await remoteLicensePlatformClient.activateLicense(requestPayload)
 
     await saveRemoteAuthPlatformState({
       settingsService,
-      activationPayload
+      activationPayload,
+      requestPayload
     })
 
     return authorizationService.getActivationStatus()

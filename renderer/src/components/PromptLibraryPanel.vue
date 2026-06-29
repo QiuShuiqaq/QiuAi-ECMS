@@ -15,11 +15,33 @@ const emit = defineEmits([
 ])
 
 const CATEGORY_ORDER = ['标题', '描述', '图片', '视频']
+const CATEGORY_ALIAS_MAP = {
+  标题: '标题',
+  描述: '描述',
+  图片: '图片',
+  视频: '视频',
+  文本: '标题',
+  '鏍囬': '标题',
+  '鎻忚堪': '描述',
+  '鍥剧墖': '图片',
+  '瑙嗛': '视频',
+  '閺嶅洭顣�': '标题',
+  '閹诲繗鍫�': '描述',
+  '閸ュ墽澧�': '图片',
+  '鐟欏棝顣�': '视频',
+  '闁哄秴娲。锟�': '标题',
+  '闁硅绻楅崼锟�': '描述',
+  '闁搞儱澧芥晶锟�': '图片',
+  '閻熸瑥妫濋。锟�': '视频',
+  '闁哄倸娲﹀﹢锟�': '标题'
+}
+
 const expandedTemplateId = ref('')
 const draftMap = ref({})
 
 function normalizeCategory(category = '') {
-  return String(category || '标题')
+  const normalized = String(category || '标题').trim()
+  return CATEGORY_ALIAS_MAP[normalized] || normalized || '标题'
 }
 
 function normalizeTemplate(template = {}, fallbackSource = 'custom') {
@@ -46,19 +68,14 @@ function syncDraftMap(templates, previousDrafts = {}) {
   const nextDrafts = {}
 
   templates.forEach((template) => {
-    const normalizedTemplate = normalizeTemplate(
-      template,
-      template.source === 'system-fixed' ? 'system-fixed' : 'custom'
-    )
-    const previousDraft = previousDrafts[normalizedTemplate.id]
-
-    nextDrafts[normalizedTemplate.id] = {
-      ...normalizedTemplate,
+    const previousDraft = previousDrafts[template.id]
+    nextDrafts[template.id] = {
+      ...template,
       ...(previousDraft
         ? {
             name: previousDraft.name,
             prompt: previousDraft.prompt,
-            category: previousDraft.category
+            category: normalizeCategory(previousDraft.category)
           }
         : {})
     }
@@ -66,7 +83,10 @@ function syncDraftMap(templates, previousDrafts = {}) {
 
   Object.values(previousDrafts).forEach((draft) => {
     if (draft?.isNew === true && draft.id) {
-      nextDrafts[draft.id] = draft
+      nextDrafts[draft.id] = {
+        ...draft,
+        category: normalizeCategory(draft.category)
+      }
     }
   })
 
@@ -153,7 +173,7 @@ function saveTemplate(templateId) {
   emit('save-template', {
     id: template.isNew ? undefined : template.id,
     name: template.name,
-    category: template.category,
+    category: normalizeCategory(template.category),
     prompt: template.prompt,
     source: template.source === 'system-fixed' ? 'system-fixed' : 'custom'
   })
@@ -198,99 +218,231 @@ const templatesByCategory = computed(() => {
   return CATEGORY_ORDER.map((category) => {
     return {
       category,
-      templates: mergedTemplates.filter((template) => template.category === category)
+      templates: mergedTemplates.filter((template) => normalizeCategory(template.category) === category)
     }
   })
 })
 </script>
 
 <template>
-  <div class="panel-shell">
-    <header class="section-header">
-      <div>
-        <h2>提示词库</h2>
-      </div>
+  <div class="prompt-library">
+    <header class="prompt-library__header">
+      <h2>提示词库</h2>
     </header>
 
-    <div class="panel-content panel-content--prompt-library">
-      <section class="prompt-library-grid prompt-library-grid--quad prompt-library-grid--fixed-height">
-        <article
-          v-for="group in templatesByCategory"
-          :key="group.category"
-          class="prompt-library-column"
-        >
-          <div class="prompt-library-column__header prompt-library-column__header--stacked">
-            <div>
-              <h3>{{ group.category }}</h3>
-              <p class="prompt-library-column__eyebrow">提示词</p>
-            </div>
+    <section class="prompt-library__grid">
+      <article
+        v-for="group in templatesByCategory"
+        :key="group.category"
+        class="prompt-library__column"
+      >
+        <div class="prompt-library__column-header">
+          <h3>{{ group.category }}</h3>
+          <button
+            class="secondary-action secondary-action--compact"
+            type="button"
+            @click="addTemplate(group.category)"
+          >
+            新增模板
+          </button>
+        </div>
+
+        <div class="prompt-library__column-body">
+          <article
+            v-for="template in group.templates"
+            :key="template.id"
+            class="prompt-card"
+          >
             <button
-              class="secondary-action secondary-action--compact"
+              class="prompt-card__toggle"
               type="button"
-              @click="addTemplate(group.category)"
+              @click="toggleTemplate(template)"
             >
-              新增模板
+              <div class="prompt-card__meta">
+                <strong>{{ template.name || '未命名模板' }}</strong>
+                <span>{{ template.source === 'system-fixed' ? '系统模板' : '自定义模板' }}</span>
+              </div>
+              <span class="prompt-card__state">{{ expandedTemplateId === template.id ? '收起' : '展开' }}</span>
             </button>
-          </div>
 
-          <div class="prompt-library-column__body prompt-library-column__body--stacked prompt-library-column__body--full scrollbar-hidden">
-            <div class="prompt-library-list">
-              <article
-                v-for="template in group.templates"
-                :key="template.id"
-                class="prompt-template-card"
-              >
-                <button
-                  class="prompt-template-card__header prompt-template-card__toggle"
-                  type="button"
-                  @click="toggleTemplate(template)"
-                >
-                  <div class="prompt-template-card__meta">
-                    <strong>{{ template.name || '未命名模板' }}</strong>
-                    <span>{{ template.source === 'system-fixed' ? '系统模板' : '自定义模板' }}</span>
-                  </div>
-                  <span class="prompt-template-card__indicator">{{ expandedTemplateId === template.id ? '收起' : '展开' }}</span>
+            <div v-if="expandedTemplateId === template.id" class="prompt-card__content">
+              <label class="form-field">
+                <span>模板名称</span>
+                <FormTextControl
+                  :model-value="template.name"
+                  type="text"
+                  placeholder="输入模板名称"
+                  @update:model-value="updateDraftField(template.id, 'name', $event)"
+                />
+              </label>
+
+              <label class="form-field">
+                <span>提示词</span>
+                <FormTextControl
+                  :model-value="template.prompt"
+                  as="textarea"
+                  rows="8"
+                  placeholder="输入提示词内容"
+                  @update:model-value="updateDraftField(template.id, 'prompt', $event)"
+                />
+              </label>
+
+              <div class="prompt-card__actions">
+                <button class="primary-action" type="button" @click="saveTemplate(template.id)">
+                  保存
                 </button>
-
-                <div v-if="expandedTemplateId === template.id" class="prompt-template-card__content">
-                  <label class="form-field">
-                    <span>模板名称</span>
-                    <FormTextControl
-                      :model-value="template.name"
-                      type="text"
-                      placeholder="输入模板名称"
-                      @update:model-value="updateDraftField(template.id, 'name', $event)"
-                    />
-                  </label>
-
-                  <label class="form-field">
-                    <span>提示词</span>
-                    <FormTextControl
-                      :model-value="template.prompt"
-                      as="textarea"
-                      rows="8"
-                      placeholder="输入提示词内容"
-                      @update:model-value="updateDraftField(template.id, 'prompt', $event)"
-                    />
-                  </label>
-
-                  <div class="prompt-template-card__actions">
-                    <button class="primary-action" type="button" @click="saveTemplate(template.id)">保存</button>
-                    <button
-                      class="secondary-action"
-                      type="button"
-                      :disabled="template.source === 'system-fixed' && template.isNew !== true"
-                      @click="removeTemplate(template.id)"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-              </article>
+                <button
+                  class="secondary-action"
+                  type="button"
+                  :disabled="template.source === 'system-fixed' && template.isNew !== true"
+                  @click="removeTemplate(template.id)"
+                >
+                  删除
+                </button>
+              </div>
             </div>
-          </div>
-        </article>
-      </section>
-    </div>
+          </article>
+        </div>
+      </article>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.prompt-library {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.prompt-library__header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.prompt-library__grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.prompt-library__column {
+  min-width: 0;
+  min-height: 360px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(11, 16, 29, 0.82);
+  overflow: hidden;
+}
+
+.prompt-library__column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prompt-library__column-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.prompt-library__column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 520px;
+  padding: 12px;
+  overflow: auto;
+  min-width: 0;
+}
+
+.prompt-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.prompt-card__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.prompt-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.prompt-card__meta strong,
+.prompt-card__meta span,
+.prompt-card__state {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-card__meta span,
+.prompt-card__state {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+}
+
+.prompt-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.form-field span {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.form-field :deep(input),
+.form-field :deep(textarea) {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(5, 9, 18, 0.78);
+  color: #fff;
+  padding: 10px 12px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.prompt-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+</style>

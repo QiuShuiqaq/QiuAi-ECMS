@@ -207,4 +207,26 @@ describe('workspaceCreditService', () => {
     expect(state.creditState.remainingCredits).toBe(300)
     expect(saveSettings).not.toHaveBeenCalled()
   })
+
+  it('syncs remote wallet balances during realtime balance checks when a session token exists', async () => {
+    const { service, getSettings, savedSettings } = await createService()
+
+    const result = await service.syncCreditStateWithRealtimeBalance()
+
+    expect(result.synced).toBe(true)
+    expect(result.dashboardCreditState).toMatchObject({
+      text: {
+        balanceCny: 12.34,
+        syncStatus: 'success'
+      },
+      image: {
+        balanceCny: 88.8
+      },
+      video: {
+        balanceCny: 19.9
+      }
+    })
+    expect(getSettings().dashboardCreditState.text.balanceCny).toBe(12.34)
+    expect(savedSettings.at(-1)).toHaveProperty('dashboardCreditState')
+  })
 })

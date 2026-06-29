@@ -29,6 +29,11 @@ describe('workspaceTaskLifecycleService', () => {
             usedCredits: 0,
             activityHistory: [],
             taskLedger: {}
+          },
+          dashboardCreditState: {
+            text: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
+            image: { balanceCny: 10, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+            video: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' }
           }
         }),
         saveSettings
@@ -67,7 +72,6 @@ describe('workspaceTaskLifecycleService', () => {
       }),
       ensureDraftWithinCapability: () => undefined,
       validateTaskScale: () => undefined,
-      estimateTaskCredits: () => 600,
       buildQueuedTaskSummary: ({ taskId, taskNumber, createdAt, inputDirectory, outputDirectory }) => ({
         id: taskId,
         taskNumber,
@@ -95,20 +99,13 @@ describe('workspaceTaskLifecycleService', () => {
       },
       upsertProjectRun: (projectRuns = [], nextRun = {}) => [nextRun, ...projectRuns.filter((item) => item.id !== nextRun.id)],
       syncCreditStateWithRealtimeBalance: vi.fn(async () => ({
-        synced: false
+        synced: false,
+        dashboardCreditState: {
+          text: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 10, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          video: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' }
+        }
       })),
-      workspaceCreditService: {
-        freezeCreditsForTask: vi.fn(({ creditState }) => ({
-          ...creditState,
-          remainingCredits: 400,
-          frozenCredits: 600
-        })),
-        refundCreditsForTask: vi.fn(({ creditState }) => ({
-          ...creditState,
-          remainingCredits: 1000,
-          frozenCredits: 0
-        }))
-      },
       enqueueTaskExecution,
       outputDirectoryResolver: (taskId, menuKey, resolveTaskDirectories) => resolveTaskDirectories({
         featureKey: menuKey,
@@ -140,7 +137,7 @@ describe('workspaceTaskLifecycleService', () => {
       taskNumber: 'QAI-20260621-0001',
       status: '等待中'
     })
-    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).not.toHaveBeenCalled()
     expect(persistTaskAndState).toHaveBeenCalledTimes(1)
     expect(enqueueTaskExecution).toHaveBeenCalledWith(expect.objectContaining({
       taskId: 'id-1',
@@ -162,13 +159,7 @@ describe('workspaceTaskLifecycleService', () => {
       }
     })).rejects.toThrow('persist failed')
 
-    expect(saveSettings).toHaveBeenCalledTimes(2)
-    expect(saveSettings.mock.calls.at(-1)?.[0]).toMatchObject({
-      creditState: {
-        remainingCredits: 1000,
-        frozenCredits: 0
-      }
-    })
+    expect(saveSettings).not.toHaveBeenCalled()
   })
 
   it('rejects unsupported non-live task entry points', async () => {
@@ -202,6 +193,63 @@ describe('workspaceTaskLifecycleService', () => {
     })
 
     expect(saveSettings).not.toHaveBeenCalled()
+    expect(persistTaskAndState).not.toHaveBeenCalled()
+    expect(enqueueTaskExecution).not.toHaveBeenCalled()
+  })
+
+  it('rejects workspace text tasks when remote text balance is zero', async () => {
+    const { service, persistTaskAndState, enqueueTaskExecution, saveSettings } = await createService({
+      syncCreditStateWithRealtimeBalance: vi.fn(async () => ({
+        synced: true,
+        dashboardCreditState: {
+          text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 9, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          video: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' }
+        }
+      }))
+    })
+
+    await expect(service.createTask({
+      menuKey: 'workspace',
+      draft: {
+        productName: 'Lamp',
+        enabledSteps: {
+          title: true,
+          description: false,
+          image: false,
+          video: false
+        }
+      }
+    })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_TEXT_BALANCE'
+    })
+
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(persistTaskAndState).not.toHaveBeenCalled()
+    expect(enqueueTaskExecution).not.toHaveBeenCalled()
+  })
+
+  it('rejects video tasks when remote video balance is zero', async () => {
+    const { service, persistTaskAndState, enqueueTaskExecution } = await createService({
+      syncCreditStateWithRealtimeBalance: vi.fn(async () => ({
+        synced: true,
+        dashboardCreditState: {
+          text: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 9, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'success' }
+        }
+      }))
+    })
+
+    await expect(service.createTask({
+      menuKey: 'video-generate',
+      draft: {
+        productName: 'Lamp'
+      }
+    })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_VIDEO_BALANCE'
+    })
+
     expect(persistTaskAndState).not.toHaveBeenCalled()
     expect(enqueueTaskExecution).not.toHaveBeenCalled()
   })

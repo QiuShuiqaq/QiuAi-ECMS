@@ -130,6 +130,65 @@ describe('settingsStoreService', () => {
     }
   })
 
+  it('does not inject dev bypass auth defaults when the dev session token is missing', async () => {
+    const previousEnv = {
+      DEV_BYPASS_LICENSE: process.env.DEV_BYPASS_LICENSE,
+      DEV_PLATFORM_SESSION_TOKEN: process.env.DEV_PLATFORM_SESSION_TOKEN,
+      DEV_TEST_USER_ID: process.env.DEV_TEST_USER_ID,
+      DEV_TEST_LICENSE_ID: process.env.DEV_TEST_LICENSE_ID
+    }
+
+    process.env.DEV_BYPASS_LICENSE = 'true'
+    delete process.env.DEV_PLATFORM_SESSION_TOKEN
+    process.env.DEV_TEST_USER_ID = 'dev-user-1'
+    process.env.DEV_TEST_LICENSE_ID = 'dev-license-1'
+
+    try {
+      const store = createMemoryStore()
+
+      const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+      const service = createSettingsStoreService({ store })
+
+      expect(service.getSettings().authPlatform).toMatchObject({
+        enabled: true,
+        sessionToken: '',
+        lastUserId: '',
+        lastLicenseId: ''
+      })
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (typeof value === 'undefined') {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  })
+
+  it('persists remote activation identity fields for later auto-reactivation', async () => {
+    const store = createMemoryStore()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const service = createSettingsStoreService({ store })
+
+    await service.saveSettings({
+      authPlatform: {
+        customerName: 'Remote Alice',
+        contact: '13800138000',
+        inviteCode: 'QAI123456',
+        sessionToken: 'session-1'
+      }
+    })
+
+    expect(service.getSettings().authPlatform).toMatchObject({
+      customerName: 'Remote Alice',
+      contact: '13800138000',
+      inviteCode: 'QAI123456',
+      sessionToken: 'session-1'
+    })
+  })
+
   it('rejects invalid workspace upload directories and accepts clearing them', async () => {
     const store = createMemoryStore()
 

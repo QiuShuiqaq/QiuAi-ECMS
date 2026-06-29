@@ -27,7 +27,6 @@ describe('workspaceTaskExecutionService', () => {
 
     const activeTaskControllers = new Map()
     const savedStates = []
-    const creditSaves = []
     let currentState = {
       productProjects: [],
       projectRuns: []
@@ -82,13 +81,9 @@ describe('workspaceTaskExecutionService', () => {
         buildProjectRunUpdateFromResult: ({ projectRun }) => ({ ...projectRun, status: 'success' }),
         buildFailedProjectRun: ({ projectRun, errorMessage }) => ({ ...projectRun, status: 'failed', error: errorMessage })
       },
-      settleCreditsForTask: () => ({ remainingCredits: 100 }),
-      refundCreditsForTask: () => ({ remainingCredits: 200 }),
       settingsService: {
         getSettings: () => ({ creditState: { remainingCredits: 300 } }),
-        saveSettings: async (payload) => {
-          creditSaves.push(payload)
-        }
+        saveSettings: async () => undefined
       },
       safeRuntimeLog: async () => undefined,
       runtimeLogger: null,
@@ -99,15 +94,14 @@ describe('workspaceTaskExecutionService', () => {
       service,
       activeTaskControllers,
       savedStates,
-      creditSaves,
       setState(nextState) {
         currentState = nextState
       }
     }
   }
 
-  it('runs a queued task through success path and settles credits', async () => {
-    const { service, activeTaskControllers, savedStates, creditSaves, setState } = await createService()
+  it('runs a queued task through success path without local credit settlement', async () => {
+    const { service, activeTaskControllers, savedStates, setState } = await createService()
     setState({
       productProjects: [],
       projectRuns: [{ id: 'run-1' }]
@@ -125,16 +119,11 @@ describe('workspaceTaskExecutionService', () => {
     })
 
     expect(savedStates.length).toBeGreaterThanOrEqual(2)
-    expect(creditSaves.at(-1)).toMatchObject({
-      creditState: {
-        remainingCredits: 100
-      }
-    })
     expect(activeTaskControllers.size).toBe(0)
   })
 
-  it('runs a queued task through failure path and refunds credits', async () => {
-    const { service, activeTaskControllers, savedStates, creditSaves, setState } = await createService({
+  it('runs a queued task through failure path without local credit refund', async () => {
+    const { service, activeTaskControllers, savedStates, setState } = await createService({
       buildResultPayload: async () => {
         throw new Error('generation failed')
       }
@@ -159,11 +148,6 @@ describe('workspaceTaskExecutionService', () => {
       id: 'task-2',
       status: '失败',
       error: 'generation failed'
-    })
-    expect(creditSaves.at(-1)).toMatchObject({
-      creditState: {
-        remainingCredits: 200
-      }
     })
     expect(activeTaskControllers.size).toBe(0)
   })

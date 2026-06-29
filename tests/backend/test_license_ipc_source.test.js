@@ -40,6 +40,10 @@ describe('license ipc source', () => {
 
     expect(licenseIpcSource).toContain('async function requireSessionToken(settingsService)')
     expect(licenseIpcSource).toContain('async function getUserAgreementStatus({ authorizationService, settingsService })')
+    expect(licenseIpcSource).toContain('activationPayload?.customerName || requestPayload?.customerName')
+    expect(licenseIpcSource).toContain('activationPayload?.contact || requestPayload?.contact')
+    expect(licenseIpcSource).toContain('activationPayload?.inviteCode || requestPayload?.inviteCode')
+    expect(licenseIpcSource).toContain('const requestPayload = {')
     expect(licenseIpcSource).toContain("error.code = 'REMOTE_AUTH_REQUIRED'")
     expect(licenseIpcSource).toContain('Remote authorization is required before using commerce features.')
     expect(licenseIpcSource).toContain('const sessionToken = await requireSessionToken(settingsService)')
@@ -47,6 +51,7 @@ describe('license ipc source', () => {
     expect(licenseIpcSource).toContain('LICENSE_GET_USER_AGREEMENT_STATUS')
     expect(licenseIpcSource).toContain('LICENSE_ACCEPT_USER_AGREEMENT')
     expect(licenseIpcSource).toContain('createAcceptedAgreementRecord')
+    expect(licenseIpcSource).not.toContain('remoteLicensePlatformClient.acceptUserAgreement')
     expect(licenseIpcSource).not.toContain('const sessionToken = await requireSessionToken(settingsService)\n    return remoteLicensePlatformClient.createSoftwareOrder')
     expect(licenseIpcSource).not.toContain('const { dialog, ipcMain } = require(\'electron\')')
   })

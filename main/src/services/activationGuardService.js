@@ -1,14 +1,12 @@
-function createActivationGuardService({ authorizationService, settingsService, remoteLicensePlatformClient }) {
+const { isAgreementAcceptedForActivation } = require('./userAgreementService')
+
+function createActivationGuardService({ authorizationService, settingsService }) {
   if (!authorizationService || typeof authorizationService.getActivationStatus !== 'function') {
     throw new Error('authorizationService is required.')
   }
 
   if (!settingsService || typeof settingsService.getSettings !== 'function') {
     throw new Error('settingsService is required.')
-  }
-
-  if (!remoteLicensePlatformClient || typeof remoteLicensePlatformClient.getUserAgreementStatus !== 'function') {
-    throw new Error('remoteLicensePlatformClient is required.')
   }
 
   async function getActivationStatus() {
@@ -25,13 +23,9 @@ function createActivationGuardService({ authorizationService, settingsService, r
       return activationStatus
     }
 
-    const sessionToken = String(settingsService.getSettings()?.authPlatform?.sessionToken || '').trim()
-    const agreementState = sessionToken
-      ? await remoteLicensePlatformClient.getUserAgreementStatus({ sessionToken }).catch(() => null)
-      : null
-
-    if (agreementState?.accepted !== true) {
-      const error = new Error('User agreement must be accepted before using the app.')
+    const agreementRecord = settingsService.getSettings()?.compliance?.userAgreement || {}
+    if (!isAgreementAcceptedForActivation(agreementRecord, activationStatus)) {
+      const error = new Error('Please accept the user agreement before using the app.')
       error.code = 'USER_AGREEMENT_REQUIRED'
       throw error
     }

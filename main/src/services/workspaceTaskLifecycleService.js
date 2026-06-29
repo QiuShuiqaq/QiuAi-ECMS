@@ -1,5 +1,65 @@
 const studioMenuConfig = require('../../../shared/studio-menu-config.json')
 
+function resolveTaskBalanceRequirements(menuKey, draft = {}) {
+  if (menuKey === 'workspace') {
+    return {
+      textRequired: Boolean(draft.enabledSteps?.title || draft.enabledSteps?.description),
+      imageRequired: Boolean(draft.enabledSteps?.image && draft.sourceImage),
+      videoRequired: Boolean(draft.enabledSteps?.video)
+    }
+  }
+
+  if (menuKey === 'series-generate') {
+    return {
+      textRequired: false,
+      imageRequired: true,
+      videoRequired: false
+    }
+  }
+
+  if (menuKey === 'video-generate') {
+    return {
+      textRequired: false,
+      imageRequired: false,
+      videoRequired: true
+    }
+  }
+
+  return {
+    textRequired: false,
+    imageRequired: false,
+    videoRequired: false
+  }
+}
+
+function assertSufficientWalletBalance({ menuKey, draft, dashboardCreditState }) {
+  const balanceState = dashboardCreditState && typeof dashboardCreditState === 'object'
+    ? dashboardCreditState
+    : {}
+  const requirements = resolveTaskBalanceRequirements(menuKey, draft)
+  const textBalance = Math.max(0, Number(balanceState.text?.balanceCny) || 0)
+  const imageBalance = Math.max(0, Number(balanceState.image?.balanceCny) || 0)
+  const videoBalance = Math.max(0, Number(balanceState.video?.balanceCny) || 0)
+
+  if (requirements.textRequired && textBalance <= 0) {
+    const error = new Error('文本余额不足，请先充值后再提交。')
+    error.code = 'INSUFFICIENT_TEXT_BALANCE'
+    throw error
+  }
+
+  if (requirements.imageRequired && imageBalance <= 0) {
+    const error = new Error('图片余额不足，请先充值后再提交。')
+    error.code = 'INSUFFICIENT_IMAGE_BALANCE'
+    throw error
+  }
+
+  if (requirements.videoRequired && videoBalance <= 0) {
+    const error = new Error('视频余额不足，请先充值后再提交。')
+    error.code = 'INSUFFICIENT_VIDEO_BALANCE'
+    throw error
+  }
+}
+
 function createWorkspaceTaskLifecycleService({
   getStoredState,
   getStoredTasks,
@@ -16,7 +76,6 @@ function createWorkspaceTaskLifecycleService({
   buildAgentReadinessSnapshot,
   ensureDraftWithinCapability,
   validateTaskScale,
-  estimateTaskCredits,
   buildQueuedTaskSummary,
   persistTaskAndState,
   workspaceProductProjectService,
@@ -37,7 +96,6 @@ function createWorkspaceTaskLifecycleService({
     }
 
     const state = getStoredState()
-    let settings = settingsService.getSettings()
     const taskId = createId()
     const projectRunId = `run-${createId()}`
     const taskNumber = createTaskNumber()
@@ -99,7 +157,12 @@ function createWorkspaceTaskLifecycleService({
     })
 
     validateTaskScale(menuKey, draft)
-    const estimatedCredits = estimateTaskCredits(menuKey, draft)
+    const creditSyncResult = await syncCreditStateWithRealtimeBalance()
+    assertSufficientWalletBalance({
+      menuKey,
+      draft,
+      dashboardCreditState: creditSyncResult.dashboardCreditState
+    })
     const queuedTask = buildQueuedTaskSummary({
       menuKey,
       draft,
@@ -109,27 +172,6 @@ function createWorkspaceTaskLifecycleService({
       inputDirectory,
       outputDirectory
     })
-
-    if (estimatedCredits > 0) {
-      const creditSyncResult = await syncCreditStateWithRealtimeBalance()
-      if (creditSyncResult.synced) {
-        settings = settingsService.getSettings()
-      }
-
-      const frozenCreditState = workspaceCreditService.freezeCreditsForTask({
-        creditState: settings.creditState,
-        taskId,
-        taskNumber,
-        menuKey,
-        draft,
-        estimatedCredits,
-        createdAt
-      })
-
-      await settingsService.saveSettings({
-        creditState: frozenCreditState
-      })
-    }
 
     try {
       await persistTaskAndState({
@@ -162,17 +204,6 @@ function createWorkspaceTaskLifecycleService({
 
       return queuedTask
     } catch (error) {
-      if (estimatedCredits > 0) {
-        const refundedCreditState = workspaceCreditService.refundCreditsForTask({
-          creditState: settingsService.getSettings().creditState,
-          taskId,
-          updatedAt: getNow()
-        })
-        await settingsService.saveSettings({
-          creditState: refundedCreditState
-        })
-      }
-
       throw error
     }
   }

@@ -54,8 +54,7 @@ function registerIpc() {
   })
   const activationGuard = createActivationGuardService({
     authorizationService,
-    settingsService,
-    remoteLicensePlatformClient
+    settingsService
   })
   const promptTemplateService = createPromptTemplateStoreService({ store: promptStore })
   const studioTaskManagerService = createStudioTaskManagerService()

@@ -15,8 +15,7 @@ defineEmits(['save-template', 'remove-template'])
   <section class="settings-center-page">
     <header class="settings-center-page__hero">
       <div>
-        <span class="settings-center-page__eyebrow">Settings</span>
-        <h1>设置</h1>
+        <h1>提示词库</h1>
       </div>
     </header>
 
@@ -50,15 +49,6 @@ defineEmits(['save-template', 'remove-template'])
 
 .settings-center-page__hero h1 {
   margin: 0;
-}
-
-.settings-center-page__eyebrow {
-  display: inline-flex;
-  margin-bottom: 10px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(118, 173, 255, 0.88);
 }
 
 .settings-center-page__panel {

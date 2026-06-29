@@ -572,7 +572,9 @@ function createDefaultProjectGenerationConfig() {
     },
     titleMaxChars: 60,
     descriptionMaxChars: 300,
+    imageModel: resolveDefaultModelForMenu(),
     imageSize: '1:1',
+    videoModel: 'MiniMax-Hailuo-2.3-Fast',
     videoDuration: '6s',
     videoResolution: '768P',
     videoMotionStrength: 'auto',
@@ -581,7 +583,8 @@ function createDefaultProjectGenerationConfig() {
     titlePrompt: '',
     descriptionPrompt: '',
     imagePrompt: '',
-    videoPrompt: ''
+    videoPrompt: '',
+    notes: ''
   }
 }
 
@@ -604,17 +607,22 @@ function normalizeProjectGenerationConfig(generationConfig = {}) {
     enabledSteps: normalizeProjectEnabledSteps(source.enabledSteps),
     titleMaxChars: Math.max(1, Number(source.titleMaxChars) || defaults.titleMaxChars),
     descriptionMaxChars: Math.max(1, Number(source.descriptionMaxChars) || defaults.descriptionMaxChars),
+    imageModel: String(source.imageModel || defaults.imageModel || resolveDefaultModelForMenu()).trim() || resolveDefaultModelForMenu(),
     imageSize: String(source.imageSize || defaults.imageSize).trim() || defaults.imageSize,
+    videoModel: String(source.videoModel || defaults.videoModel || 'MiniMax-Hailuo-2.3-Fast').trim() || 'MiniMax-Hailuo-2.3-Fast',
     videoDuration: String(source.videoDuration || defaults.videoDuration).trim() || defaults.videoDuration,
     videoResolution: String(source.videoResolution || defaults.videoResolution).trim() || defaults.videoResolution,
     aspectRatio: String(source.aspectRatio || defaults.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
     videoMotionStrength: String(source.videoMotionStrength || defaults.videoMotionStrength).trim() || defaults.videoMotionStrength,
+    titleTemplateId: String(source.titleTemplateId || defaults.titleTemplateId || '').trim(),
+    descriptionTemplateId: String(source.descriptionTemplateId || defaults.descriptionTemplateId || '').trim(),
     imageTemplateId: String(source.imageTemplateId || defaults.imageTemplateId).trim() || defaults.imageTemplateId,
     videoTemplateId: String(source.videoTemplateId || defaults.videoTemplateId).trim() || defaults.videoTemplateId,
     titlePrompt: String(source.titlePrompt || '').trim(),
     descriptionPrompt: String(source.descriptionPrompt || '').trim(),
     imagePrompt: String(source.imagePrompt || '').trim(),
-    videoPrompt: String(source.videoPrompt || '').trim()
+    videoPrompt: String(source.videoPrompt || '').trim(),
+    notes: String(source.notes || '').trim()
   }
 }
 
@@ -1186,6 +1194,9 @@ function updateProductProjectFields(project = {}, patch = {}, updatedAt = '') {
   const normalizedProject = normalizeProductProject(project)
   const nextPatch = patch && typeof patch === 'object' ? patch : {}
   const baseInfoPatch = nextPatch.baseInfo && typeof nextPatch.baseInfo === 'object' ? nextPatch.baseInfo : {}
+  const generationConfigPatch = nextPatch.generationConfig && typeof nextPatch.generationConfig === 'object'
+    ? nextPatch.generationConfig
+    : {}
   const assetsPatch = nextPatch.assets && typeof nextPatch.assets === 'object' ? nextPatch.assets : {}
   const contentPatch = nextPatch.content && typeof nextPatch.content === 'object' ? nextPatch.content : {}
   const metadataPatch = nextPatch.metadata && typeof nextPatch.metadata === 'object' ? nextPatch.metadata : {}
@@ -1202,6 +1213,10 @@ function updateProductProjectFields(project = {}, patch = {}, updatedAt = '') {
     baseInfo: {
       ...normalizedProject.baseInfo,
       ...baseInfoPatch
+    },
+    generationConfig: {
+      ...normalizedProject.generationConfig,
+      ...generationConfigPatch
     },
     assets: {
       ...normalizedProject.assets,
@@ -2579,8 +2594,6 @@ function createStudioWorkspaceService({
     normalizeProjectRuns,
     upsertProjectRun,
     workspaceProjectRunService,
-    settleCreditsForTask: (...args) => workspaceCreditService.settleCreditsForTask(...args),
-    refundCreditsForTask: (...args) => workspaceCreditService.refundCreditsForTask(...args),
     settingsService,
     safeRuntimeLog,
     runtimeLogger
@@ -2601,7 +2614,6 @@ function createStudioWorkspaceService({
     buildAgentReadinessSnapshot,
     ensureDraftWithinCapability,
     validateTaskScale,
-    estimateTaskCredits,
     buildQueuedTaskSummary,
     persistTaskAndState,
     workspaceProductProjectService,
