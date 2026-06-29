@@ -177,6 +177,11 @@ async function saveArtifactToDirectory({
 }
 
 function calculateProgress(job = {}) {
+  const jobStatus = trimString(job?.status || '').toUpperCase()
+  if (TERMINAL_JOB_STATUSES.has(jobStatus)) {
+    return 100
+  }
+
   const items = Array.isArray(job.items) ? job.items : []
   if (!items.length) {
     return 0
@@ -184,6 +189,24 @@ function calculateProgress(job = {}) {
 
   const completedCount = items.filter((item) => TERMINAL_ITEM_STATUSES.has(String(item.status || ''))).length
   return Math.max(5, Math.min(100, Math.round((completedCount / items.length) * 100)))
+}
+
+function resolveJobFailureMessage(job = {}, fallbackMessage = 'Remote generation failed.') {
+  const failureReason = trimString(job?.failureReason || '')
+  if (failureReason) {
+    return failureReason
+  }
+
+  const items = Array.isArray(job.items) ? job.items : []
+  const errorMessages = items
+    .map((item) => trimString(item?.lastErrorMessage || ''))
+    .filter(Boolean)
+
+  if (errorMessages.length) {
+    return Array.from(new Set(errorMessages)).join('；')
+  }
+
+  return fallbackMessage
 }
 
 function mapGroupStatus(status = '') {
@@ -531,7 +554,8 @@ async function runRemoteJob({
 
     await onProgress?.({
       progress: calculateProgress(latestJob),
-      status: ['FAILED', 'CANCELLED'].includes(String(latestJob.status || '')) ? 'failed' : 'running'
+      status: ['FAILED', 'CANCELLED', 'PARTIAL_FAILED'].includes(String(latestJob.status || '')) ? 'failed' : 'running',
+      error: resolveJobFailureMessage(latestJob, 'Remote generation failed.')
     })
   }
 
@@ -542,7 +566,7 @@ async function runRemoteJob({
   })
 
   if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
-    throw new Error(trimString(latestJob.failureReason || '') || 'Remote generation failed.')
+    throw new Error(resolveJobFailureMessage(latestJob, 'Remote generation failed.'))
   }
 
   const downloadedArtifacts = []
@@ -566,7 +590,10 @@ async function runRemoteJob({
 
   await onProgress?.({
     progress: 100,
-    status: latestJob.status === 'PARTIAL_FAILED' ? 'failed' : 'succeeded'
+    status: latestJob.status === 'PARTIAL_FAILED' ? 'failed' : 'succeeded',
+    error: latestJob.status === 'PARTIAL_FAILED'
+      ? resolveJobFailureMessage(latestJob, 'Remote generation partially failed.')
+      : ''
   })
 
   return payloadBuilder.mapResult({
@@ -612,7 +639,7 @@ async function runRemoteTextJob({
   })
 
   if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
-    throw new Error(trimString(latestJob.failureReason || '') || 'Remote text generation failed.')
+    throw new Error(resolveJobFailureMessage(latestJob, 'Remote text generation failed.'))
   }
 
   return payloadBuilder.mapResult({

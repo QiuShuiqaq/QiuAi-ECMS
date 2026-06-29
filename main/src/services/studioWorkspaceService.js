@@ -2295,6 +2295,15 @@ function normalizeTaskProgress(progressValue, fallbackValue = 0) {
 
 function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, inputDirectory, outputDirectory, resultPayload }) {
   const groupedProgress = resolveGroupedProgressState(menuKey, draft, resultPayload)
+  const failedOutputs = Array.isArray(groupedProgress?.groupedResults)
+    ? groupedProgress.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
+        .filter((output) => output?.status === 'failed')
+    : []
+  const failedMessages = failedOutputs
+    .map((output) => String(output?.error || '').trim())
+    .filter(Boolean)
+  const hasPartialFailure = failedOutputs.length > 0
+  const normalizedErrorMessage = Array.from(new Set(failedMessages)).join('；')
 
   return buildTaskRecord({
     menuKey,
@@ -2309,9 +2318,10 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     batchCount: menuKey === 'series-generate'
       ? Math.max(1, Number(draft.batchCount) || 1)
       : 1,
-    status: '已完成',
+    status: hasPartialFailure ? '失败' : '已完成',
     progress: 100,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
+    error: normalizedErrorMessage,
     ...groupedProgress
   })
 }

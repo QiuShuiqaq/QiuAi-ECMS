@@ -269,6 +269,11 @@ function resolveQueueStage(project = {}, latestRun = null) {
 }
 
 function resolveQueueProgress(project = {}, latestRun = null) {
+  const normalizedStatus = String(latestRun?.status || '').trim().toLowerCase()
+  if (normalizedStatus === 'failed' || normalizedStatus === 'success') {
+    return 100
+  }
+
   if (typeof latestRun?.progress === 'number') {
     return Math.max(0, Math.min(100, latestRun.progress))
   }
@@ -451,6 +456,7 @@ const queueRows = computed(() => {
       status,
       currentStage,
       progress: queuePercent,
+      error: String(latestRun?.error || '').trim(),
       isActive: project.id === activeProjectEntry.value?.project?.id
     }
   })
@@ -1134,6 +1140,10 @@ function resolveStageMenuKey(stage = '') {
                   <span class="task-progress__bar" :style="{ width: `${item.progress}%` }"></span>
                 </div>
 
+                <div v-if="item.status === '失败' && item.error" class="work-center-studio__queue-card-error">
+                  {{ item.error }}
+                </div>
+
                 <div class="work-center-studio__queue-card-actions">
                   <button class="secondary-action work-center-studio__mini-button" type="button" @click="handleOpenProjectStorage(item.project)">查看结果</button>
                   <button class="secondary-action work-center-studio__mini-button" type="button" @click="handleFocusQueueProject(item.project)">定位项目</button>
@@ -1520,6 +1530,16 @@ function resolveStageMenuKey(stage = '') {
 
 .work-center-studio__flow-step--failed .work-center-studio__flow-connector {
   background: linear-gradient(90deg, rgba(255, 120, 117, 0.56), rgba(255, 120, 117, 0.16));
+}
+
+.work-center-studio__queue-card-error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #ffb3a8;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 120, 117, 0.08);
+  border: 1px solid rgba(255, 120, 117, 0.12);
 }
 
 .work-center-studio__flow-step--pending .work-center-studio__flow-copy strong {
