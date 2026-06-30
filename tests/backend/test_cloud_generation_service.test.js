@@ -64,6 +64,161 @@ describe('cloudGenerationService', () => {
     })).toBe(15000)
   })
 
+  it('reports non-stalled progress for running image jobs before any artifact is completed', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-progress-1',
+      status: 'RUNNING',
+      pollingAdvice: {
+        recommendedIntervalMs: 1,
+        minIntervalMs: 1
+      },
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'RUNNING',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Result 1'
+        }
+      ]
+    })
+    remoteClient.getGenerationJob
+      .mockResolvedValueOnce({
+        id: 'job-image-progress-1',
+        status: 'RUNNING',
+        pollingAdvice: {
+          recommendedIntervalMs: 1,
+          minIntervalMs: 1
+        },
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'RUNNING',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-progress-1',
+        status: 'SUCCEEDED',
+        pollingAdvice: {
+          recommendedIntervalMs: 0,
+          minIntervalMs: 0
+        },
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 1,
+            failedItemCount: 0
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-progress-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-progress-1',
+        status: 'SUCCEEDED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 1,
+            failedItemCount: 0
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-progress-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
+    remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('image-binary'))
+
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+      getMimeTypeFromPath: () => 'image/png',
+      pollIntervalMs: 1
+    })
+
+    const progressEvents = []
+    await service.generateImageResults({
+      menuKey: 'series-generate',
+      draft: {
+        batchCount: 1,
+        generateCount: 1,
+        model: 'gpt-image-2',
+        size: '1:1',
+        prompt: 'test prompt',
+        sourceImage: {
+          storedPath: 'F:/tmp/source.png'
+        },
+        promptAssignments: [
+          {
+            imageType: '主图',
+            prompt: 'test prompt'
+          }
+        ]
+      },
+      taskId: 'task-image-progress-1',
+      outputDirectory: 'F:/tmp/qiuai-cloud-generation',
+      onProgress: (payload) => {
+        progressEvents.push(payload)
+      }
+    })
+
+    expect(progressEvents[0]).toMatchObject({ progress: 5, status: 'running' })
+    expect(progressEvents[1]).toMatchObject({ status: 'running' })
+    expect(progressEvents[1].progress).toBeGreaterThan(20)
+    expect(progressEvents.at(-1)).toMatchObject({ progress: 100, status: 'succeeded' })
+  })
+
   it('caps remote requested concurrency to the platform maximum contract', async () => {
     const remoteClient = createRemoteClient()
     remoteClient.getServiceCapacityProfile.mockResolvedValue({

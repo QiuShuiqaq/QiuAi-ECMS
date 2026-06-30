@@ -5,17 +5,10 @@ describe('workspaceCreditService', () => {
     const { createWorkspaceCreditService } = await import('../../main/src/services/workspaceCreditService.js')
 
     let settings = {
-      creditState: {
-        remainingCredits: 1000,
-        frozenCredits: 0,
-        usedCredits: 0,
-        activityHistory: [],
-        taskLedger: {}
-      },
       dashboardCreditState: {
-        text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-        image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
-        video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
+        text: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+        image: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+        video: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
       },
       authPlatform: {
         enabled: true,
@@ -37,31 +30,37 @@ describe('workspaceCreditService', () => {
       },
       remoteLicensePlatformClient: {
         getWalletSummary: async () => ({
-          textBalanceCny: 12.34,
-          imageBalanceCny: 88.8,
-          videoBalanceCny: 19.9,
+          subscriptionBalances: {
+            text: 2.34,
+            image: 18.8,
+            video: 9.9
+          },
+          permanentBalances: {
+            text: 10,
+            image: 70,
+            video: 10
+          },
+          splitBalances: {
+            text: {
+              totalBalanceCny: 12.34,
+              subscriptionBalanceCny: 2.34,
+              permanentBalanceCny: 10
+            },
+            image: {
+              totalBalanceCny: 88.8,
+              subscriptionBalanceCny: 18.8,
+              permanentBalanceCny: 70
+            },
+            video: {
+              totalBalanceCny: 19.9,
+              subscriptionBalanceCny: 9.9,
+              permanentBalanceCny: 10
+            }
+          },
           updatedAt: '2026-06-21T11:30:00.000Z'
         })
       },
       getNow: () => '2026-06-21T12:34:56.000Z',
-      normalizeCreditStateForDisplay: (creditState = {}) => ({
-        totalPurchasedCredits: 0,
-        remainingCredits: 0,
-        frozenCredits: 0,
-        usedCredits: 0,
-        lastAdjustmentAt: '',
-        lastAdjustmentOperation: '',
-        lastAdjustmentAmount: 0,
-        adjustmentHistory: [],
-        activityHistory: [],
-        taskLedger: {},
-        ...creditState
-      }),
-      appendCreditActivity: (creditState, activityEntry) => [
-        activityEntry,
-        ...(Array.isArray(creditState.activityHistory) ? creditState.activityHistory : [])
-      ],
-      resolveTaskModelSummary: (menuKey, draft = {}) => `${menuKey}:${draft.model || 'default'}`,
       ...overrides
     })
 
@@ -72,65 +71,7 @@ describe('workspaceCreditService', () => {
     }
   }
 
-  it('freezes, settles, and refunds task credits through the dedicated service', async () => {
-    const { service } = await createService()
-
-    const frozen = service.freezeCreditsForTask({
-      creditState: {
-        remainingCredits: 1000,
-        frozenCredits: 0,
-        usedCredits: 0,
-        activityHistory: [],
-        taskLedger: {}
-      },
-      taskId: 'task-1',
-      taskNumber: 'QAI-001',
-      menuKey: 'series-generate',
-      draft: {
-        taskName: '任务 1',
-        model: 'gpt-image-2'
-      },
-      estimatedCredits: 600,
-      createdAt: '2026-06-21T12:00:00.000Z'
-    })
-
-    expect(frozen).toMatchObject({
-      remainingCredits: 400,
-      frozenCredits: 600
-    })
-    expect(frozen.taskLedger['task-1']).toMatchObject({
-      status: 'frozen',
-      modelSummary: 'series-generate:gpt-image-2'
-    })
-
-    const settled = service.settleCreditsForTask({
-      creditState: frozen,
-      taskId: 'task-1',
-      updatedAt: '2026-06-21T12:10:00.000Z'
-    })
-
-    expect(settled).toMatchObject({
-      remainingCredits: 400,
-      frozenCredits: 0,
-      usedCredits: 600
-    })
-    expect(settled.taskLedger['task-1'].status).toBe('settled')
-
-    const refunded = service.refundCreditsForTask({
-      creditState: frozen,
-      taskId: 'task-1',
-      updatedAt: '2026-06-21T12:20:00.000Z'
-    })
-
-    expect(refunded).toMatchObject({
-      remainingCredits: 1000,
-      frozenCredits: 0,
-      usedCredits: 0
-    })
-    expect(refunded.taskLedger['task-1'].status).toBe('refunded')
-  })
-
-  it('refreshes dashboard credits from the remote wallet and image credit provider', async () => {
+  it('refreshes dashboard balances from the remote wallet', async () => {
     const { service, getSettings, savedSettings } = await createService()
 
     const refreshed = await service.refreshDashboardCredits({
@@ -140,34 +81,37 @@ describe('workspaceCreditService', () => {
     expect(refreshed).toMatchObject({
       text: {
         balanceCny: 12.34,
+        subscriptionBalanceCny: 2.34,
+        permanentBalanceCny: 10,
         syncStatus: 'success'
       },
       image: {
-        remainingCredits: 0,
-        totalCredits: 0,
-        balanceCny: 88.8
+        balanceCny: 88.8,
+        subscriptionBalanceCny: 18.8,
+        permanentBalanceCny: 70,
+        syncStatus: 'success'
       },
       video: {
-        balanceCny: 19.9
+        balanceCny: 19.9,
+        subscriptionBalanceCny: 9.9,
+        permanentBalanceCny: 10,
+        syncStatus: 'success'
       }
     })
-    expect(getSettings().dashboardCreditState.image.remainingCredits).toBe(0)
+    expect(getSettings().dashboardCreditState.image.balanceCny).toBe(88.8)
     expect(savedSettings.at(-1)).toHaveProperty('dashboardCreditState')
   })
 
-  it('keeps the local image credit ledger untouched when no provider balance sync runs', async () => {
+  it('returns the current dashboard balances when realtime sync is unavailable', async () => {
     const state = {
-      creditState: {
-        remainingCredits: 300,
-        frozenCredits: 120,
-        usedCredits: 50,
-        activityHistory: [],
-        taskLedger: {}
-      },
       dashboardCreditState: {
-        text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-        image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
-        video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
+        text: { balanceCny: 1, subscriptionBalanceCny: 0.5, permanentBalanceCny: 0.5, lastSyncedAt: '', syncStatus: 'idle' },
+        image: { balanceCny: 3, subscriptionBalanceCny: 1, permanentBalanceCny: 2, lastSyncedAt: '', syncStatus: 'idle' },
+        video: { balanceCny: 5, subscriptionBalanceCny: 2, permanentBalanceCny: 3, lastSyncedAt: '', syncStatus: 'idle' }
+      },
+      authPlatform: {
+        enabled: false,
+        sessionToken: ''
       }
     }
     const { createWorkspaceCreditService } = await import('../../main/src/services/workspaceCreditService.js')
@@ -179,32 +123,15 @@ describe('workspaceCreditService', () => {
         getSettings: () => state,
         saveSettings
       },
-      getNow: () => '2026-06-21T12:34:56.000Z',
-      normalizeCreditStateForDisplay: (creditState = {}) => ({
-        totalPurchasedCredits: 0,
-        remainingCredits: 0,
-        frozenCredits: 0,
-        usedCredits: 0,
-        lastAdjustmentAt: '',
-        lastAdjustmentOperation: '',
-        lastAdjustmentAmount: 0,
-        adjustmentHistory: [],
-        activityHistory: [],
-        taskLedger: {},
-        ...creditState
-      }),
-      appendCreditActivity: (creditState, activityEntry) => [
-        activityEntry,
-        ...(Array.isArray(creditState.activityHistory) ? creditState.activityHistory : [])
-      ],
-      resolveTaskModelSummary: () => ''
+      getNow: () => '2026-06-21T12:34:56.000Z'
     })
 
     const result = await service.syncCreditStateWithRealtimeBalance()
 
-    expect(result.synced).toBe(false)
-    expect(result.creditState.remainingCredits).toBe(300)
-    expect(state.creditState.remainingCredits).toBe(300)
+    expect(result).toEqual({
+      synced: false,
+      dashboardCreditState: state.dashboardCreditState
+    })
     expect(saveSettings).not.toHaveBeenCalled()
   })
 

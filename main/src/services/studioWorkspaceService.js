@@ -100,7 +100,12 @@ const taskMenuMapByCategory = {
   工作台: 'workspace',
   '套图生成': 'series-generate'
 }
-const CREDIT_ACTIVITY_HISTORY_LIMIT = 20
+const workspaceStepOptionsLabelMap = {
+  title: '标题',
+  description: '描述',
+  image: '套图',
+  video: '视频'
+}
 const REQUEST_METRIC_HISTORY_LIMIT = 24
 const TASK_SIZE_LIMITS = {
   'series-generate': {
@@ -163,7 +168,7 @@ function resolveDefaultModelForMenu() {
 }
 
 function resolveTextModelForMenu() {
-  return 'deepseek-v4-flash'
+  return 'deepseek-chat'
 }
 
 function resolveVideoAspectRatioForMenu() {
@@ -233,6 +238,11 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
   }
 
   if (menuKey === 'workspace') {
+    const workspaceGenerateCount = Math.max(
+      1,
+      Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(draft.generateCount) || defaultDraft.generateCount || 4)
+    )
+
     return {
       ...defaultDraft,
       ...draft,
@@ -260,7 +270,8 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || defaultDraft.descriptionMaxChars || 300),
       titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
       descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
-      generateCount: Math.max(1, Number(draft.generateCount) || defaultDraft.generateCount || 4),
+      generateCount: workspaceGenerateCount,
+      promptAssignments: normalizePromptAssignments(draft.promptAssignments, workspaceGenerateCount),
       size: String(draft.size || defaultDraft.size || '1:1').trim() || '1:1',
       duration: String(draft.duration || defaultDraft.duration || '6s').trim() || '6s',
       resolution: String(draft.resolution || defaultDraft.resolution || '768P').trim() || '768P',
@@ -498,6 +509,7 @@ function createDefaultDrafts() {
       titleQuantity: 3,
       descriptionQuantity: 2,
       generateCount: 4,
+      promptAssignments: normalizePromptAssignments([], 4),
       size: '1:1',
       duration: '6s',
       resolution: '768P',
@@ -542,6 +554,7 @@ function createDefaultResultsByMenu() {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
+      usageSummary: null,
       summary: null
     }
   ]))
@@ -573,12 +586,14 @@ function createDefaultProjectGenerationConfig() {
     titleMaxChars: 60,
     descriptionMaxChars: 300,
     imageModel: resolveDefaultModelForMenu(),
-    imageSize: '1:1',
+    size: '1:1',
+    generateCount: 4,
     videoModel: 'MiniMax-Hailuo-2.3-Fast',
-    videoDuration: '6s',
-    videoResolution: '768P',
-    videoMotionStrength: 'auto',
+    duration: '6s',
+    resolution: '768P',
+    motionStrength: 'auto',
     imageTemplateId: DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+    promptAssignments: normalizePromptAssignments([], 4),
     videoTemplateId: 'video-main',
     titlePrompt: '',
     descriptionPrompt: '',
@@ -608,15 +623,20 @@ function normalizeProjectGenerationConfig(generationConfig = {}) {
     titleMaxChars: Math.max(1, Number(source.titleMaxChars) || defaults.titleMaxChars),
     descriptionMaxChars: Math.max(1, Number(source.descriptionMaxChars) || defaults.descriptionMaxChars),
     imageModel: String(source.imageModel || defaults.imageModel || resolveDefaultModelForMenu()).trim() || resolveDefaultModelForMenu(),
-    imageSize: String(source.imageSize || defaults.imageSize).trim() || defaults.imageSize,
+    size: String(source.size || source.imageSize || defaults.size).trim() || defaults.size,
+    generateCount: Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(source.generateCount) || defaults.generateCount || 4)),
     videoModel: String(source.videoModel || defaults.videoModel || 'MiniMax-Hailuo-2.3-Fast').trim() || 'MiniMax-Hailuo-2.3-Fast',
-    videoDuration: String(source.videoDuration || defaults.videoDuration).trim() || defaults.videoDuration,
-    videoResolution: String(source.videoResolution || defaults.videoResolution).trim() || defaults.videoResolution,
-    aspectRatio: String(source.aspectRatio || defaults.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
-    videoMotionStrength: String(source.videoMotionStrength || defaults.videoMotionStrength).trim() || defaults.videoMotionStrength,
+    duration: String(source.duration || source.videoDuration || defaults.duration).trim() || defaults.duration,
+    resolution: String(source.resolution || source.videoResolution || defaults.resolution).trim() || defaults.resolution,
+    aspectRatio: String(source.aspectRatio || source.videoAspectRatio || defaults.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
+    motionStrength: String(source.motionStrength || source.videoMotionStrength || defaults.motionStrength).trim() || defaults.motionStrength,
     titleTemplateId: String(source.titleTemplateId || defaults.titleTemplateId || '').trim(),
     descriptionTemplateId: String(source.descriptionTemplateId || defaults.descriptionTemplateId || '').trim(),
     imageTemplateId: String(source.imageTemplateId || defaults.imageTemplateId).trim() || defaults.imageTemplateId,
+    promptAssignments: normalizePromptAssignments(
+      source.promptAssignments,
+      Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(source.generateCount) || defaults.generateCount || 4))
+    ),
     videoTemplateId: String(source.videoTemplateId || defaults.videoTemplateId).trim() || defaults.videoTemplateId,
     titlePrompt: String(source.titlePrompt || '').trim(),
     descriptionPrompt: String(source.descriptionPrompt || '').trim(),
@@ -651,6 +671,7 @@ function normalizeProjectRun(projectRun = {}) {
   const source = projectRun && typeof projectRun === 'object' ? projectRun : {}
   const outputs = source.outputs && typeof source.outputs === 'object' ? source.outputs : {}
   const storage = source.storage && typeof source.storage === 'object' ? source.storage : {}
+  const usage = source.usage && typeof source.usage === 'object' ? source.usage : {}
   const defaultStepStates = createDefaultProjectRunStepStates()
 
   return {
@@ -659,7 +680,9 @@ function normalizeProjectRun(projectRun = {}) {
     taskId: typeof source.taskId === 'string' ? source.taskId : '',
     taskNumber: typeof source.taskNumber === 'string' ? source.taskNumber : '',
     triggerMenuKey: typeof source.triggerMenuKey === 'string' ? source.triggerMenuKey : '',
-    status: ['pending', 'running', 'success', 'failed'].includes(source.status) ? source.status : 'pending',
+    status: ['pending', 'running', 'success', 'failed', 'partial'].includes(source.status) ? source.status : 'pending',
+    progress: Math.max(0, Math.min(100, Number(source.progress) || 0)),
+    error: String(source.error || '').trim(),
     stepStates: {
       title: normalizeProjectRunStepState(source.stepStates?.title || defaultStepStates.title),
       description: normalizeProjectRunStepState(source.stepStates?.description || defaultStepStates.description),
@@ -684,6 +707,21 @@ function normalizeProjectRun(projectRun = {}) {
       descriptionFile: String(storage.descriptionFile || '').trim(),
       imageDirectory: String(storage.imageDirectory || '').trim(),
       videoDirectory: String(storage.videoDirectory || '').trim()
+    },
+    usage: {
+      totalAmountCny: Math.max(0, Number(usage.totalAmountCny) || 0),
+      currency: String(usage.currency || 'CNY').trim() || 'CNY',
+      billedAt: typeof usage.billedAt === 'string' ? usage.billedAt : '',
+      lines: Array.isArray(usage.lines)
+        ? usage.lines.map((line) => ({
+            kind: String(line?.kind || '').trim(),
+            label: String(line?.label || '').trim(),
+            model: String(line?.model || '').trim(),
+            units: Math.max(0, Number(line?.units) || 0),
+            unitPriceCny: Math.max(0, Number(line?.unitPriceCny) || 0),
+            amountCny: Math.max(0, Number(line?.amountCny) || 0)
+          }))
+        : []
     },
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : '',
     completedAt: typeof source.completedAt === 'string' ? source.completedAt : ''
@@ -823,8 +861,13 @@ function resolveProjectRunStepKey(menuKey = '') {
 
 function resolveWorkspaceEnabledRunSteps(draft = {}, currentProject = null) {
   const generationConfig = currentProject?.generationConfig || {}
-  const enabledSteps = normalizeProjectEnabledSteps(generationConfig.enabledSteps)
-  const hasSourceImage = Boolean(draft.sourceImage || currentProject?.assets?.sourceImages?.length)
+  const enabledSteps = normalizeProjectEnabledSteps(
+    draft.enabledSteps || generationConfig.enabledSteps
+  )
+  const hasSourceImage = Boolean(
+    normalizeImageAsset(draft.sourceImage) ||
+    currentProject?.assets?.sourceImages?.length
+  )
 
   return {
     title: enabledSteps.title !== false,
@@ -938,6 +981,15 @@ function buildWorkspaceProjectDraft({
   createdAt = '',
   updatedAt = ''
 } = {}) {
+  const currentGenerationConfig = normalizeProjectGenerationConfig(currentProject?.generationConfig)
+  const workspaceGenerateCount = Math.max(
+    1,
+    Math.min(
+      MAX_SERIES_GENERATE_GROUP_SIZE,
+      Number(draft.generateCount) || currentGenerationConfig.generateCount || 4
+    )
+  )
+
   return normalizeProductProject({
     ...(currentProject || {}),
     id: projectId,
@@ -953,20 +1005,53 @@ function buildWorkspaceProjectDraft({
       keywords: splitWorkspaceTextValues(draft.keywordsText),
       language: String(draft.language || 'zh-CN').trim() || 'zh-CN'
     },
+    generationConfig: {
+      ...currentGenerationConfig,
+      enabledSteps: normalizeProjectEnabledSteps(draft.enabledSteps || currentGenerationConfig.enabledSteps),
+      titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || currentGenerationConfig.titleMaxChars || 60),
+      descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || currentGenerationConfig.descriptionMaxChars || 300),
+      imageModel: String(draft.imageModel || currentGenerationConfig.imageModel || resolveDefaultModelForMenu()).trim() || resolveDefaultModelForMenu(),
+      size: String(draft.size || currentGenerationConfig.size || '1:1').trim() || '1:1',
+      generateCount: workspaceGenerateCount,
+      videoModel: String(draft.videoModel || currentGenerationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast').trim() || 'MiniMax-Hailuo-2.3-Fast',
+      duration: String(draft.duration || currentGenerationConfig.duration || '6s').trim() || '6s',
+      resolution: String(draft.resolution || currentGenerationConfig.resolution || '768P').trim() || '768P',
+      aspectRatio: String(draft.aspectRatio || currentGenerationConfig.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
+      motionStrength: String(draft.motionStrength || currentGenerationConfig.motionStrength || 'auto').trim() || 'auto',
+      titleTemplateId: String(draft.titleTemplateId || currentGenerationConfig.titleTemplateId || '').trim(),
+      descriptionTemplateId: String(draft.descriptionTemplateId || currentGenerationConfig.descriptionTemplateId || '').trim(),
+      imageTemplateId: String(draft.imageTemplateId || currentGenerationConfig.imageTemplateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID).trim() || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+      promptAssignments: normalizePromptAssignments(draft.promptAssignments, workspaceGenerateCount),
+      videoTemplateId: String(draft.videoTemplateId || currentGenerationConfig.videoTemplateId || 'video-main').trim() || 'video-main',
+      titlePrompt: String(draft.titlePrompt || currentGenerationConfig.titlePrompt || '').trim(),
+      descriptionPrompt: String(draft.descriptionPrompt || currentGenerationConfig.descriptionPrompt || '').trim(),
+      imagePrompt: String(draft.imagePrompt || currentGenerationConfig.imagePrompt || '').trim(),
+      videoPrompt: String(draft.videoPrompt || currentGenerationConfig.videoPrompt || '').trim(),
+      notes: String(draft.notes || currentGenerationConfig.notes || '').trim()
+    },
     createdAt: currentProject?.createdAt || createdAt,
     updatedAt
   })
 }
 
 function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
-  const titleCandidates = (resultPayload.textResults || [])
-    .filter((item) => item.kind === 'title')
-    .map((item) => String(item.content || '').trim())
-    .filter(Boolean)
-  const descriptionCandidates = (resultPayload.textResults || [])
-    .filter((item) => item.kind === 'description')
-    .map((item) => String(item.content || '').trim())
-    .filter(Boolean)
+  const workspaceResult = resultPayload.workspaceResult && typeof resultPayload.workspaceResult === 'object'
+    ? resultPayload.workspaceResult
+    : {}
+  const titleCandidates = Array.isArray(workspaceResult.titleCandidates)
+    ? workspaceResult.titleCandidates.map((item) => String(item || '').trim()).filter(Boolean)
+    : (resultPayload.textResults || [])
+      .filter((item) => item.kind === 'title')
+      .map((item) => String(item.content || '').trim())
+      .filter(Boolean)
+  const descriptionCandidates = Array.isArray(workspaceResult.descriptionCandidates)
+    ? workspaceResult.descriptionCandidates.map((item) => String(item || '').trim()).filter(Boolean)
+    : (resultPayload.textResults || [])
+      .filter((item) => item.kind === 'description')
+      .map((item) => String(item.content || '').trim())
+      .filter(Boolean)
+  const selectedTitle = String(workspaceResult.selectedTitle || titleCandidates[0] || project.content?.selectedTitle || '').trim()
+  const selectedDescription = String(workspaceResult.selectedDescription || descriptionCandidates[0] || project.content?.selectedDescription || '').trim()
 
   return normalizeProductProject({
     ...project,
@@ -975,8 +1060,8 @@ function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, up
       ...(project.content || {}),
       titleCandidates,
       descriptionCandidates,
-      selectedTitle: titleCandidates[0] || project.content?.selectedTitle || '',
-      selectedDescription: descriptionCandidates[0] || project.content?.selectedDescription || ''
+      selectedTitle,
+      selectedDescription
     },
     metadata: {
       ...(project.metadata || {}),
@@ -990,16 +1075,57 @@ function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, up
   })
 }
 
-function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
-  const generatedImages = (resultPayload.groupedResults || []).flatMap((group) => {
-    return (group.outputs || []).map((item) => ({
-      ...item,
-      path: item.savedPath || item.path || '',
-      savedPath: item.savedPath || item.path || '',
-      sourceUrl: item.sourceUrl || item.downloadUrl || '',
-      publishReadyUrl: item.publishReadyUrl || item.downloadUrl || ''
-    }))
+function normalizeGeneratedMediaOutput(item = {}) {
+  return {
+    ...item,
+    path: item.savedPath || item.path || '',
+    savedPath: item.savedPath || item.path || '',
+    sourceUrl: item.sourceUrl || item.downloadUrl || '',
+    publishReadyUrl: item.publishReadyUrl || item.downloadUrl || ''
+  }
+}
+
+function isGeneratedVideoOutput(item = {}) {
+  const savedPath = String(item.savedPath || item.path || '').trim()
+  return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
+}
+
+function isGeneratedImageOutput(item = {}) {
+  const savedPath = String(item.savedPath || item.path || '').trim()
+  return Boolean(savedPath) && !isGeneratedVideoOutput(item)
+}
+
+function collectGeneratedImagesFromResultPayload(resultPayload = {}) {
+  return (resultPayload.groupedResults || []).flatMap((group) => {
+    return (group.outputs || [])
+      .filter((item) => isGeneratedImageOutput(item))
+      .map((item) => normalizeGeneratedMediaOutput(item))
   })
+}
+
+function collectGeneratedVideoFromResultPayload(resultPayload = {}) {
+  const matchedVideo = (resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .find((item) => isGeneratedVideoOutput(item))
+
+  return matchedVideo ? normalizeGeneratedMediaOutput(matchedVideo) : null
+}
+
+function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
+  const workspaceResult = resultPayload.workspaceResult && typeof resultPayload.workspaceResult === 'object'
+    ? resultPayload.workspaceResult
+    : {}
+  const workspaceImages = Array.isArray(workspaceResult.images)
+    ? workspaceResult.images
+      .map((item) => normalizeGeneratedMediaOutput(item))
+      .filter((item) => {
+        const savedPath = String(item.savedPath || '').trim()
+        return Boolean(savedPath) && !/\.mp4$/i.test(savedPath)
+      })
+    : []
+  const generatedImages = workspaceImages.length
+    ? workspaceImages
+    : collectGeneratedImagesFromResultPayload(resultPayload)
 
   return normalizeProductProject({
     ...project,
@@ -1020,11 +1146,15 @@ function applyImageResultsToProject(project = {}, resultPayload = {}, updatedAt 
 }
 
 function applyVideoResultsToProject(project = {}, resultPayload = {}, updatedAt = '') {
-  const generatedVideo = (resultPayload.groupedResults || [])
-    .flatMap((group) => group.outputs || [])
-    .find((item) => {
-      return String(item.savedPath || item.path || '').trim()
-    }) || null
+  const workspaceResult = resultPayload.workspaceResult && typeof resultPayload.workspaceResult === 'object'
+    ? resultPayload.workspaceResult
+    : {}
+  const workspaceVideo = workspaceResult.video && typeof workspaceResult.video === 'object'
+    ? normalizeGeneratedMediaOutput(workspaceResult.video)
+    : null
+  const generatedVideo = workspaceVideo && /\.mp4$/i.test(String(workspaceVideo.savedPath || '').trim())
+    ? workspaceVideo
+    : collectGeneratedVideoFromResultPayload(resultPayload)
 
   return normalizeProductProject({
     ...project,
@@ -1032,13 +1162,7 @@ function applyVideoResultsToProject(project = {}, resultPayload = {}, updatedAt 
     assets: {
       ...(project.assets || {}),
       generatedVideo: generatedVideo
-        ? {
-            ...generatedVideo,
-            path: generatedVideo.savedPath || generatedVideo.path || '',
-            savedPath: generatedVideo.savedPath || generatedVideo.path || '',
-            sourceUrl: generatedVideo.sourceUrl || generatedVideo.downloadUrl || '',
-            publishReadyUrl: generatedVideo.publishReadyUrl || generatedVideo.downloadUrl || ''
-          }
+        ? normalizeGeneratedMediaOutput(generatedVideo)
         : project.assets?.generatedVideo || null
     },
     metadata: {
@@ -1466,37 +1590,6 @@ function countCurrentResults(resultPayload = {}) {
   return (resultPayload.textResults || []).length + (resultPayload.comparisonResults || []).length + groupedResultCount
 }
 
-function normalizeCreditStateForDisplay(creditState = {}) {
-  const source = creditState && typeof creditState === 'object' ? creditState : {}
-
-  return {
-    totalPurchasedCredits: Math.max(0, Number(source.totalPurchasedCredits) || 0),
-    remainingCredits: Math.max(0, Number(source.remainingCredits) || 0),
-    frozenCredits: Math.max(0, Number(source.frozenCredits) || 0),
-    usedCredits: Math.max(0, Number(source.usedCredits) || 0),
-    lastAdjustmentAt: typeof source.lastAdjustmentAt === 'string' ? source.lastAdjustmentAt : '',
-    lastAdjustmentOperation: typeof source.lastAdjustmentOperation === 'string' ? source.lastAdjustmentOperation : '',
-    lastAdjustmentAmount: Math.max(0, Number(source.lastAdjustmentAmount) || 0),
-    adjustmentHistory: Array.isArray(source.adjustmentHistory) ? source.adjustmentHistory.slice() : [],
-    activityHistory: Array.isArray(source.activityHistory)
-      ? source.activityHistory.slice(0, CREDIT_ACTIVITY_HISTORY_LIMIT).map((entry = {}) => ({
-          id: typeof entry.id === 'string' ? entry.id : '',
-          type: typeof entry.type === 'string' ? entry.type : '',
-          operation: entry.operation === 'decrease' ? 'decrease' : 'increase',
-          amount: Math.max(0, Number(entry.amount) || 0),
-          createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : '',
-          note: typeof entry.note === 'string' ? entry.note : '',
-          taskId: typeof entry.taskId === 'string' ? entry.taskId : '',
-          taskNumber: typeof entry.taskNumber === 'string' ? entry.taskNumber : '',
-          taskName: typeof entry.taskName === 'string' ? entry.taskName : '',
-          menuKey: typeof entry.menuKey === 'string' ? entry.menuKey : '',
-          modelSummary: typeof entry.modelSummary === 'string' ? entry.modelSummary : ''
-        }))
-      : [],
-    taskLedger: source.taskLedger && typeof source.taskLedger === 'object' ? { ...source.taskLedger } : {}
-  }
-}
-
 function resolveModelCreditCost(modelName = '') {
   return modelCreditCostMap[modelName] || 0
 }
@@ -1518,25 +1611,452 @@ function estimateTaskCredits(menuKey, draft = {}) {
   return 0
 }
 
-
-function appendCreditActivity(creditState, activityEntry = {}) {
-  return [
-    {
-      id: String(activityEntry.id || ''),
-      type: String(activityEntry.type || ''),
-      operation: activityEntry.operation === 'decrease' ? 'decrease' : 'increase',
-      amount: Math.max(0, Number(activityEntry.amount) || 0),
-      createdAt: String(activityEntry.createdAt || ''),
-      note: String(activityEntry.note || ''),
-      taskId: String(activityEntry.taskId || ''),
-      taskNumber: String(activityEntry.taskNumber || ''),
-      taskName: String(activityEntry.taskName || ''),
-      menuKey: String(activityEntry.menuKey || ''),
-      modelSummary: String(activityEntry.modelSummary || '')
-    },
-    ...(Array.isArray(creditState.activityHistory) ? creditState.activityHistory : [])
-  ].slice(0, CREDIT_ACTIVITY_HISTORY_LIMIT)
+function createWorkspaceStepStates(enabledSteps = {}, nowIso = () => new Date().toISOString()) {
+  return {
+    title: enabledSteps.title
+      ? { status: 'pending', error: '', startedAt: '', completedAt: '' }
+      : { status: 'success', error: '', startedAt: '', completedAt: nowIso() },
+    description: enabledSteps.description
+      ? { status: 'pending', error: '', startedAt: '', completedAt: '' }
+      : { status: 'success', error: '', startedAt: '', completedAt: nowIso() },
+    image: enabledSteps.image
+      ? { status: 'pending', error: '', startedAt: '', completedAt: '' }
+      : { status: 'success', error: '', startedAt: '', completedAt: nowIso() },
+    video: enabledSteps.video
+      ? { status: 'pending', error: '', startedAt: '', completedAt: '' }
+      : { status: 'success', error: '', startedAt: '', completedAt: nowIso() }
+  }
 }
+
+function markWorkspaceStepRunning(workspaceStepStates = {}, stepKey = '', nowIso = () => new Date().toISOString()) {
+  workspaceStepStates[stepKey] = {
+    ...workspaceStepStates[stepKey],
+    status: 'running',
+    error: '',
+    startedAt: workspaceStepStates[stepKey]?.startedAt || nowIso()
+  }
+}
+
+function markWorkspaceStepSuccess(workspaceStepStates = {}, stepKey = '', nowIso = () => new Date().toISOString()) {
+  workspaceStepStates[stepKey] = {
+    ...workspaceStepStates[stepKey],
+    status: 'success',
+    error: '',
+    completedAt: nowIso()
+  }
+}
+
+function markWorkspaceStepFailure(workspaceStepStates = {}, workspaceErrors = [], stepKey = '', errorMessage = '', nowIso = () => new Date().toISOString()) {
+  const normalizedError = String(errorMessage || '生成失败').trim() || '生成失败'
+  workspaceStepStates[stepKey] = {
+    ...workspaceStepStates[stepKey],
+    status: 'failed',
+    error: normalizedError,
+    completedAt: nowIso()
+  }
+  workspaceErrors.push(`${workspaceStepOptionsLabelMap[stepKey] || stepKey}：${normalizedError}`)
+}
+
+async function emitWorkspaceProgress(onProgress, workspaceStepStates, { progress, status, error = '' } = {}) {
+  await onProgress?.({
+    progress,
+    status,
+    error,
+    workspaceStepStates
+  })
+}
+
+function buildWorkspaceExecutionContext(draft = {}) {
+  const workspaceProjectName = resolveWorkspaceProjectDisplayName(draft)
+  return {
+    workspaceProjectName,
+    highlightText: splitWorkspaceTextValues(draft.highlightsText).join('、') || '暂无',
+    keywordText: splitWorkspaceTextValues(draft.keywordsText).join('、') || '暂无',
+    platformText: splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台',
+    selectionContextLines: buildWorkspaceSelectionContextLines(draft.selectionSource),
+    selectedTitleSeed: String(draft.selectedTitle || '').trim(),
+    selectedDescriptionSeed: String(draft.selectedDescription || '').trim()
+  }
+}
+
+function buildWorkspaceTitleTaskDraft(draft = {}, context = {}) {
+  return {
+    model: draft.model,
+    quantity: Math.max(1, Number(draft.titleQuantity) || 1),
+    prompt: [
+      `商品名称：${draft.productName || context.workspaceProjectName || ''}`,
+      `品牌：${draft.brand || '未提供'}`,
+      `类目：${draft.category || '未提供'}`,
+      `卖点：${context.highlightText || '暂无'}`,
+      `关键词：${context.keywordText || '暂无'}`,
+      `目标平台：${context.platformText || '通用电商平台'}`,
+      `语言：${draft.language || 'zh-CN'}`,
+      ...(context.selectionContextLines || []),
+      `任务要求：${draft.titlePrompt || ''}`,
+      `最大字数：${draft.titleMaxChars || 60}`,
+      '请基于当前商品信息和选品上下文，输出适合电商上架的商品标题。',
+      '要求优先保留商品主体、类目和真实卖点，不要编造参数，不要输出解释，只返回标题结果。'
+    ].filter(Boolean).join('\n')
+  }
+}
+
+function buildWorkspaceDescriptionTaskDraft(draft = {}, context = {}, titleResults = []) {
+  return {
+    model: draft.model,
+    quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
+    prompt: [
+      `商品名称：${draft.productName || context.workspaceProjectName || ''}`,
+      `品牌：${draft.brand || '未提供'}`,
+      `类目：${draft.category || '未提供'}`,
+      `卖点：${context.highlightText || '暂无'}`,
+      `关键词：${context.keywordText || '暂无'}`,
+      `目标平台：${context.platformText || '通用电商平台'}`,
+      `语言：${draft.language || 'zh-CN'}`,
+      `参考标题：${titleResults[0]?.content || context.selectedTitleSeed || draft.productName || context.workspaceProjectName || ''}`,
+      ...(context.selectionContextLines || []),
+      `任务要求：${draft.descriptionPrompt || ''}`,
+      `最大字数：${draft.descriptionMaxChars || 300}`,
+      '请输出适合商品详情页或上架页的商品描述。',
+      '要求信息清晰、卖点明确、语气自然，不要分点编号，不要编造不存在的规格。'
+    ].filter(Boolean).join('\n')
+  }
+}
+
+function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [], descriptionResults = []) {
+  const workspaceImagePromptBase = String(
+    draft.imagePrompt ||
+    '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'
+  ).trim()
+  const workspaceGenerateCount = Math.max(1, Number(draft.generateCount) || 4)
+  const workspacePromptAssignments = normalizePromptAssignments(draft.promptAssignments, workspaceGenerateCount)
+
+  return {
+    ...draft,
+    sourceImage: draft.sourceImage || null,
+    model: draft.imageModel || 'gpt-image-2',
+    generateCount: workspaceGenerateCount,
+    batchCount: 1,
+    size: draft.size || '1:1',
+    promptAssignments: workspacePromptAssignments.map((assignment, index) => {
+      const imageTypeLabel = String(
+        assignment.imageType ||
+        SERIES_GENERATE_TYPE_BY_TEMPLATE_ID[String(assignment.templateId || '').trim()] ||
+        SERIES_GENERATE_DEFAULT_TYPE_ORDER[index] ||
+        '详情图'
+      ).trim() || '详情图'
+
+      return {
+        ...assignment,
+        id: assignment.id || `workspace-series-${index + 1}`,
+        templateId: String(
+          assignment.templateId ||
+          SERIES_GENERATE_TEMPLATE_ID_BY_TYPE[imageTypeLabel] ||
+          draft.imageTemplateId ||
+          DEFAULT_EMPTY_PROMPT_TEMPLATE_ID
+        ).trim() || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+        imageType: imageTypeLabel,
+        differenceLevel: ['off', 'low', 'medium', 'high'].includes(assignment.differenceLevel)
+          ? assignment.differenceLevel
+          : 'off',
+        prompt: String(assignment.prompt || '').trim() || workspaceImagePromptBase
+      }
+    })
+  }
+}
+
+function buildWorkspaceVideoTaskDraft(draft = {}, context = {}, titleResults = [], descriptionResults = []) {
+  return {
+    ...draft,
+    sourceImage: draft.sourceImage || null,
+    model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
+    prompt: [
+      `商品名称：${draft.productName || context.workspaceProjectName || ''}`,
+      `参考标题：${titleResults[0]?.content || context.selectedTitleSeed || draft.productName || context.workspaceProjectName || ''}`,
+      `参考描述：${descriptionResults[0]?.content || context.selectedDescriptionSeed || ''}`,
+      ...(context.selectionContextLines || []),
+      String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim()
+    ].filter(Boolean).join('\n'),
+    duration: draft.duration || '6s',
+    resolution: draft.resolution || '768P',
+    motionStrength: draft.motionStrength || 'auto',
+    videoTemplateId: draft.videoTemplateId || 'video-main'
+  }
+}
+
+async function runWorkspaceTextStep({
+  stepKey = '',
+  taskId = '',
+  draft = {},
+  workspaceStepStates,
+  workspaceErrors,
+  nowIso,
+  emitProgress,
+  generateTextResults
+} = {}) {
+  const progressConfig = stepKey === 'title'
+    ? { baseProgress: 12, maxProgress: 58, idleProgress: 58 }
+    : { baseProgress: 58, maxProgress: 72, idleProgress: 72 }
+
+  markWorkspaceStepRunning(workspaceStepStates, stepKey, nowIso)
+  await emitProgress({
+    progress: progressConfig.baseProgress,
+    status: 'running'
+  })
+
+  try {
+    const response = await generateTextResults({
+      onProgress: async ({ progress, status, error } = {}) => {
+        const mappedProgress = progressConfig.baseProgress + Math.round((Math.max(0, Number(progress) || 0) * ((progressConfig.maxProgress - progressConfig.baseProgress) / 100)))
+        await emitProgress({
+          progress: Math.min(progressConfig.maxProgress, mappedProgress),
+          status,
+          error
+        })
+      },
+      taskId,
+      draft
+    })
+    const results = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.textResults) ? response.textResults : [])
+
+    markWorkspaceStepSuccess(workspaceStepStates, stepKey, nowIso)
+    await emitProgress({
+      progress: progressConfig.idleProgress,
+      status: 'running'
+    })
+    return {
+      textResults: results,
+      usageSummary: response && typeof response === 'object' ? response.usageSummary || null : null
+    }
+  } catch (error) {
+    markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, stepKey, error?.message, nowIso)
+    await emitProgress({
+      progress: progressConfig.idleProgress,
+      status: 'running',
+      error: workspaceErrors.join('；')
+    })
+    return {
+      textResults: [],
+      usageSummary: null
+    }
+  }
+}
+
+async function runWorkspaceImageStep({
+  taskId = '',
+  draft = {},
+  outputDirectory = '',
+  workspaceStepStates,
+  workspaceErrors,
+  nowIso,
+  emitProgress,
+  generateImageResults
+} = {}) {
+  const emptyImageResults = {
+    textResults: [],
+    comparisonResults: [],
+    groupedResults: [],
+    summary: {
+      title: '套图结果',
+      description: '未提供样图，跳过套图生成'
+    }
+  }
+
+  markWorkspaceStepRunning(workspaceStepStates, 'image', nowIso)
+  if (!draft.sourceImage) {
+    markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, 'image', '未提供原图，无法执行套图生成', nowIso)
+    return emptyImageResults
+  }
+
+  try {
+    const imageResults = await generateImageResults({
+      menuKey: 'series-generate',
+      draft,
+      taskId,
+      outputDirectory,
+      onProgress: async ({ progress, status } = {}) => {
+        const mappedProgress = 72 + Math.round((Math.max(0, Number(progress) || 0) * 0.18))
+        await emitProgress({
+          progress: Math.min(90, mappedProgress),
+          status
+        })
+      }
+    })
+
+    markWorkspaceStepSuccess(workspaceStepStates, 'image', nowIso)
+    return imageResults
+  } catch (error) {
+    markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, 'image', error?.message, nowIso)
+    return {
+      ...emptyImageResults,
+      summary: {
+        title: '套图结果',
+        description: String(error?.message || '套图生成失败').trim() || '套图生成失败'
+      }
+    }
+  }
+}
+
+async function runWorkspaceVideoStep({
+  taskId = '',
+  draft = {},
+  outputDirectory = '',
+  workspaceStepStates,
+  workspaceErrors,
+  nowIso,
+  emitProgress,
+  generateVideoResults
+} = {}) {
+  const emptyVideoResults = {
+    textResults: [],
+    comparisonResults: [],
+    groupedResults: [],
+    summary: {
+      title: '视频结果',
+      description: '未提供样图，跳过视频生成'
+    }
+  }
+
+  markWorkspaceStepRunning(workspaceStepStates, 'video', nowIso)
+  if (!draft.sourceImage) {
+    markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, 'video', '未提供原图，无法执行视频生成', nowIso)
+    return emptyVideoResults
+  }
+
+  try {
+    const videoResults = await generateVideoResults({
+      draft,
+      taskId,
+      outputDirectory,
+      onProgress: async ({ progress, status } = {}) => {
+        const mappedProgress = 91 + Math.round((Math.max(0, Number(progress) || 0) * 0.09))
+        await emitProgress({
+          progress: Math.min(100, mappedProgress),
+          status
+        })
+      }
+    })
+
+    markWorkspaceStepSuccess(workspaceStepStates, 'video', nowIso)
+    return videoResults
+  } catch (error) {
+    markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, 'video', error?.message, nowIso)
+    return {
+      ...emptyVideoResults,
+      summary: {
+        title: '视频结果',
+        description: String(error?.message || '视频生成失败').trim() || '视频生成失败'
+      }
+    }
+  }
+}
+
+function buildWorkspaceResultPayload({
+  taskId = '',
+  workspaceProjectName = '',
+  titleResults = [],
+  descriptionResults = [],
+  imageResults = {},
+  videoResults = {},
+  workspaceStepStates = {},
+  workspaceErrors = []
+} = {}) {
+  const workspaceTextResults = [
+    ...(Array.isArray(titleResults?.textResults) ? titleResults.textResults : []).map((item, index) => ({
+      ...item,
+      id: `${taskId}-title-${index + 1}`,
+      title: `标题 ${index + 1}`,
+      kind: 'title'
+    })),
+    ...(Array.isArray(descriptionResults?.textResults) ? descriptionResults.textResults : []).map((item, index) => ({
+      ...item,
+      id: `${taskId}-description-${index + 1}`,
+      title: `描述 ${index + 1}`,
+      kind: 'description'
+    }))
+  ]
+  const workspaceGroupedResults = [
+    ...(imageResults.groupedResults || []),
+    ...(videoResults.groupedResults || [])
+  ]
+  const workspaceImages = (imageResults.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .filter((item) => {
+      const savedPath = String(item.savedPath || item.path || '').trim()
+      return Boolean(savedPath) && !/\.mp4$/i.test(savedPath)
+    })
+  const workspaceVideo = (videoResults.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .find((item) => {
+      const savedPath = String(item.savedPath || item.path || '').trim()
+      return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
+    }) || null
+  const workspaceUsageSummary = mergeWorkspaceUsageSummaries([
+    titleResults?.usageSummary || null,
+    descriptionResults?.usageSummary || null,
+    imageResults?.usageSummary || null,
+    videoResults?.usageSummary || null
+  ])
+
+  return {
+    textResults: workspaceTextResults,
+    comparisonResults: [],
+    groupedResults: workspaceGroupedResults,
+    usageSummary: workspaceUsageSummary,
+    workspaceResult: {
+      titleCandidates: workspaceTextResults
+        .filter((item) => item.kind === 'title')
+        .map((item) => String(item.content || '').trim())
+        .filter(Boolean),
+      descriptionCandidates: workspaceTextResults
+        .filter((item) => item.kind === 'description')
+        .map((item) => String(item.content || '').trim())
+        .filter(Boolean),
+      selectedTitle: workspaceTextResults.find((item) => item.kind === 'title')?.content || '',
+      selectedDescription: workspaceTextResults.find((item) => item.kind === 'description')?.content || '',
+      images: workspaceImages,
+      video: workspaceVideo
+    },
+    workspaceStepStates,
+    workspaceErrors,
+    hasWorkspaceFailures: workspaceErrors.length > 0,
+    summary: {
+      title: `${workspaceProjectName} / 全链路生成结果`,
+      description: workspaceErrors.length
+        ? `已生成 ${(titleResults?.textResults || []).length} 条标题、${(descriptionResults?.textResults || []).length} 条描述；存在失败：${workspaceErrors.join('；')}`
+        : `已生成 ${(titleResults?.textResults || []).length} 条标题、${(descriptionResults?.textResults || []).length} 条描述，并完成套图与视频流程`
+    }
+  }
+}
+
+function mergeWorkspaceUsageSummaries(usageSummaries = []) {
+  const source = Array.isArray(usageSummaries)
+    ? usageSummaries.filter((item) => item && typeof item === 'object')
+    : []
+
+  if (!source.length) {
+    return null
+  }
+
+  const lines = source.flatMap((item) => Array.isArray(item.lines) ? item.lines : [])
+  const totalAmountCny = source.reduce((sum, item) => {
+    return sum + Math.max(0, Number(item.totalAmountCny) || 0)
+  }, 0)
+
+  return {
+    billed: source.some((item) => item.billed === true),
+    billedAt: source
+      .map((item) => String(item.billedAt || '').trim())
+      .filter(Boolean)
+      .sort()
+      .at(-1) || '',
+    currency: 'CNY',
+    totalAmountCny: Number(totalAmountCny.toFixed(2)),
+    lines
+  }
+}
+
 
 async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   generateImageResults,
@@ -1546,222 +2066,141 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
 }) {
   if (menuKey === 'workspace') {
     const enabledSteps = normalizeProjectEnabledSteps(draft.enabledSteps)
-    await onProgress?.({
+    const nowIso = () => new Date().toISOString()
+    const workspaceStepStates = createWorkspaceStepStates(enabledSteps, nowIso)
+    const workspaceErrors = []
+    const emitProgress = async ({ progress, status, error = '' } = {}) => emitWorkspaceProgress(onProgress, workspaceStepStates, {
+      progress: 12,
+      status,
+      error
+    })
+    await emitProgress({
       progress: 12,
       status: 'running'
     })
 
-    const workspaceProjectName = resolveWorkspaceProjectDisplayName(draft)
-    const highlightText = splitWorkspaceTextValues(draft.highlightsText).join('、') || '暂无'
-    const keywordText = splitWorkspaceTextValues(draft.keywordsText).join('、') || '暂无'
-    const platformText = splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'
-    const selectionContextLines = buildWorkspaceSelectionContextLines(draft.selectionSource)
-    const selectedTitleSeed = String(draft.selectedTitle || '').trim()
-    const selectedDescriptionSeed = String(draft.selectedDescription || '').trim()
+    const context = buildWorkspaceExecutionContext(draft)
 
-    const titleResults = enabledSteps.title
-      ? await generateTextResults({
-          taskId: `${taskId}-title`,
-          draft: {
-            model: draft.model,
-            quantity: Math.max(1, Number(draft.titleQuantity) || 1),
-            prompt: [
-              `商品名称：${draft.productName || workspaceProjectName}`,
-              `品牌：${draft.brand || '未提供'}`,
-              `类目：${draft.category || '未提供'}`,
-              `卖点：${highlightText}`,
-              `关键词：${keywordText}`,
-              `目标平台：${platformText}`,
-              `语言：${draft.language || 'zh-CN'}`,
-              ...selectionContextLines,
-              `任务要求：${draft.titlePrompt || ''}`,
-              `最大字数：${draft.titleMaxChars || 60}`,
-              '请基于当前商品信息和选品上下文，输出适合电商上架的商品标题。',
-              '要求优先保留商品主体、类目和真实卖点，不要编造参数，不要输出解释，只返回标题结果。'
-            ].filter(Boolean).join('\n')
-          }
-        })
-      : []
+    let titleResults = {
+      textResults: [],
+      usageSummary: null
+    }
+    if (enabledSteps.title) {
+      titleResults = await runWorkspaceTextStep({
+        stepKey: 'title',
+        taskId: `${taskId}-title`,
+        draft: buildWorkspaceTitleTaskDraft(draft, context),
+        workspaceStepStates,
+        workspaceErrors,
+        nowIso,
+        emitProgress,
+        generateTextResults
+      })
+    }
 
-    await onProgress?.({
+    await emitProgress({
       progress: 58,
       status: 'running'
     })
 
-    const descriptionResults = enabledSteps.description
-      ? await generateTextResults({
-          taskId: `${taskId}-description`,
-          draft: {
-            model: draft.model,
-            quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
-            prompt: [
-              `商品名称：${draft.productName || workspaceProjectName}`,
-              `品牌：${draft.brand || '未提供'}`,
-              `类目：${draft.category || '未提供'}`,
-              `卖点：${highlightText}`,
-              `关键词：${keywordText}`,
-              `目标平台：${platformText}`,
-              `语言：${draft.language || 'zh-CN'}`,
-              `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
-              ...selectionContextLines,
-              `任务要求：${draft.descriptionPrompt || ''}`,
-              `最大字数：${draft.descriptionMaxChars || 300}`,
-              '请输出适合商品详情页或上架页的商品描述。',
-              '要求信息清晰、卖点明确、语气自然，不要分点编号，不要编造不存在的规格。'
-            ].filter(Boolean).join('\n')
-          }
-        })
-      : []
+    let descriptionResults = {
+      textResults: [],
+      usageSummary: null
+    }
+    if (enabledSteps.description) {
+      descriptionResults = await runWorkspaceTextStep({
+        stepKey: 'description',
+        taskId: `${taskId}-description`,
+        draft: buildWorkspaceDescriptionTaskDraft(draft, context, titleResults.textResults),
+        workspaceStepStates,
+        workspaceErrors,
+        nowIso,
+        emitProgress,
+        generateTextResults
+      })
+    }
 
-    await onProgress?.({
+    await emitProgress({
       progress: 72,
       status: 'running'
     })
 
-    const workspaceImagePromptBase = String(
-      draft.imagePrompt ||
-      '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'
-    ).trim()
-    const workspaceImagePromptContext = [
-      `商品名称：${draft.productName || workspaceProjectName}`,
-      `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
-      `参考描述：${descriptionResults[0]?.content || selectedDescriptionSeed || ''}`,
-      ...selectionContextLines,
-      workspaceImagePromptBase
-    ].filter(Boolean).join('\n')
-    const workspaceImageTypeLabels = SERIES_GENERATE_DEFAULT_TYPE_ORDER
-    const imageDraft = {
-      ...draft,
-      sourceImage: draft.sourceImage || null,
-      model: draft.imageModel || 'gpt-image-2',
-      generateCount: Math.max(1, Number(draft.generateCount) || 4),
-      batchCount: 1,
-      size: draft.size || '1:1',
-      promptAssignments: normalizePromptAssignments(
-        Array.from({ length: Math.max(1, Number(draft.generateCount) || 4) }, (_unused, index) => ({
-          id: `workspace-series-${index + 1}`,
-          prompt: `${workspaceImageTypeLabels[index] || '详情图'}：\n${workspaceImagePromptContext}`,
-          templateId: SERIES_GENERATE_TEMPLATE_ID_BY_TYPE[workspaceImageTypeLabels[index] || '详情图'] || draft.imageTemplateId || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
-          imageType: workspaceImageTypeLabels[index] || '详情图',
-          differenceLevel: 'off'
-        })),
-        Math.max(1, Number(draft.generateCount) || 4)
-      )
+    const imageDraft = buildWorkspaceImageTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults)
+    let imageResults = {
+      textResults: [],
+      comparisonResults: [],
+      groupedResults: [],
+      summary: {
+        title: '套图结果',
+        description: '未提供样图，跳过套图生成'
+      }
+    }
+    if (enabledSteps.image) {
+      imageResults = await runWorkspaceImageStep({
+        taskId: `${taskId}-series`,
+        draft: imageDraft,
+        outputDirectory,
+        workspaceStepStates,
+        workspaceErrors,
+        nowIso,
+        emitProgress,
+        generateImageResults
+      })
     }
 
-    const imageResults = enabledSteps.image && imageDraft.sourceImage
-      ? await generateImageResults({
-          menuKey: 'series-generate',
-          draft: imageDraft,
-          taskId: `${taskId}-series`,
-          outputDirectory,
-          onProgress: async ({ progress, status } = {}) => {
-            const mappedProgress = 72 + Math.round((Math.max(0, Number(progress) || 0) * 0.18))
-            await onProgress?.({
-              progress: Math.min(90, mappedProgress),
-              status
-            })
-          }
-        })
-      : {
-          textResults: [],
-          comparisonResults: [],
-          groupedResults: [],
-          summary: {
-            title: '套图结果',
-            description: '未提供样图，跳过套图生成'
-          }
-        }
-
-    await onProgress?.({
+    await emitProgress({
       progress: 91,
       status: 'running'
     })
 
-    const videoDraft = {
-      ...draft,
-      sourceImage: draft.sourceImage || null,
-      model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
-      prompt: [
-        `商品名称：${draft.productName || workspaceProjectName}`,
-        `参考标题：${titleResults[0]?.content || selectedTitleSeed || draft.productName || workspaceProjectName}`,
-        `参考描述：${descriptionResults[0]?.content || selectedDescriptionSeed || ''}`,
-        ...selectionContextLines,
-        String(draft.videoPrompt || draft.prompt || '生成适合电商展示的商品视频，镜头稳定，突出主体与卖点').trim()
-      ].filter(Boolean).join('\n'),
-      duration: draft.duration || '6s',
-      resolution: draft.resolution || '768P',
-      motionStrength: draft.motionStrength || 'auto',
-      videoTemplateId: draft.videoTemplateId || 'video-main'
-    }
-
-    const videoResults = enabledSteps.video && videoDraft.sourceImage
-      ? await generateVideoResults({
-          draft: videoDraft,
-          taskId: `${taskId}-video`,
-          outputDirectory,
-          onProgress: async ({ progress, status } = {}) => {
-            const mappedProgress = 91 + Math.round((Math.max(0, Number(progress) || 0) * 0.09))
-            await onProgress?.({
-              progress: Math.min(100, mappedProgress),
-              status
-            })
-          }
-        })
-      : {
-          textResults: [],
-          comparisonResults: [],
-          groupedResults: [],
-          summary: {
-            title: '视频结果',
-            description: '未提供样图，跳过视频生成'
-          }
-        }
-
-    await onProgress?.({
-      progress: 100,
-      status: 'succeeded'
-    })
-
-    return {
-      textResults: [
-        ...titleResults.map((item, index) => ({
-          ...item,
-          id: `${taskId}-title-${index + 1}`,
-          title: `标题 ${index + 1}`,
-          kind: 'title'
-        })),
-        ...descriptionResults.map((item, index) => ({
-          ...item,
-          id: `${taskId}-description-${index + 1}`,
-          title: `描述 ${index + 1}`,
-          kind: 'description'
-        }))
-      ],
+    const videoDraft = buildWorkspaceVideoTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults)
+    let videoResults = {
+      textResults: [],
       comparisonResults: [],
-      groupedResults: [
-        ...(imageResults.groupedResults || []),
-        ...(videoResults.groupedResults || [])
-      ],
+      groupedResults: [],
       summary: {
-        title: `${workspaceProjectName} / 全链路生成结果`,
-        description: `已生成 ${titleResults.length} 条标题、${descriptionResults.length} 条描述，并完成套图与视频流程`
+        title: '视频结果',
+        description: '未提供样图，跳过视频生成'
       }
     }
+    if (enabledSteps.video) {
+      videoResults = await runWorkspaceVideoStep({
+        taskId: `${taskId}-video`,
+        draft: videoDraft,
+        outputDirectory,
+        workspaceStepStates,
+        workspaceErrors,
+        nowIso,
+        emitProgress,
+        generateVideoResults
+      })
+    }
+
+    await emitProgress({
+      progress: 100,
+      status: workspaceErrors.length ? 'failed' : 'succeeded',
+      error: workspaceErrors.join('；')
+    })
+
+    return buildWorkspaceResultPayload({
+      taskId,
+      workspaceProjectName: context.workspaceProjectName,
+      titleResults,
+      descriptionResults,
+      imageResults,
+      videoResults,
+      workspaceStepStates,
+      workspaceErrors
+    })
   }
 
   if (menuKey === 'series-generate') {
-    const contextLines = buildProjectScopedGenerationContextLines(draft)
     const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, Math.max(1, Number(draft.generateCount) || 1))
     const normalizedDraft = {
       ...draft,
       promptAssignments: normalizedAssignments.map((assignment) => ({
         ...assignment,
-        prompt: [
-          `商品名称：${draft.productName || '未提供'}`,
-          ...contextLines,
-          String(assignment.prompt || draft.prompt || '').trim()
-        ].filter(Boolean).join('\n')
+        prompt: String(assignment.prompt || draft.prompt || '').trim()
       }))
     }
 
@@ -1992,6 +2431,23 @@ async function saveStudioResults({
     }))
   }
 
+  if (resultPayload.workspaceResult && typeof resultPayload.workspaceResult === 'object') {
+    const persistedGroupedOutputs = persistedResultPayload.groupedResults.flatMap((group) => {
+      return Array.isArray(group.outputs) ? group.outputs : []
+    })
+
+    persistedResultPayload.workspaceResult = {
+      ...resultPayload.workspaceResult,
+      images: persistedGroupedOutputs
+        .filter((item) => isGeneratedImageOutput(item))
+        .map((item) => normalizeGeneratedMediaOutput(item)),
+      video: (() => {
+        const matchedVideo = persistedGroupedOutputs.find((item) => isGeneratedVideoOutput(item))
+        return matchedVideo ? normalizeGeneratedMediaOutput(matchedVideo) : null
+      })()
+    }
+  }
+
   if (!exportItems.length) {
     const folderName = `${folderBaseName}0`
     const groupDirectory = path.resolve(outputDirectory, folderName)
@@ -2053,6 +2509,9 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
   const summary = resultPayload.summary || {}
   const resultCount = countCurrentResults(resultPayload)
   const models = resolveSummaryModels(menuKey, draft, resultPayload)
+  const usageSummary = resultPayload.usageSummary && typeof resultPayload.usageSummary === 'object'
+    ? resultPayload.usageSummary
+    : null
 
   return {
     ...resultPayload,
@@ -2061,7 +2520,8 @@ function enrichResultPayloadSummary({ menuKey, draft, resultPayload, elapsedMill
       statusLabel: '已完成',
       modelLabel: models.length ? `使用模型 ${models.join(' / ')}` : '',
       resultCountLabel: `结果数量 ${resultCount}`,
-      elapsedLabel: formatElapsedLabel(elapsedMilliseconds)
+      elapsedLabel: formatElapsedLabel(elapsedMilliseconds),
+      usageLabel: usageSummary ? `消耗 ${Number(usageSummary.totalAmountCny || 0).toFixed(2)} CNY` : ''
     }
   }
 }
@@ -2299,11 +2759,23 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     ? groupedProgress.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
         .filter((output) => output?.status === 'failed')
     : []
+  const successfulGroupedOutputs = Array.isArray(groupedProgress?.groupedResults)
+    ? groupedProgress.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
+        .filter((output) => output?.status !== 'failed')
+    : []
   const failedMessages = failedOutputs
     .map((output) => String(output?.error || '').trim())
     .filter(Boolean)
-  const hasPartialFailure = failedOutputs.length > 0
-  const normalizedErrorMessage = Array.from(new Set(failedMessages)).join('；')
+  const workspaceErrors = Array.isArray(resultPayload?.workspaceErrors)
+    ? resultPayload.workspaceErrors.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const hasPartialFailure = failedOutputs.length > 0 || workspaceErrors.length > 0
+  const hasSuccessfulWorkspaceText = Array.isArray(resultPayload?.textResults) && resultPayload.textResults.length > 0
+  const hasSuccessfulOutputs = hasSuccessfulWorkspaceText || successfulGroupedOutputs.length > 0
+  const normalizedErrorMessage = Array.from(new Set([...failedMessages, ...workspaceErrors])).join('；')
+  const finalStatus = hasPartialFailure
+    ? (hasSuccessfulOutputs ? '部分完成' : '失败')
+    : '已完成'
 
   return buildTaskRecord({
     menuKey,
@@ -2318,7 +2790,7 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     batchCount: menuKey === 'series-generate'
       ? Math.max(1, Number(draft.batchCount) || 1)
       : 1,
-    status: hasPartialFailure ? '失败' : '已完成',
+    status: finalStatus,
     progress: 100,
     estimatedCredits: estimateTaskCredits(menuKey, draft),
     error: normalizedErrorMessage,
@@ -2542,10 +3014,7 @@ function createStudioWorkspaceService({
   const workspaceCreditService = createWorkspaceCreditService({
     settingsService,
     remoteLicensePlatformClient,
-    getNow,
-    normalizeCreditStateForDisplay,
-    appendCreditActivity,
-    resolveTaskModelSummary
+    getNow
   })
   const workspaceProjectRunService = createWorkspaceProjectRunService({
     createDefaultProjectRunStepStates,
@@ -2605,6 +3074,7 @@ function createStudioWorkspaceService({
     upsertProjectRun,
     workspaceProjectRunService,
     settingsService,
+    workspaceCreditService,
     safeRuntimeLog,
     runtimeLogger
   })
@@ -2659,7 +3129,9 @@ function createStudioWorkspaceService({
     getNowMs,
     exportScanCacheTtlMs,
     queuedTaskExecutions,
-    activeTaskControllers
+    activeTaskControllers,
+    normalizeProjectRuns,
+    upsertProjectRun
   })
   const workspaceSnapshotService = createWorkspaceSnapshotService({
     settingsService,
@@ -2671,7 +3143,6 @@ function createStudioWorkspaceService({
     hydrateResultsByMenuForDisplay,
     hydrateProjectRunsForDisplay,
     normalizeRequestMetrics,
-    normalizeCreditStateForDisplay,
     sortTasks,
     countCurrentResults,
     menuItems: publicSnapshotMenuItems,
@@ -2679,8 +3150,7 @@ function createStudioWorkspaceService({
     workspaceDashboardSections: publicWorkspaceDashboardSections,
     menuLabelMap: runtimeStateMenuLabelMap,
     taskMenuMapByCategory: publicSnapshotTaskMenuMapByCategory,
-    modelCreditCostMap,
-    creditActivityHistoryLimit: CREDIT_ACTIVITY_HISTORY_LIMIT
+    modelCreditCostMap
   })
 
   async function persistTaskAndState({
@@ -2817,11 +3287,18 @@ function createStudioWorkspaceService({
     return workspaceSnapshotService.getSnapshot()
   }
 
+  async function reconcileRuntimeStateBeforeSnapshot() {
+    const reconciledTasks = await workspaceStateMaintenanceService.reconcileOrphanedActiveTasks()
+    await workspaceStateMaintenanceService.reconcileOrphanedProjectRuns(reconciledTasks)
+  }
+
   async function getDisplaySnapshot() {
+    await reconcileRuntimeStateBeforeSnapshot()
     return workspaceSnapshotService.getDisplaySnapshot()
   }
 
-  function getRuntimeSnapshot() {
+  async function getRuntimeSnapshot() {
+    await reconcileRuntimeStateBeforeSnapshot()
     return workspaceSnapshotService.getRuntimeSnapshot()
   }
 
@@ -2926,6 +3403,90 @@ function createStudioWorkspaceService({
     })
   }
 
+  async function cancelTask({
+    taskId = '',
+    projectId = ''
+  } = {}) {
+    const normalizedTaskId = String(taskId || '').trim()
+    const normalizedProjectId = String(projectId || '').trim()
+    const latestState = getStoredState()
+    const storedTasks = getStoredTasks(latestState)
+    const storedProjectRuns = normalizeProjectRuns(latestState.projectRuns)
+
+    let targetTask = normalizedTaskId
+      ? storedTasks.find((item) => item.id === normalizedTaskId) || null
+      : null
+    let targetProjectRun = null
+
+    if (!targetTask && normalizedProjectId) {
+      targetProjectRun = storedProjectRuns.find((item) => item.projectId === normalizedProjectId) || null
+      if (targetProjectRun?.taskId) {
+        targetTask = storedTasks.find((item) => item.id === targetProjectRun.taskId) || null
+      }
+    }
+
+    if (!targetProjectRun && targetTask) {
+      targetProjectRun = storedProjectRuns.find((item) => item.taskId === targetTask.id) || null
+    }
+
+    if (!targetTask) {
+      throw new Error('未找到可中断的任务')
+    }
+
+    const isQueuedTask = queuedTaskExecutions.some((item) => item?.taskId === targetTask.id)
+    const activeController = activeTaskControllers.get(targetTask.id) || null
+    const cancelReason = '用户手动结束任务'
+
+    if (isQueuedTask) {
+      const queueIndex = queuedTaskExecutions.findIndex((item) => item?.taskId === targetTask.id)
+      if (queueIndex >= 0) {
+        queuedTaskExecutions.splice(queueIndex, 1)
+      }
+    }
+
+    if (activeController) {
+      activeController.stop(cancelReason)
+    }
+
+    const canceledTask = buildFailedTaskSummary({
+      menuKey: targetTask.menuKey,
+      draft: {
+        projectName: targetTask.title,
+        batchCount: targetTask.batchCount,
+        generateCount: targetTask.groupImageCount
+      },
+      taskId: targetTask.id,
+      taskNumber: targetTask.taskNumber,
+      createdAt: targetTask.createdAt,
+      inputDirectory: targetTask.inputDirectory,
+      outputDirectory: targetTask.outputDirectory,
+      errorMessage: cancelReason
+    })
+
+    let projectRunsPatch = null
+    if (targetProjectRun) {
+      projectRunsPatch = upsertProjectRun(latestState.projectRuns, workspaceProjectRunService.buildFailedProjectRun({
+        projectRun: targetProjectRun,
+        menuKey: targetProjectRun.triggerMenuKey || targetTask.menuKey,
+        errorMessage: cancelReason,
+        failedAt: getNow()
+      }))
+    }
+
+    await persistTaskAndState({
+      task: canceledTask,
+      projectRunsPatch,
+      activeProjectRunId: targetProjectRun ? targetProjectRun.id : null
+    })
+
+    return {
+      ok: true,
+      taskId: targetTask.id,
+      projectRunId: targetProjectRun?.id || '',
+      canceled: true
+    }
+  }
+
   async function exportProjectBundle({
     projectId = '',
     targetZipPath = ''
@@ -2961,6 +3522,7 @@ function createStudioWorkspaceService({
     deleteProject,
     saveDraft,
     createTask,
+    cancelTask,
     clearRuntimeState,
     exportSelectedResults,
     exportProjectBundle,

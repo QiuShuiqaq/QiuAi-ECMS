@@ -20,14 +20,35 @@ function createPreviewDataUrl(label) {
   return `data:image/png;base64,${Buffer.from(label, 'utf8').toString('base64')}`
 }
 
-async function seedCredits(settingsService, amount = 5000) {
+async function seedDashboardBalances(
+  settingsService,
+  {
+    text = 100,
+    image = 100,
+    video = 100
+  } = {}
+) {
   await settingsService.saveSettings({
-    creditAdjustment: {
-      operation: 'increase',
-      amount
+    dashboardCreditState: {
+      text: {
+        balanceCny: text,
+        permanentBalanceCny: text,
+        subscriptionBalanceCny: 0,
+        syncStatus: 'success'
+      },
+      image: {
+        balanceCny: image,
+        permanentBalanceCny: image,
+        subscriptionBalanceCny: 0,
+        syncStatus: 'success'
+      },
+      video: {
+        balanceCny: video,
+        permanentBalanceCny: video,
+        subscriptionBalanceCny: 0,
+        syncStatus: 'success'
+      }
     }
-  }, {
-    getNow: () => '2026-06-12T10:00:00.000Z'
   })
 }
 
@@ -67,11 +88,16 @@ describe('studioWorkspaceService', () => {
 
     expect(snapshot.themeMode).toBe('dark')
     expect(snapshot.menuItems.map((item) => item.key)).toEqual([
-      'workbench',
-      'purchase-center',
+      'work-center',
+      'selection-center',
+      'data-center',
+      'template-center',
+      'title-generate',
+      'description-generate',
+      'series-generate',
+      'video-generate',
       'prompt-library',
-      'account-device',
-      'settings-center'
+      'account-device'
     ])
     expect(snapshot.formDrafts.workspace).toMatchObject({
       platformTargetsText: 'temu, ozon',
@@ -90,7 +116,7 @@ describe('studioWorkspaceService', () => {
       duration: '6s',
       resolution: '768P',
       motionStrength: 'auto',
-      model: 'deepseek-v4-flash'
+      model: 'deepseek-chat'
     })
     expect(snapshot.formDrafts['title-generator']).toBeUndefined()
     expect(snapshot.formDrafts['description-generator']).toBeUndefined()
@@ -155,7 +181,7 @@ describe('studioWorkspaceService', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService, 5000)
+    await seedDashboardBalances(settingsService, { image: 100 })
 
     const service = createStudioWorkspaceService({
       store,
@@ -242,6 +268,7 @@ describe('studioWorkspaceService', () => {
     })
 
     const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100, video: 100 })
     const service = createStudioWorkspaceService({
       store,
       settingsService,
@@ -267,10 +294,10 @@ describe('studioWorkspaceService', () => {
         },
         titleMaxChars: 60,
         descriptionMaxChars: 300,
-        imageSize: '1:1',
-        videoDuration: '6s',
-        videoResolution: '768P',
-        videoMotionStrength: 'auto',
+        size: '1:1',
+        duration: '6s',
+        resolution: '768P',
+        motionStrength: 'auto',
         imageTemplateId: 'image-default',
         videoTemplateId: 'video-main'
       }
@@ -287,6 +314,7 @@ describe('studioWorkspaceService', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100 })
     const service = createStudioWorkspaceService({
       store,
       settingsService,
@@ -334,7 +362,13 @@ describe('studioWorkspaceService', () => {
         platformTargetsText: 'ozon, temu',
         language: 'ru-RU',
         titleQuantity: 2,
-        descriptionQuantity: 2
+        descriptionQuantity: 2,
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: false,
+          video: false
+        }
       }
     })
 
@@ -393,7 +427,7 @@ describe('studioWorkspaceService', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService, 5000)
+    await seedDashboardBalances(settingsService, { text: 100, image: 100 })
 
     const service = createStudioWorkspaceService({
       store,
@@ -497,10 +531,6 @@ describe('studioWorkspaceService', () => {
 
     const imageTask = await service.createTask({ menuKey: 'series-generate' })
     expect(imageTask.estimatedCredits).toBe(600)
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 600
-    })
 
     await service.waitForIdle()
 
@@ -521,11 +551,6 @@ describe('studioWorkspaceService', () => {
     })
     expect(latestRun.outputs.images).toHaveLength(1)
     expect(latestRun.storage.imageDirectory).toContain(path.join('series-generate', 'generator-'))
-    expect(settingsService.getSettings().creditState).toMatchObject({
-      remainingCredits: 4400,
-      frozenCredits: 0,
-      usedCredits: 600
-    })
   })
 
   it('passes non-empty image prompts from workspace flow into series generation', async () => {
@@ -536,7 +561,7 @@ describe('studioWorkspaceService', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService, 5000)
+    await seedDashboardBalances(settingsService, { text: 100, image: 100 })
 
     const observedPrompts = []
     const service = createStudioWorkspaceService({
@@ -629,6 +654,303 @@ describe('studioWorkspaceService', () => {
 
     expect(observedPrompts.length).toBeGreaterThan(0)
     expect(observedPrompts.every((prompt) => String(prompt || '').trim().length > 0)).toBe(true)
+    expect(observedPrompts[0]).toBe('生成手工玫瑰商品图')
+  })
+
+  it('keeps per-slot image template prompts when building workspace image tasks', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100, image: 100 })
+
+    const observedPrompts = []
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateTextResults: async ({ draft }) => {
+        const promptText = String(draft.prompt || '')
+        const prefix = promptText.includes('鍟嗗搧鏍囬') ? '鏍囬' : '鎻忚堪'
+        return [{ id: `${prefix}-1`, content: `${prefix}缁撴灉 1` }]
+      },
+      generateImageResults: async ({ draft }) => {
+        observedPrompts.push(...(draft.promptAssignments || []).map((item) => String(item.prompt || '')))
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [],
+          summary: { title: '濂楀浘缁撴灉' }
+        }
+      },
+      generateVideoResults: async () => ({
+        textResults: [],
+        comparisonResults: [],
+        groupedResults: [],
+        summary: { title: '瑙嗛缁撴灉' }
+      })
+    })
+
+    const project = await service.createProject({
+      productName: '闇茶惀鐏',
+      platform: 'temu',
+      language: 'zh-CN'
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: project.id,
+        projectName: '闇茶惀鐏」鐩',
+        taskName: '闇茶惀鐏」鐩',
+        productName: '闇茶惀鐏',
+        language: 'zh-CN',
+        sourceImage: {
+          name: 'camp-lamp.jpg',
+          path: 'C:/images/camp-lamp.jpg',
+          storedPath: 'C:/images/camp-lamp.jpg',
+          preview: 'preview-camp-lamp'
+        },
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: true,
+          video: false
+        },
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        generateCount: 3,
+        promptAssignments: [
+          {
+            id: 'workspace-image-1',
+            imageType: '鍟嗗搧涓诲浘',
+            templateId: 'image-main',
+            prompt: '涓诲浘閲嶇偣绐佸嚭鐏綋璐ㄦ劅涓庡彂鍏夋皼鍥'
+          },
+          {
+            id: 'workspace-image-2',
+            imageType: '鐧藉簳鍥',
+            templateId: 'image-white-bg',
+            prompt: '鐧藉簳鍥惧彧淇濈暀鍟嗗搧涓讳綋涓嶈浠讳綍閬撳叿'
+          },
+          {
+            id: 'workspace-image-3',
+            imageType: '鍦烘櫙鍥',
+            templateId: 'image-scene',
+            prompt: '鍦烘櫙鍥剧獊鍑洪湶钀ラ鏅氭岄潰浣跨敤姘涘洿'
+          }
+        ]
+      }
+    })
+
+    await service.createTask({ menuKey: 'workspace' })
+    await service.waitForIdle()
+
+    expect(observedPrompts).toHaveLength(3)
+    expect(observedPrompts[0]).toBe('涓诲浘閲嶇偣绐佸嚭鐏綋璐ㄦ劅涓庡彂鍏夋皼鍥')
+    expect(observedPrompts[1]).toBe('鐧藉簳鍥惧彧淇濈暀鍟嗗搧涓讳綋涓嶈浠讳綍閬撳叿')
+    expect(observedPrompts[2]).toBe('鍦烘櫙鍥剧獊鍑洪湶钀ラ鏅氭岄潰浣跨敤姘涘洿')
+  })
+
+  it('keeps workspace run in partial status when later steps fail after title succeeds', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100, image: 100, video: 100 })
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined,
+      generateTextResults: async ({ taskId }) => {
+        if (String(taskId).includes('-title')) {
+          return [{ id: `${taskId}-1`, content: '标题结果 1' }]
+        }
+
+        throw new Error('描述服务暂不可用')
+      },
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-partial-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260630-0001',
+      getNow: () => '2026-06-30T10:00:00.000Z'
+    })
+
+    const project = await service.createProject({
+      productName: '测试商品',
+      platform: 'temu',
+      language: 'zh-CN'
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: project.id,
+        productName: '测试商品',
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: false,
+          video: false
+        }
+      }
+    })
+
+    await service.createTask({ menuKey: 'workspace' })
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const updatedProject = snapshot.productProjects.find((item) => item.id === project.id)
+    const latestRun = snapshot.projectRuns.find((item) => item.id === updatedProject?.latestRunId)
+
+    expect(updatedProject.content.selectedTitle).toBe('标题结果 1')
+    expect(updatedProject.content.selectedDescription).toBe('')
+    expect(latestRun.status).toBe('partial')
+    expect(latestRun.stepStates.title.status).toBe('success')
+    expect(latestRun.stepStates.description.status).toBe('failed')
+  })
+
+  it('writes full workspace results back to one project in title-description-image-video order', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+    const imageSavedPath = path.resolve(outputRootDirectory, 'workspace-image-1.png')
+    const videoSavedPath = path.resolve(outputRootDirectory, 'workspace-video-1.mp4')
+    await fs.writeFile(imageSavedPath, 'workspace-image-content')
+    await fs.writeFile(videoSavedPath, 'workspace-video-content')
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100, image: 100, video: 100 })
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateTextResults: async ({ taskId }) => {
+        if (String(taskId).includes('-title')) {
+          return [{ id: `${taskId}-1`, content: '完整标题结果' }]
+        }
+
+        return [{ id: `${taskId}-1`, content: '完整描述结果' }]
+      },
+      generateImageResults: async ({ taskId }) => ({
+        textResults: [],
+        comparisonResults: [],
+        groupedResults: [
+          {
+            id: `${taskId}-image-group-1`,
+            outputs: [
+              {
+                id: `${taskId}-image-1`,
+                title: '套图结果 1',
+                model: 'gpt-image-2',
+                savedPath: imageSavedPath
+              }
+            ]
+          }
+        ],
+        summary: { title: '套图结果' }
+      }),
+      generateVideoResults: async ({ taskId }) => ({
+        textResults: [],
+        comparisonResults: [],
+        groupedResults: [
+          {
+            id: `${taskId}-video-group-1`,
+            outputs: [
+              {
+                id: `${taskId}-video-1`,
+                title: '视频结果 1',
+                model: 'MiniMax-Hailuo-2.3-Fast',
+                savedPath: videoSavedPath
+              }
+            ]
+          }
+        ],
+        summary: { title: '视频结果' }
+      }),
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-full-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260630-0002',
+      getNow: () => '2026-06-30T11:00:00.000Z'
+    })
+
+    const project = await service.createProject({
+      productName: '完整链路商品',
+      platform: 'temu',
+      language: 'zh-CN'
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: project.id,
+        productName: '完整链路商品',
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        generateCount: 1,
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: true,
+          video: true
+        },
+        sourceImage: {
+          name: 'workspace.png',
+          path: path.resolve(process.cwd(), 'tests', '1.png'),
+          storedPath: path.resolve(process.cwd(), 'tests', '1.png')
+        }
+      }
+    })
+
+    await service.createTask({ menuKey: 'workspace' })
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const updatedProject = snapshot.productProjects.find((item) => item.id === project.id)
+    const latestRun = snapshot.projectRuns.find((item) => item.id === updatedProject?.latestRunId)
+
+    expect(updatedProject.content.selectedTitle).toBe('完整标题结果')
+    expect(updatedProject.content.selectedDescription).toBe('完整描述结果')
+    expect(updatedProject.assets.generatedImages).toHaveLength(1)
+    expect(updatedProject.assets.generatedVideo).toBeTruthy()
+    expect(updatedProject.assets.generatedVideo.savedPath).toContain('.mp4')
+    expect(latestRun.status).toBe('success')
+    expect(latestRun.outputs.selectedTitle).toBe('完整标题结果')
+    expect(latestRun.outputs.selectedDescription).toBe('完整描述结果')
+    expect(latestRun.outputs.images).toHaveLength(1)
+    expect(latestRun.outputs.video.savedPath).toContain('.mp4')
+    expect(latestRun.stepStates.title.status).toBe('success')
+    expect(latestRun.stepStates.description.status).toBe('success')
+    expect(latestRun.stepStates.image.status).toBe('success')
+    expect(latestRun.stepStates.video.status).toBe('success')
   })
 
   it('injects selection snapshot context into workspace text and media generation prompts', async () => {
@@ -642,7 +964,7 @@ describe('studioWorkspaceService', () => {
     const observedImagePrompts = []
     const observedVideoPrompts = []
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService, 5000)
+    await seedDashboardBalances(settingsService, { text: 100, image: 100, video: 100 })
 
     const service = createStudioWorkspaceService({
       store,
@@ -749,7 +1071,8 @@ describe('studioWorkspaceService', () => {
     expect(observedTextPrompts.some((prompt) => prompt.includes('选品平台：temu'))).toBe(true)
     expect(observedTextPrompts.some((prompt) => prompt.includes('选品标题：爆款露营灯'))).toBe(true)
     expect(observedTextPrompts.some((prompt) => prompt.includes('选品关键词：露营灯、户外、便携'))).toBe(true)
-    expect(observedImagePrompts.some((prompt) => prompt.includes('选品榜单：热销商品'))).toBe(true)
+    expect(observedImagePrompts).toHaveLength(1)
+    expect(observedImagePrompts[0]).toBe('围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感')
     expect(observedVideoPrompts.some((prompt) => prompt.includes('选品价格：¥89'))).toBe(true)
   })
 
@@ -817,7 +1140,7 @@ describe('studioWorkspaceService', () => {
 
     const observedAssignmentPrompts = []
     const settingsService = createSettingsStoreService({ store })
-    await seedCredits(settingsService, 5000)
+    await seedDashboardBalances(settingsService, { image: 100 })
 
     const service = createStudioWorkspaceService({
       store,
@@ -902,11 +1225,7 @@ describe('studioWorkspaceService', () => {
     await service.waitForIdle()
 
     expect(observedAssignmentPrompts).toHaveLength(1)
-    expect(observedAssignmentPrompts[0]).toContain('商品名称：露营灯')
-    expect(observedAssignmentPrompts[0]).toContain('参考标题：爆款露营灯')
-    expect(observedAssignmentPrompts[0]).toContain('参考描述：高亮便携，适合夜间露营')
-    expect(observedAssignmentPrompts[0]).toContain('选品榜单：热销商品')
-    expect(observedAssignmentPrompts[0]).toContain('选品关键词：露营灯、便携、户外')
+    expect(observedAssignmentPrompts[0]).toBe('生成商品主图')
   })
 
   it('keeps workspace drafts on canonical runtime fields and ignores removed legacy aliases', async () => {
@@ -1151,6 +1470,91 @@ describe('studioWorkspaceService', () => {
       status: '等待中'
     })
     expect(snapshot.tasks).toHaveLength(2)
+  })
+
+  it('reconciles orphaned running workspace tasks before returning display snapshots', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    store.set(STUDIO_WORKSPACE_KEY, {
+      tasks: [
+        {
+          id: 'task-orphan-1',
+          taskNumber: 'TASK-ORPHAN-001',
+          menuKey: 'workspace',
+          title: 'Orphan Workspace Task',
+          status: '进行中',
+          progress: 40,
+          createdAt: '2026-06-30T08:00:00.000Z',
+          inputDirectory: 'F:/input/task-orphan-1',
+          outputDirectory: 'F:/output/task-orphan-1'
+        }
+      ],
+      projectRuns: [
+        {
+          id: 'run-orphan-1',
+          projectId: 'project-orphan-1',
+          taskId: 'task-orphan-1',
+          triggerMenuKey: 'workspace',
+          status: 'running',
+          progress: 40,
+          error: '',
+          stepStates: {
+            title: { status: 'running', error: '', startedAt: '2026-06-30T08:00:00.000Z', completedAt: '' },
+            description: { status: 'pending', error: '', startedAt: '', completedAt: '' },
+            image: { status: 'pending', error: '', startedAt: '', completedAt: '' },
+            video: { status: 'pending', error: '', startedAt: '', completedAt: '' }
+          },
+          outputs: {
+            title: '',
+            description: '',
+            titleCandidates: [],
+            descriptionCandidates: [],
+            selectedTitle: '',
+            selectedDescription: '',
+            images: [],
+            video: null
+          },
+          storage: {
+            runDirectory: '',
+            titleFile: '',
+            descriptionFile: '',
+            imageDirectory: '',
+            videoDirectory: ''
+          },
+          createdAt: '2026-06-30T08:00:00.000Z',
+          completedAt: ''
+        }
+      ]
+    })
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const snapshot = await service.getDisplaySnapshot()
+    const reconciledTask = snapshot.tasks.find((item) => item.id === 'task-orphan-1')
+    const reconciledRun = snapshot.projectRuns.find((item) => item.id === 'run-orphan-1')
+
+    expect(reconciledTask).toMatchObject({
+      id: 'task-orphan-1',
+      status: '待确认'
+    })
+    expect(reconciledRun).toMatchObject({
+      id: 'run-orphan-1',
+      status: 'failed',
+      error: '任务已中断，请重新提交'
+    })
+    expect(reconciledRun.stepStates.title.status).toBe('failed')
   })
 
   it('exports a project bundle with text files and generated assets', async () => {

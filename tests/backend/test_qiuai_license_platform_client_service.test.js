@@ -2,6 +2,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { createQiuAiLicensePlatformClientService } from '../../main/src/services/qiuAiLicensePlatformClientService'
 
 describe('qiuAiLicensePlatformClientService', () => {
+  function expectBearerSession(call, sessionToken, params) {
+    expect(call).toEqual(expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: `Bearer ${sessionToken}`
+      }),
+      ...(typeof params === 'undefined' ? {} : { params })
+    }))
+  }
+
   it('requests authorization status from the remote license platform', async () => {
     const request = vi.fn().mockResolvedValue({
       data: {
@@ -27,7 +36,13 @@ describe('qiuAiLicensePlatformClientService', () => {
 
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/activation/status'
+      url: 'https://api.qiuaihub.com/api/activation/status',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer session-1'
+      }),
+      params: {
+        deviceFingerprint: 'QAI-DEVICE'
+      }
     }))
     expect(result.status).toBe('activated')
   })
@@ -133,19 +148,19 @@ describe('qiuAiLicensePlatformClientService', () => {
 
     expect(request).toHaveBeenNthCalledWith(1, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/wallet/summary',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/wallet/summary'
     }))
+    expectBearerSession(request.mock.calls[0][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/service-capacity/profile',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/service-capacity/profile'
     }))
+    expectBearerSession(request.mock.calls[1][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/packages',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/packages'
     }))
+    expectBearerSession(request.mock.calls[2][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/orders',
@@ -163,13 +178,14 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/orders/software-order-1',
-      params: { sessionToken: 'session-1', orderAccessToken: 'order-access-1' }
+      params: { orderAccessToken: 'order-access-1' }
     }))
+    expectBearerSession(request.mock.calls[4][0], 'session-1', { orderAccessToken: 'order-access-1' })
     expect(request).toHaveBeenNthCalledWith(6, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/compute-packages',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/compute-packages'
     }))
+    expectBearerSession(request.mock.calls[5][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(7, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/compute-package-orders',
@@ -177,9 +193,9 @@ describe('qiuAiLicensePlatformClientService', () => {
     }))
     expect(request).toHaveBeenNthCalledWith(8, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/compute-package-orders/compute-order-1',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/compute-package-orders/compute-order-1'
     }))
+    expectBearerSession(request.mock.calls[7][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(9, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/recharge/orders',
@@ -187,29 +203,29 @@ describe('qiuAiLicensePlatformClientService', () => {
     }))
     expect(request).toHaveBeenNthCalledWith(10, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/recharge/orders/recharge-order-1',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/recharge/orders/recharge-order-1'
     }))
+    expectBearerSession(request.mock.calls[9][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(11, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/selection/manifest',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/selection/manifest'
     }))
+    expectBearerSession(request.mock.calls[10][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(12, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/selection/platforms',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/selection/platforms'
     }))
+    expectBearerSession(request.mock.calls[11][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(13, expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/client/selection/sites',
-      params: { sessionToken: 'session-1', platform: 'shopee' }
+      params: { platform: 'shopee' }
     }))
+    expectBearerSession(request.mock.calls[12][0], 'session-1', { platform: 'shopee' })
     expect(request).toHaveBeenNthCalledWith(14, expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/client/selection/items',
       params: {
-        sessionToken: 'session-1',
         platform: 'temu',
         boardType: 'hot-sale',
         siteCode: '',
@@ -218,24 +234,34 @@ describe('qiuAiLicensePlatformClientService', () => {
         pageSize: 20
       }
     }))
+    expectBearerSession(request.mock.calls[13][0], 'session-1', {
+      platform: 'temu',
+      boardType: 'hot-sale',
+      siteCode: '',
+      keyword: '',
+      page: 1,
+      pageSize: 20
+    })
     expect(request).toHaveBeenNthCalledWith(15, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/selection/items/selection-1',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/selection/items/selection-1'
     }))
+    expectBearerSession(request.mock.calls[14][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(16, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/publish/config',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/publish/config'
     }))
+    expectBearerSession(request.mock.calls[15][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(17, expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/client/publish/channel-accounts',
       params: {
-        sessionToken: 'session-1',
         platform: 'tiktok'
       }
     }))
+    expectBearerSession(request.mock.calls[16][0], 'session-1', {
+      platform: 'tiktok'
+    })
     expect(request).toHaveBeenNthCalledWith(18, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/client/publish/drafts',
@@ -247,9 +273,9 @@ describe('qiuAiLicensePlatformClientService', () => {
     }))
     expect(request).toHaveBeenNthCalledWith(19, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/publish/drafts/publish-draft-1',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/publish/drafts/publish-draft-1'
     }))
+    expectBearerSession(request.mock.calls[18][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(20, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/client/publish/drafts/publish-draft-1/preview',
@@ -272,9 +298,9 @@ describe('qiuAiLicensePlatformClientService', () => {
     }))
     expect(request).toHaveBeenNthCalledWith(22, expect.objectContaining({
       method: 'get',
-      url: 'https://api.qiuaihub.com/api/client/publish/tasks/publish-task-1',
-      params: { sessionToken: 'session-1' }
+      url: 'https://api.qiuaihub.com/api/client/publish/tasks/publish-task-1'
     }))
+    expectBearerSession(request.mock.calls[21][0], 'session-1')
     expect(request).toHaveBeenNthCalledWith(23, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/client/publish/tasks/publish-task-1/retry',
@@ -298,10 +324,12 @@ describe('qiuAiLicensePlatformClientService', () => {
       method: 'get',
       url: 'https://api.qiuaihub.com/api/generation/jobs/job-1',
       params: {
-        sessionToken: 'session-1',
         mode: 'compact'
       }
     }))
+    expectBearerSession(request.mock.calls[24][0], 'session-1', {
+      mode: 'compact'
+    })
   })
 
   it('downloads generation artifacts from the expected binary route', async () => {
@@ -324,7 +352,9 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: 'get',
       url: 'https://api.qiuaihub.com/api/generation/artifacts/artifact-1/download',
-      params: { sessionToken: 'session-1' },
+      headers: expect.objectContaining({
+        Authorization: 'Bearer session-1'
+      }),
       responseType: 'arraybuffer'
     }))
     expect(Buffer.isBuffer(result)).toBe(true)
@@ -352,6 +382,9 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: 'get',
       url: 'https://cdn.qiuaihub.com/generated/artifact-2.png',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer session-2'
+      }),
       params: undefined,
       responseType: 'arraybuffer'
     }))

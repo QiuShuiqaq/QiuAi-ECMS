@@ -15,7 +15,7 @@ describe('styles source', () => {
     expect(source).toContain('.shell-grid')
     expect(source).toContain('flex: 1;')
     expect(source).toContain('.shell-grid--simple')
-    expect(source).toContain('grid-template-columns: 256px minmax(0, 1fr);')
+    expect(source).toContain('grid-template-columns: minmax(180px, 10vw) minmax(0, 1fr);')
     expect(source).toContain('.shell-grid__sidebar')
     expect(source).toContain('.shell-grid__workspace')
     expect(source).toContain('.shell-grid__tasks')

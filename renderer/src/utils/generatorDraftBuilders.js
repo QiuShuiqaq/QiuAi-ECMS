@@ -1,5 +1,25 @@
 import { seriesImageTemplateOptions } from './generatorFormOptions'
 
+function hasRunnableLocalSourceImage(sourceImage) {
+  if (!sourceImage || typeof sourceImage !== 'object') {
+    return false
+  }
+
+  return Boolean(
+    String(sourceImage.storedPath || '').trim() ||
+    String(sourceImage.path || '').trim()
+  )
+}
+
+function resolveWorkspaceSourceImage(project, workspaceDraft = {}) {
+  const draftSourceImage = workspaceDraft?.sourceImage || null
+  if (hasRunnableLocalSourceImage(draftSourceImage)) {
+    return draftSourceImage
+  }
+
+  return project?.assets?.sourceImages?.[0] || draftSourceImage || null
+}
+
 export function buildSeriesPromptAssignments({
   count = 4,
   sharedPrompt = ''
@@ -41,7 +61,7 @@ export function buildProjectGeneratorDraft(project, menuKey) {
   const modePatchMap = {
     'series-generate': {
       model: generationConfig.imageModel || 'gpt-image-2',
-      size: generationConfig.imageSize || '1:1',
+      size: generationConfig.size || generationConfig.imageSize || '1:1',
       generateCount: 4,
       batchCount: 1,
       prompt: generationConfig.imagePrompt || '',
@@ -53,10 +73,10 @@ export function buildProjectGeneratorDraft(project, menuKey) {
       })
     },
     'video-generate': {
-      duration: generationConfig.videoDuration || '6s',
-      resolution: generationConfig.videoResolution || '768P',
-      aspectRatio: generationConfig.aspectRatio || '16:9',
-      motionStrength: generationConfig.videoMotionStrength || 'auto',
+      duration: generationConfig.duration || generationConfig.videoDuration || '6s',
+      resolution: generationConfig.resolution || generationConfig.videoResolution || '768P',
+      aspectRatio: generationConfig.aspectRatio || generationConfig.videoAspectRatio || '16:9',
+      motionStrength: generationConfig.motionStrength || generationConfig.videoMotionStrength || 'auto',
       prompt: generationConfig.videoPrompt || '',
       videoTemplateId: generationConfig.videoTemplateId || 'video-main',
       model: generationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast',
@@ -87,7 +107,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     platformTargetsText: workspaceDraft?.platformTargetsText || (project?.platformTarget || []).join(', '),
     language: workspaceDraft?.language || project?.baseInfo?.language || 'zh-CN',
     keywordsText: workspaceDraft?.keywordsText || (project?.baseInfo?.keywords || []).join(', '),
-    sourceImage: workspaceDraft?.sourceImage || project?.assets?.sourceImages?.[0] || null,
+    sourceImage: resolveWorkspaceSourceImage(project, workspaceDraft),
     selectionSource: workspaceDraft?.selectionSource || selectionSource,
     selectedTitle: workspaceDraft?.selectedTitle || project?.content?.selectedTitle || '',
     selectedDescription: workspaceDraft?.selectedDescription || project?.content?.selectedDescription || '',
@@ -100,17 +120,24 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     videoPrompt: workspaceDraft?.videoPrompt || generationConfig.videoPrompt || '',
     imageModel: workspaceDraft?.imageModel || generationConfig.imageModel || 'gpt-image-2',
     videoModel: workspaceDraft?.videoModel || generationConfig.videoModel || 'MiniMax-Hailuo-2.3-Fast',
-    size: workspaceDraft?.size || generationConfig.imageSize || '1:1',
-    duration: workspaceDraft?.duration || generationConfig.videoDuration || '6s',
-    resolution: workspaceDraft?.resolution || generationConfig.videoResolution || '768P',
-    aspectRatio: workspaceDraft?.aspectRatio || generationConfig.aspectRatio || '16:9',
-    motionStrength: workspaceDraft?.motionStrength || generationConfig.videoMotionStrength || 'auto',
+    size: workspaceDraft?.size || generationConfig.size || generationConfig.imageSize || '1:1',
+    duration: workspaceDraft?.duration || generationConfig.duration || generationConfig.videoDuration || '6s',
+    resolution: workspaceDraft?.resolution || generationConfig.resolution || generationConfig.videoResolution || '768P',
+    aspectRatio: workspaceDraft?.aspectRatio || generationConfig.aspectRatio || generationConfig.videoAspectRatio || '16:9',
+    motionStrength: workspaceDraft?.motionStrength || generationConfig.motionStrength || generationConfig.videoMotionStrength || 'auto',
     imageTemplateId: workspaceDraft?.imageTemplateId || generationConfig.imageTemplateId || 'image-default',
     videoTemplateId: workspaceDraft?.videoTemplateId || generationConfig.videoTemplateId || 'video-main',
     titleTemplateId: workspaceDraft?.titleTemplateId || generationConfig.titleTemplateId || '',
     descriptionTemplateId: workspaceDraft?.descriptionTemplateId || generationConfig.descriptionTemplateId || '',
+    titleQuantity: workspaceDraft?.titleQuantity || generationConfig.titleQuantity || 1,
+    descriptionQuantity: workspaceDraft?.descriptionQuantity || generationConfig.descriptionQuantity || 1,
+    generateCount: workspaceDraft?.generateCount || generationConfig.generateCount || 4,
+    promptAssignments: workspaceDraft?.promptAssignments || generationConfig.promptAssignments || buildSeriesPromptAssignments({
+      count: workspaceDraft?.generateCount || generationConfig.generateCount || 4,
+      sharedPrompt: workspaceDraft?.imagePrompt || generationConfig.imagePrompt || ''
+    }),
     notes: workspaceDraft?.notes || generationConfig.notes || '',
-    model: workspaceDraft?.model || 'deepseek-v4-flash'
+    model: workspaceDraft?.model || generationConfig.model || 'deepseek-chat'
   }
 }
 

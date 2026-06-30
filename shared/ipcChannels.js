@@ -42,6 +42,7 @@ module.exports = {
   STUDIO_EXPORT_PROJECT_BUNDLE: 'studio:export-project-bundle',
   STUDIO_SAVE_DRAFT: 'studio:save-draft',
   STUDIO_CREATE_TASK: 'studio:create-task',
+  STUDIO_CANCEL_TASK: 'studio:cancel-task',
   STUDIO_PICK_INPUT_ASSETS: 'studio:pick-input-assets',
   STUDIO_OPEN_OUTPUT_DIRECTORY: 'studio:open-output-directory',
   STUDIO_OPEN_EXTERNAL_RESOURCE: 'studio:open-external-resource',

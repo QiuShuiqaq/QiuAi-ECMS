@@ -10,15 +10,13 @@ function createWorkspaceSnapshotService({
   hydrateResultsByMenuForDisplay,
   hydrateProjectRunsForDisplay,
   normalizeRequestMetrics,
-  normalizeCreditStateForDisplay,
   sortTasks,
   countCurrentResults,
   menuItems = [],
   stateMenuItems = menuItems,
   workspaceDashboardSections = [],
   menuLabelMap = {},
-  taskMenuMapByCategory = {},
-  creditActivityHistoryLimit = 20
+  taskMenuMapByCategory = {}
 } = {}) {
   function pickStateMenuState(source = {}) {
     return Object.fromEntries(stateMenuItems.map((item) => {
@@ -81,16 +79,18 @@ function createWorkspaceSnapshotService({
   }
 
   function buildCreditOverview(settings = {}) {
-    const creditState = normalizeCreditStateForDisplay(settings.creditState)
     const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
       ? settings.dashboardCreditState
       : {}
     const textBalanceCny = Math.max(0, Number(dashboardCreditState.text?.balanceCny) || 0)
+    const textSubscriptionBalanceCny = Math.max(0, Number(dashboardCreditState.text?.subscriptionBalanceCny) || 0)
+    const textPermanentBalanceCny = Math.max(0, Number(dashboardCreditState.text?.permanentBalanceCny) || 0)
     const imageBalanceCny = Math.max(0, Number(dashboardCreditState.image?.balanceCny) || 0)
+    const imageSubscriptionBalanceCny = Math.max(0, Number(dashboardCreditState.image?.subscriptionBalanceCny) || 0)
+    const imagePermanentBalanceCny = Math.max(0, Number(dashboardCreditState.image?.permanentBalanceCny) || 0)
     const videoBalanceCny = Math.max(0, Number(dashboardCreditState.video?.balanceCny) || 0)
-    const latestAdjustmentLabel = creditState.lastAdjustmentAt
-      ? `${creditState.lastAdjustmentOperation === 'decrease' ? '扣减' : '增加'} ${creditState.lastAdjustmentAmount}`
-      : '--'
+    const videoSubscriptionBalanceCny = Math.max(0, Number(dashboardCreditState.video?.subscriptionBalanceCny) || 0)
+    const videoPermanentBalanceCny = Math.max(0, Number(dashboardCreditState.video?.permanentBalanceCny) || 0)
 
     return {
       ledgers: [
@@ -100,7 +100,9 @@ function createWorkspaceSnapshotService({
           unit: 'CNY',
           value: textBalanceCny.toFixed(2),
           items: [
-            { label: '充值余额', value: textBalanceCny.toFixed(2) }
+            { label: '可用余额', value: textBalanceCny.toFixed(2) },
+            { label: '月度余额', value: textSubscriptionBalanceCny.toFixed(2) },
+            { label: '永久余额', value: textPermanentBalanceCny.toFixed(2) }
           ]
         },
         {
@@ -109,10 +111,9 @@ function createWorkspaceSnapshotService({
           unit: 'CNY',
           value: imageBalanceCny.toFixed(2),
           items: [
-            { label: '钱包余额', value: imageBalanceCny.toFixed(2) },
-            { label: '冻结积分', value: String(creditState.frozenCredits) },
-            { label: '已用积分', value: String(creditState.usedCredits) },
-            { label: '最近调整', value: latestAdjustmentLabel }
+            { label: '可用余额', value: imageBalanceCny.toFixed(2) },
+            { label: '月度余额', value: imageSubscriptionBalanceCny.toFixed(2) },
+            { label: '永久余额', value: imagePermanentBalanceCny.toFixed(2) }
           ]
         },
         {
@@ -121,44 +122,16 @@ function createWorkspaceSnapshotService({
           unit: 'CNY',
           value: videoBalanceCny.toFixed(2),
           items: [
-            { label: '可用额度', value: videoBalanceCny.toFixed(2) }
+            { label: '可用余额', value: videoBalanceCny.toFixed(2) },
+            { label: '月度余额', value: videoSubscriptionBalanceCny.toFixed(2) },
+            { label: '永久余额', value: videoPermanentBalanceCny.toFixed(2) }
           ]
         }
       ]
     }
   }
 
-  function resolveCreditActivityLabel(item = {}) {
-    if (item.type === 'manual_increase') {
-      return '手动增加积分'
-    }
-    if (item.type === 'manual_decrease') {
-      return '手动扣减积分'
-    }
-    if (item.type === 'task_freeze') {
-      return '任务冻结积分'
-    }
-    if (item.type === 'task_settle') {
-      return '任务消耗积分'
-    }
-    if (item.type === 'task_refund') {
-      return '任务返还积分'
-    }
-    return '积分变动'
-  }
-
-  function resolveCreditActivityDescription(item = {}) {
-    if (item.taskNumber || item.taskName) {
-      const taskHeader = [item.taskNumber, item.taskName].filter(Boolean).join(' / ')
-      const modelText = item.modelSummary ? ` / ${item.modelSummary}` : ''
-      return `${taskHeader || '任务'}${modelText}`
-    }
-
-    return item.note || '本地积分流水'
-  }
-
   function buildCreditMessages(settings = {}) {
-    const creditState = normalizeCreditStateForDisplay(settings.creditState)
     const dashboardCreditState = settings.dashboardCreditState && typeof settings.dashboardCreditState === 'object'
       ? settings.dashboardCreditState
       : {}
@@ -180,12 +153,14 @@ function createWorkspaceSnapshotService({
         {
           key: 'image',
           title: '图片记录',
-          items: creditState.activityHistory.slice(0, creditActivityHistoryLimit).map((item) => ({
-            ...item,
-            label: resolveCreditActivityLabel(item),
-            description: resolveCreditActivityDescription(item),
-            amountDisplay: `${item.operation === 'decrease' ? '-' : '+'}${item.amount}`
-          }))
+          items: dashboardCreditState.image?.lastSyncedAt
+            ? [{
+                id: `image-sync-${dashboardCreditState.image.lastSyncedAt}`,
+                createdAt: dashboardCreditState.image.lastSyncedAt,
+                note: '图片余额同步',
+                amount: Number(dashboardCreditState.image.balanceCny || 0).toFixed(2)
+              }]
+            : []
         },
         {
           key: 'video',
@@ -291,10 +266,9 @@ function createWorkspaceSnapshotService({
         ? settings.dashboardCreditState
         : {
             text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
-            image: { totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'idle' },
+            image: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
             video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
-          },
-      creditState: normalizeCreditStateForDisplay(settings.creditState)
+          }
     }
   }
 
@@ -375,7 +349,8 @@ function createWorkspaceSnapshotService({
       exportItemsByMenu: pickStateMenuState(exportItemsByMenu),
       tasks,
       agentReadiness: buildAgentReadinessSnapshot(tasks),
-      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null
+      remoteServiceCapacity: settings.authPlatform?.remoteServiceCapacity || null,
+      settingsSummary: buildSettingsSummary(settings)
     }
   }
 

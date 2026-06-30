@@ -8,8 +8,25 @@ export const platformOptions = [
 
 export const languageOptions = [
   { label: '中文', value: 'zh-CN' },
-  { label: 'English', value: 'en-US' },
-  { label: 'Русский', value: 'ru-RU' }
+  { label: '英语', value: 'en-US' },
+  { label: '俄语', value: 'ru-RU' },
+  { label: '西班牙语', value: 'es-ES' },
+  { label: '葡萄牙语', value: 'pt-PT' },
+  { label: '葡萄牙语（巴西）', value: 'pt-BR' },
+  { label: '法语', value: 'fr-FR' },
+  { label: '德语', value: 'de-DE' },
+  { label: '意大利语', value: 'it-IT' },
+  { label: '荷兰语', value: 'nl-NL' },
+  { label: '波兰语', value: 'pl-PL' },
+  { label: '土耳其语', value: 'tr-TR' },
+  { label: '阿拉伯语', value: 'ar-SA' },
+  { label: '日语', value: 'ja-JP' },
+  { label: '韩语', value: 'ko-KR' },
+  { label: '泰语', value: 'th-TH' },
+  { label: '越南语', value: 'vi-VN' },
+  { label: '印尼语', value: 'id-ID' },
+  { label: '马来语', value: 'ms-MY' },
+  { label: '印地语', value: 'hi-IN' }
 ]
 
 export const imageSizeOptions = [

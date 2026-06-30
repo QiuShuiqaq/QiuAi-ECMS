@@ -90,7 +90,9 @@ describe('desktop-server contract source', () => {
     expect(generationJobDetailRouteSource).toContain('mode: searchParams.get("mode")')
 
     expect(desktopClientSource).toContain('const artifactUrl = normalizedDownloadUrl || `/api/generation/artifacts/${trimString(id)}/download`')
-    expect(desktopClientSource).toContain("return requestBinary(artifactUrl, { params })")
+    expect(desktopClientSource).toContain('return requestBinary(artifactUrl, {')
+    expect(desktopClientSource).toContain('sessionToken,')
+    expect(desktopClientSource).toContain('params: normalizedDownloadUrl && isAbsoluteHttpUrl(normalizedDownloadUrl)')
     expect(generationArtifactDownloadRouteSource).toContain('export async function GET')
     expect(generationArtifactDownloadRouteSource).toContain('sessionToken is required')
   })

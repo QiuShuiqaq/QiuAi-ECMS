@@ -178,6 +178,55 @@ function createAuthorizationService({
     })
   }
 
+  async function loadRemoteServiceCapacity(sessionToken = '') {
+    const normalizedSessionToken = trimString(sessionToken)
+    if (!normalizedSessionToken || typeof remoteLicensePlatformClient.getServiceCapacityProfile !== 'function') {
+      return null
+    }
+
+    try {
+      return await remoteLicensePlatformClient.getServiceCapacityProfile({
+        sessionToken: normalizedSessionToken
+      })
+    } catch {
+      return null
+    }
+  }
+
+  async function reactivateFromPersistedIdentity(remoteConfig = {}, deviceCode = '') {
+    if (typeof remoteLicensePlatformClient.activateLicense !== 'function') {
+      return null
+    }
+
+    const activationPayload = buildActivationPayloadFromPersistedConfig(remoteConfig, deviceCode)
+    if (!activationPayload) {
+      return null
+    }
+
+    try {
+      const reactivatedStatus = await remoteLicensePlatformClient.activateLicense(activationPayload)
+      const reactivatedSessionToken = trimString(reactivatedStatus?.sessionToken || '')
+      const remoteServiceCapacity = await loadRemoteServiceCapacity(reactivatedSessionToken)
+
+      if (settingsService && typeof settingsService.saveSettings === 'function') {
+        await settingsService.saveSettings({
+          authPlatform: buildPersistedAuthPlatformPatch(
+            remoteConfig,
+            reactivatedStatus,
+            remoteServiceCapacity
+          )
+        }).catch(() => {})
+      }
+
+      return {
+        ...mapRemoteActivationState(reactivatedStatus),
+        remoteServiceCapacity
+      }
+    } catch {
+      return null
+    }
+  }
+
   async function getRemoteActivationStatus() {
     const remoteConfig = getRemoteConfig() || {}
     const enabled = remoteConfig.enabled !== false
@@ -196,16 +245,14 @@ function createAuthorizationService({
         deviceFingerprint: deviceCode
       })
 
-      let remoteServiceCapacity = null
-      if (typeof remoteLicensePlatformClient.getServiceCapacityProfile === 'function') {
-        try {
-          remoteServiceCapacity = await remoteLicensePlatformClient.getServiceCapacityProfile({
-            sessionToken
-          })
-        } catch {
-          remoteServiceCapacity = null
+      if (trimString(remoteStatus?.status || '') === 'not_logged_in') {
+        const reactivatedState = await reactivateFromPersistedIdentity(remoteConfig, deviceCode)
+        if (reactivatedState) {
+          return reactivatedState
         }
       }
+
+      const remoteServiceCapacity = await loadRemoteServiceCapacity(sessionToken)
 
       if (settingsService && typeof settingsService.saveSettings === 'function') {
         await settingsService.saveSettings({
@@ -234,45 +281,10 @@ function createAuthorizationService({
       const shouldRetryActivate = statusCode === 401
       const shouldClearPersistedSession = statusCode === 401 || statusCode === 404
 
-      if (shouldRetryActivate && typeof remoteLicensePlatformClient.activateLicense === 'function') {
-        const activationPayload = buildActivationPayloadFromPersistedConfig(remoteConfig, deviceCode)
-
-        if (activationPayload) {
-          try {
-            const reactivatedStatus = await remoteLicensePlatformClient.activateLicense(activationPayload)
-            let remoteServiceCapacity = null
-            const reactivatedSessionToken = trimString(reactivatedStatus?.sessionToken || '')
-
-            if (
-              reactivatedSessionToken &&
-              typeof remoteLicensePlatformClient.getServiceCapacityProfile === 'function'
-            ) {
-              try {
-                remoteServiceCapacity = await remoteLicensePlatformClient.getServiceCapacityProfile({
-                  sessionToken: reactivatedSessionToken
-                })
-              } catch {
-                remoteServiceCapacity = null
-              }
-            }
-
-            if (settingsService && typeof settingsService.saveSettings === 'function') {
-              await settingsService.saveSettings({
-                authPlatform: buildPersistedAuthPlatformPatch(
-                  remoteConfig,
-                  reactivatedStatus,
-                  remoteServiceCapacity
-                )
-              }).catch(() => {})
-            }
-
-            return {
-              ...mapRemoteActivationState(reactivatedStatus),
-              remoteServiceCapacity
-            }
-          } catch {
-            // Fall through to the logged-out state when automatic reactivation fails.
-          }
+      if (shouldRetryActivate) {
+        const reactivatedState = await reactivateFromPersistedIdentity(remoteConfig, deviceCode)
+        if (reactivatedState) {
+          return reactivatedState
         }
       }
 

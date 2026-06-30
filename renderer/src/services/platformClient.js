@@ -1,6 +1,7 @@
 import {
   acceptUserAgreement,
   activateRemoteLicense,
+  cancelStudioTask,
   clearLocalAuthorization,
   createComputePackageOrder,
   createPublishTask,
@@ -113,6 +114,7 @@ export const workspaceClient = {
   updateProject: updateStudioProject,
   deleteProject: deleteStudioProject,
   createTask: createStudioTask,
+  cancelTask: cancelStudioTask,
   pickInputAssets: pickStudioInputAssets,
   exportResults: exportStudioResults,
   exportProjectBundle: exportStudioProjectBundle

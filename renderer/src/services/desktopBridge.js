@@ -5,21 +5,7 @@ const BROWSER_STUDIO_KEY = 'qiuai-browser-studio'
 const BROWSER_PROMPTS_KEY = 'qiuai-browser-prompts'
 const BROWSER_PROJECT_TEMPLATES_KEY = 'qiuai-browser-project-templates'
 const BROWSER_USER_AGREEMENT_KEY = 'qiuai-browser-user-agreement'
-const BROWSER_CREDIT_HISTORY_LIMIT = 20
 const BROWSER_RUNTIME_MENU_KEYS = new Set(studioMenuConfig.runtimeTaskMenuKeys || ['workspace', 'series-generate', 'video-generate'])
-
-const defaultBrowserCreditState = {
-  totalPurchasedCredits: 0,
-  remainingCredits: 0,
-  frozenCredits: 0,
-  usedCredits: 0,
-  lastAdjustmentAt: '',
-  lastAdjustmentOperation: '',
-  lastAdjustmentAmount: 0,
-  adjustmentHistory: [],
-  activityHistory: [],
-  taskLedger: {}
-}
 
 const defaultBrowserDashboardCreditState = {
   text: {
@@ -30,8 +16,6 @@ const defaultBrowserDashboardCreditState = {
     syncStatus: 'idle'
   },
   image: {
-    totalCredits: 0,
-    remainingCredits: 0,
     balanceCny: 0,
     subscriptionBalanceCny: 0,
     permanentBalanceCny: 0,
@@ -55,8 +39,7 @@ const defaultBrowserStudioSnapshot = {
   workspaceDashboard: {},
   hostInfo: {},
   settingsSummary: {
-    dashboardCreditState: defaultBrowserDashboardCreditState,
-    creditState: defaultBrowserCreditState
+    dashboardCreditState: defaultBrowserDashboardCreditState
   }
 }
 
@@ -159,37 +142,6 @@ function normalizeForIpc (value) {
   return JSON.parse(JSON.stringify(value))
 }
 
-function normalizeNonNegativeInteger (value = 0) {
-  const numericValue = Number(value)
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return 0
-  }
-
-  return Math.round(numericValue)
-}
-
-function normalizeBrowserCreditState (rawCreditState = {}) {
-  const source = rawCreditState && typeof rawCreditState === 'object' ? rawCreditState : {}
-
-  return {
-    totalPurchasedCredits: normalizeNonNegativeInteger(source.totalPurchasedCredits),
-    remainingCredits: normalizeNonNegativeInteger(source.remainingCredits),
-    frozenCredits: normalizeNonNegativeInteger(source.frozenCredits),
-    usedCredits: normalizeNonNegativeInteger(source.usedCredits),
-    lastAdjustmentAt: typeof source.lastAdjustmentAt === 'string' ? source.lastAdjustmentAt : '',
-    lastAdjustmentOperation: typeof source.lastAdjustmentOperation === 'string' ? source.lastAdjustmentOperation : '',
-    lastAdjustmentAmount: normalizeNonNegativeInteger(source.lastAdjustmentAmount),
-    adjustmentHistory: Array.isArray(source.adjustmentHistory)
-      ? source.adjustmentHistory.slice(0, BROWSER_CREDIT_HISTORY_LIMIT)
-      : [],
-    activityHistory: Array.isArray(source.activityHistory)
-      ? source.activityHistory.slice(0, BROWSER_CREDIT_HISTORY_LIMIT)
-      : [],
-    taskLedger: source.taskLedger && typeof source.taskLedger === 'object' ? { ...source.taskLedger } : {}
-  }
-}
-
 function normalizeBrowserDashboardCreditState (rawDashboardCreditState = {}) {
   const source = rawDashboardCreditState && typeof rawDashboardCreditState === 'object' ? rawDashboardCreditState : {}
 
@@ -206,11 +158,9 @@ function normalizeBrowserDashboardCreditState (rawDashboardCreditState = {}) {
         syncStatus: 'idle'
       },
       image: {
-        totalCredits: normalizeNonNegativeInteger(source.totalCredits),
-        remainingCredits: normalizeNonNegativeInteger(source.remainingCredits),
-        balanceCny: 0,
+        balanceCny: Math.max(0, Number(source.balanceCny) || 0),
         subscriptionBalanceCny: 0,
-        permanentBalanceCny: 0,
+        permanentBalanceCny: Math.max(0, Number(source.balanceCny) || 0),
         lastSyncedAt: '',
         syncStatus: 'success'
       },
@@ -233,8 +183,6 @@ function normalizeBrowserDashboardCreditState (rawDashboardCreditState = {}) {
       syncStatus: typeof source.text?.syncStatus === 'string' ? source.text.syncStatus : 'idle'
     },
     image: {
-      totalCredits: normalizeNonNegativeInteger(source.image?.totalCredits),
-      remainingCredits: normalizeNonNegativeInteger(source.image?.remainingCredits),
       balanceCny: Math.max(0, Number(source.image?.balanceCny) || 0),
       subscriptionBalanceCny: Math.max(0, Number(source.image?.subscriptionBalanceCny) || 0),
       permanentBalanceCny: Math.max(0, Number(source.image?.permanentBalanceCny) || 0),
@@ -255,8 +203,7 @@ function normalizeBrowserSettingsSummary (rawSummary = {}) {
   const source = rawSummary && typeof rawSummary === 'object' ? rawSummary : {}
 
   return {
-    dashboardCreditState: normalizeBrowserDashboardCreditState(source.dashboardCreditState),
-    creditState: normalizeBrowserCreditState(source.creditState)
+    dashboardCreditState: normalizeBrowserDashboardCreditState(source.dashboardCreditState)
   }
 }
 
@@ -394,17 +341,17 @@ function saveBrowserProjectTemplateFromProject(payload = {}) {
         prompt: String(project.generationConfig?.imagePrompt || '').trim(),
         templateId: String(project.generationConfig?.imageTemplateId || '').trim(),
         model: String(project.generationConfig?.imageModel || '').trim(),
-        size: String(project.generationConfig?.imageSize || '').trim(),
+        size: String(project.generationConfig?.size || project.generationConfig?.imageSize || '').trim(),
         generateCount: Number(project.generationConfig?.generateCount || 0) || 0
       },
       video: {
         prompt: String(project.generationConfig?.videoPrompt || '').trim(),
         templateId: String(project.generationConfig?.videoTemplateId || '').trim(),
         model: String(project.generationConfig?.videoModel || '').trim(),
-        duration: String(project.generationConfig?.videoDuration || '').trim(),
-        resolution: String(project.generationConfig?.videoResolution || '').trim(),
-        motionStrength: String(project.generationConfig?.videoMotionStrength || '').trim(),
-        aspectRatio: String(project.generationConfig?.videoAspectRatio || '').trim()
+        duration: String(project.generationConfig?.duration || project.generationConfig?.videoDuration || '').trim(),
+        resolution: String(project.generationConfig?.resolution || project.generationConfig?.videoResolution || '').trim(),
+        motionStrength: String(project.generationConfig?.motionStrength || project.generationConfig?.videoMotionStrength || '').trim(),
+        aspectRatio: String(project.generationConfig?.aspectRatio || project.generationConfig?.videoAspectRatio || '').trim()
       }
     },
     summary: {
@@ -671,6 +618,10 @@ export function saveStudioDraft (payload) {
 
 export function createStudioTask (payload) {
   return invoke(getChannel('STUDIO_CREATE_TASK'), payload)
+}
+
+export function cancelStudioTask (payload) {
+  return invoke(getChannel('STUDIO_CANCEL_TASK'), payload)
 }
 
 export function getActivationStatus () {

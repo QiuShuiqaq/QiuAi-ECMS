@@ -47,19 +47,6 @@ describe('workspaceSnapshotService', () => {
       hydrateResultsByMenuForDisplay: (resultsByMenu = {}) => resultsByMenu,
       hydrateProjectRunsForDisplay: (projectRuns = []) => projectRuns.map((item) => ({ ...item, hydrated: true })),
       normalizeRequestMetrics: (requestMetrics = []) => requestMetrics,
-      normalizeCreditStateForDisplay: (creditState = {}) => ({
-        totalPurchasedCredits: 0,
-        remainingCredits: 0,
-        frozenCredits: 0,
-        usedCredits: 0,
-        lastAdjustmentAt: '',
-        lastAdjustmentOperation: '',
-        lastAdjustmentAmount: 0,
-        adjustmentHistory: [],
-        activityHistory: [],
-        taskLedger: {},
-        ...creditState
-      }),
       sortTasks: (taskList = []) => [...taskList].sort((left, right) => {
         return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
       }),
@@ -76,11 +63,7 @@ describe('workspaceSnapshotService', () => {
       },
       taskMenuMapByCategory: {
         工作台: 'workspace'
-      },
-      modelCreditCostMap: {
-        'gpt-image-2': 600
-      },
-      creditActivityHistoryLimit: 20
+      }
     })
 
     return {
@@ -129,28 +112,10 @@ describe('workspaceSnapshotService', () => {
         ]
       },
       settings: {
-        creditState: {
-          frozenCredits: 10,
-          usedCredits: 20,
-          lastAdjustmentAt: '2026-06-21T09:00:00.000Z',
-          lastAdjustmentOperation: 'increase',
-          lastAdjustmentAmount: 600,
-          activityHistory: [
-            {
-              id: 'activity-1',
-              type: 'task_settle',
-              operation: 'decrease',
-              amount: 600,
-              taskNumber: 'QAI-001',
-              taskName: '任务 1',
-              modelSummary: 'gpt-image-2'
-            }
-          ]
-        },
         dashboardCreditState: {
-          text: { balanceCny: 8.5, lastSyncedAt: '2026-06-21T08:00:00.000Z' },
-          image: { totalCredits: 3000, remainingCredits: 1200, balanceCny: 28.5 },
-          video: { balanceCny: 18.75, lastSyncedAt: '2026-06-21T08:00:00.000Z' }
+          text: { balanceCny: 8.5, subscriptionBalanceCny: 3, permanentBalanceCny: 5.5, lastSyncedAt: '2026-06-21T08:00:00.000Z' },
+          image: { balanceCny: 28.5, subscriptionBalanceCny: 8.5, permanentBalanceCny: 20, lastSyncedAt: '2026-06-21T08:05:00.000Z' },
+          video: { balanceCny: 18.75, subscriptionBalanceCny: 6.25, permanentBalanceCny: 12.5, lastSyncedAt: '2026-06-21T08:10:00.000Z' }
         },
         authPlatform: {
           remoteServiceCapacity: {
@@ -179,8 +144,8 @@ describe('workspaceSnapshotService', () => {
     ]))
     expect(snapshot.workspaceDashboard.creditOverview.ledgers.map((item) => item.key)).toEqual(['text', 'image', 'video'])
     expect(snapshot.workspaceDashboard.creditMessages.ledgers[1].items[0]).toMatchObject({
-      label: '任务消耗积分',
-      amountDisplay: '-600'
+      note: '图片余额同步',
+      amount: '28.50'
     })
     expect(snapshot.workspaceDashboard.networkMonitor.summary).toMatchObject({
       latestLatencyMs: 320,
@@ -190,7 +155,7 @@ describe('workspaceSnapshotService', () => {
     expect(snapshot.settingsSummary).toMatchObject({
       dashboardCreditState: {
         text: { balanceCny: 8.5 },
-        image: { totalCredits: 3000, remainingCredits: 1200, balanceCny: 28.5 },
+        image: { balanceCny: 28.5 },
         video: { balanceCny: 18.75 }
       }
     })
@@ -227,7 +192,14 @@ describe('workspaceSnapshotService', () => {
         resultsByMenu: { workspace: { textResults: [] } },
         exportItemsByMenu: { workspace: [] }
       },
-      tasks: [{ id: 'task-1', createdAt: '2026-06-21T10:00:00.000Z' }]
+      tasks: [{ id: 'task-1', createdAt: '2026-06-21T10:00:00.000Z' }],
+      settings: {
+        dashboardCreditState: {
+          text: { balanceCny: 1.25, subscriptionBalanceCny: 0.5, permanentBalanceCny: 0.75, lastSyncedAt: '2026-06-21T08:00:00.000Z' },
+          image: { balanceCny: 2.5, subscriptionBalanceCny: 1, permanentBalanceCny: 1.5, lastSyncedAt: '2026-06-21T08:00:00.000Z' },
+          video: { balanceCny: 3.75, subscriptionBalanceCny: 1.25, permanentBalanceCny: 2.5, lastSyncedAt: '2026-06-21T08:00:00.000Z' }
+        }
+      }
     })
 
     const snapshot = service.getRuntimeSnapshot()
@@ -239,6 +211,13 @@ describe('workspaceSnapshotService', () => {
     })
     expect(snapshot.projectRuns[0]).toMatchObject({ id: 'run-1', hydrated: true })
     expect(snapshot.agentReadiness.executionLog).toEqual([{ taskId: 'task-1' }])
+    expect(snapshot.settingsSummary).toMatchObject({
+      dashboardCreditState: {
+        text: { balanceCny: 1.25 },
+        image: { balanceCny: 2.5 },
+        video: { balanceCny: 3.75 }
+      }
+    })
     expect('themeMode' in snapshot).toBe(false)
     expect('hostInfo' in snapshot).toBe(false)
   })

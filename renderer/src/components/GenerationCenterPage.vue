@@ -3,8 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   imageModelOptions,
   imageSizeOptions,
+  imageTemplateDefaultOrder,
   imageTemplateTypeMap,
   languageOptions,
+  seriesImageTemplateOptions,
   videoDurationOptions,
   videoModelOptions,
   videoMotionOptions,
@@ -41,6 +43,7 @@ const props = defineProps({
 const emit = defineEmits([
   'create-project',
   'run-project',
+  'cancel-task',
   'update-draft',
   'save-project-template',
   'replace-project-image',
@@ -159,6 +162,8 @@ const workspaceStepOptions = [
   { key: 'video', label: '视频' }
 ]
 
+const workspaceStageOrder = ['title', 'description', 'image', 'video']
+
 function resolveProjectName(project = {}) {
   return String(project?.name || project?.baseInfo?.productName || '未命名项目').trim() || '未命名项目'
 }
@@ -217,6 +222,36 @@ function resolveProjectTemplateSelection() {
   }
 }
 
+function resolveProjectGenerateCount() {
+  const value = Number(resolveDraftValue('generateCount', 4))
+  if (!Number.isFinite(value)) return 4
+  return Math.max(1, Math.min(12, Math.round(value)))
+}
+
+function resolveProjectImageAssignments() {
+  const count = resolveProjectGenerateCount()
+  const sourceAssignments = Array.isArray(normalizedDraft.value?.promptAssignments)
+    ? normalizedDraft.value.promptAssignments
+    : []
+
+  return Array.from({ length: count }, (_unused, index) => {
+    const currentAssignment = sourceAssignments[index] && typeof sourceAssignments[index] === 'object'
+      ? sourceAssignments[index]
+      : {}
+    const fallbackTemplateId = imageTemplateDefaultOrder[index] || imageTemplateDefaultOrder[0] || ''
+    const templateId = String(currentAssignment.templateId || fallbackTemplateId).trim() || fallbackTemplateId
+
+    return {
+      id: String(currentAssignment.id || `workspace-image-template-${index + 1}`),
+      index: index + 1,
+      templateId,
+      imageType: String(currentAssignment.imageType || imageTemplateTypeMap[templateId] || '').trim() || `套图 ${index + 1}`,
+      differenceLevel: String(currentAssignment.differenceLevel || 'off').trim() || 'off',
+      prompt: String(currentAssignment.prompt || '').trim()
+    }
+  })
+}
+
 function resolveDraftSelectValue(field, fallback = '') {
   return String(resolveDraftValue(field, fallback) || fallback).trim()
 }
@@ -234,10 +269,28 @@ function resolveEnabledSteps() {
   }
 }
 
+const enabledWorkspaceSteps = computed(() => resolveEnabledSteps())
+
+const requiresSourceImage = computed(() => {
+  return enabledWorkspaceSteps.value.image || enabledWorkspaceSteps.value.video
+})
+
+function shouldShowStageDivider(stageKey = '') {
+  const currentIndex = workspaceStageOrder.indexOf(String(stageKey || '').trim())
+  if (currentIndex < 0) {
+    return false
+  }
+
+  return workspaceStageOrder
+    .slice(currentIndex + 1)
+    .some((key) => enabledWorkspaceSteps.value[key])
+}
+
 function resolveLatestRunStatus(latestRun = null) {
   const status = String(latestRun?.status || '').trim().toLowerCase()
   if (['running', 'processing', 'submitting'].includes(status)) return '生成中'
   if (['pending', 'queued'].includes(status)) return '排队中'
+  if (status === 'partial') return '部分完成'
   if (status === 'success') return '已完成'
   if (status === 'failed') return '失败'
   return '未开始'
@@ -246,8 +299,45 @@ function resolveLatestRunStatus(latestRun = null) {
 function resolveStepStatus(status = '') {
   if (['running', 'processing', 'submitting'].includes(status)) return '生成中'
   if (['pending', 'queued'].includes(status)) return '排队中'
+  if (status === 'partial') return '部分完成'
   if (status === 'failed') return '失败'
   return '未开始'
+}
+
+function resolveTaskStatusClass(status = '') {
+  const normalized = String(status || '').trim()
+  if (['生成中', 'running', 'processing', 'submitting'].includes(normalized)) return 'task-status--running'
+  if (['已完成', 'success'].includes(normalized)) return 'task-status--completed'
+  if (['部分完成', 'partial'].includes(normalized)) return 'task-status--running'
+  if (['失败', 'failed'].includes(normalized)) return 'task-status--failed'
+  return 'task-status--waiting'
+}
+
+function resolveWorkspaceStepError(latestRun = null, stepKey = '') {
+  const stepStates = latestRun?.stepStates && typeof latestRun.stepStates === 'object'
+    ? latestRun.stepStates
+    : {}
+  return String(stepStates?.[stepKey]?.error || '').trim()
+}
+
+function resolveWorkspaceFailureSummary(latestRun = null) {
+  const stepStates = latestRun?.stepStates && typeof latestRun.stepStates === 'object'
+    ? latestRun.stepStates
+    : {}
+  const stepLabels = {
+    title: '标题',
+    description: '描述',
+    image: '套图',
+    video: '视频'
+  }
+
+  return Object.entries(stepLabels)
+    .map(([stepKey, label]) => {
+      const error = String(stepStates?.[stepKey]?.error || '').trim()
+      if (!error) return ''
+      return `${label}：${error}`
+    })
+    .filter(Boolean)
 }
 
 function resolveQueueStage(project = {}, latestRun = null) {
@@ -255,6 +345,20 @@ function resolveQueueStage(project = {}, latestRun = null) {
   if (latestRun?.menuKey === 'description-generate') return '描述'
   if (latestRun?.menuKey === 'series-generate') return '套图'
   if (latestRun?.menuKey === 'video-generate') return '视频'
+
+  const stepStates = latestRun?.stepStates && typeof latestRun.stepStates === 'object'
+    ? latestRun.stepStates
+    : {}
+  const runningStep = [
+    ['title', '标题'],
+    ['description', '描述'],
+    ['image', '套图'],
+    ['video', '视频']
+  ].find(([stepKey]) => String(stepStates?.[stepKey]?.status || '').trim().toLowerCase() === 'running')
+
+  if (runningStep) {
+    return runningStep[1]
+  }
 
   const titleDone = String(project?.content?.selectedTitle || '').trim()
   const descriptionDone = String(project?.content?.selectedDescription || '').trim()
@@ -346,31 +450,42 @@ const currentProjectSteps = computed(() => {
   const generatedImages = currentContent.generatedImages
   const generatedVideo = currentContent.generatedVideo
   const baseStatus = String(latestRun?.status || '').trim().toLowerCase()
+  const stepStates = latestRun?.stepStates && typeof latestRun.stepStates === 'object'
+    ? latestRun.stepStates
+    : {}
+  const resolveWorkspaceStepStatus = (stepKey, hasOutput) => {
+    if (hasOutput) return '已完成'
+    const stepStatus = String(stepStates?.[stepKey]?.status || '').trim().toLowerCase()
+    if (stepStatus === 'failed') return '失败'
+    if (stepStatus === 'running') return '生成中'
+    if (stepStatus === 'success') return '已完成'
+    return resolveStepStatus(baseStatus)
+  }
 
   return [
     {
       key: 'title',
       label: '标题',
       count: currentContent.titleText ? 1 : 0,
-      status: currentContent.titleText ? '已完成' : resolveStepStatus(baseStatus)
+      status: resolveWorkspaceStepStatus('title', Boolean(currentContent.titleText))
     },
     {
       key: 'description',
       label: '描述',
       count: currentContent.descriptionText ? 1 : 0,
-      status: currentContent.descriptionText ? '已完成' : resolveStepStatus(baseStatus)
+      status: resolveWorkspaceStepStatus('description', Boolean(currentContent.descriptionText))
     },
     {
       key: 'image',
       label: '套图',
       count: generatedImages.length,
-      status: generatedImages.length ? '已完成' : resolveStepStatus(baseStatus)
+      status: resolveWorkspaceStepStatus('image', generatedImages.length > 0)
     },
     {
       key: 'video',
       label: '视频',
       count: generatedVideo ? 1 : 0,
-      status: generatedVideo ? '已完成' : resolveStepStatus(baseStatus)
+      status: resolveWorkspaceStepStatus('video', Boolean(generatedVideo))
     }
   ]
 })
@@ -389,11 +504,12 @@ const currentProjectFlowSteps = computed(() => {
   const running = isCurrentProjectRunning.value
 
   return currentProjectSteps.value.map((step, index) => {
-    const isDone = step.count > 0
-    const isRunning = running && step.label === runningStage
+    const isDone = step.status === '已完成'
+    const isRunning = running && step.status === '生成中' && step.label === runningStage
 
     return {
       ...step,
+      error: resolveWorkspaceStepError(activeProjectEntry.value?.latestRun || null, step.key),
       index: index + 1,
       tone: isDone ? 'done' : isRunning ? 'running' : (step.status === '失败' ? 'failed' : 'pending'),
       isDone,
@@ -405,7 +521,7 @@ const currentProjectFlowSteps = computed(() => {
 const currentProjectCompletion = computed(() => {
   const steps = currentProjectSteps.value
   if (!steps.length) return 0
-  const completed = steps.filter((item) => item.count > 0).length
+  const completed = steps.filter((item) => item.status === '已完成').length
   return Math.round((completed / steps.length) * 100)
 })
 
@@ -451,6 +567,7 @@ const queueRows = computed(() => {
     return {
       id: project.id,
       project,
+      latestRun,
       name: resolveProjectName(project),
       platform: resolveProjectPlatform(project),
       status,
@@ -510,6 +627,87 @@ function updateProjectGenerationConfig(patch = {}) {
   updateDraftPatch(patch)
 }
 
+function handleProjectGenerateCountChange(value) {
+  const nextCount = Math.max(1, Math.min(12, Number(value) || 1))
+  const nextAssignments = Array.from({ length: nextCount }, (_unused, index) => {
+    const currentAssignment = resolveProjectImageAssignments()[index] || {}
+    const fallbackTemplateId = imageTemplateDefaultOrder[index] || imageTemplateDefaultOrder[0] || ''
+    const templateId = String(currentAssignment.templateId || fallbackTemplateId).trim() || fallbackTemplateId
+
+    return {
+      id: String(currentAssignment.id || `workspace-image-template-${index + 1}`),
+      index: index + 1,
+      templateId,
+      imageType: String(imageTemplateTypeMap[templateId] || currentAssignment.imageType || '').trim() || `套图 ${index + 1}`,
+      differenceLevel: String(currentAssignment.differenceLevel || 'off').trim() || 'off',
+      prompt: String(currentAssignment.prompt || '').trim()
+    }
+  })
+
+  updateProjectGenerationConfig({
+    generateCount: nextCount,
+    imageTemplateId: nextAssignments[0]?.templateId || '',
+    promptAssignments: nextAssignments
+  })
+}
+
+function handleProjectImageTemplateChange(index, templateId) {
+  const currentAssignments = resolveProjectImageAssignments()
+  const matchedPromptTemplate = imagePromptTemplates.value.find((item) => String(item?.id || '').trim() === String(templateId || '').trim())
+  const nextAssignments = currentAssignments.map((assignment, assignmentIndex) => {
+    if (assignmentIndex !== index) {
+      return {
+        ...assignment,
+        prompt: String(
+          normalizedDraft.value?.promptAssignments?.[assignmentIndex]?.prompt || assignment.prompt || ''
+        ).trim()
+      }
+    }
+
+    const normalizedTemplateId = String(templateId || '').trim()
+    return {
+      ...assignment,
+      templateId: normalizedTemplateId,
+      imageType: String(imageTemplateTypeMap[normalizedTemplateId] || assignment.imageType || '').trim() || `套图 ${index + 1}`,
+      prompt: String(
+        matchedPromptTemplate?.prompt ||
+        normalizedDraft.value?.promptAssignments?.[assignmentIndex]?.prompt ||
+        assignment.prompt ||
+        ''
+      ).trim()
+    }
+  })
+
+  updateProjectGenerationConfig({
+    imageTemplateId: nextAssignments[0]?.templateId || '',
+    promptAssignments: nextAssignments
+  })
+}
+
+function handleProjectImagePromptChange(index, prompt) {
+  const currentAssignments = resolveProjectImageAssignments()
+  const nextAssignments = currentAssignments.map((assignment, assignmentIndex) => {
+    if (assignmentIndex !== index) {
+      return {
+        ...assignment,
+        prompt: String(
+          normalizedDraft.value?.promptAssignments?.[assignmentIndex]?.prompt || assignment.prompt || ''
+        ).trim()
+      }
+    }
+
+    return {
+      ...assignment,
+      prompt: String(prompt || '')
+    }
+  })
+
+  updateProjectGenerationConfig({
+    imageTemplateId: nextAssignments[0]?.templateId || '',
+    promptAssignments: nextAssignments
+  })
+}
+
 function handleStepToggle(stepKey, checked) {
   updateDraftPatch({
     enabledSteps: {
@@ -544,6 +742,14 @@ function handleOpenStep(menuKey) {
 function handleRunProject(project) {
   if (!project?.id) return
   emit('run-project', project)
+}
+
+function handleCancelTask(item) {
+  if (!item?.project?.id && !item?.id) return
+  emit('cancel-task', {
+    projectId: String(item?.project?.id || item?.id || '').trim(),
+    taskId: String(item?.latestRun?.taskId || '').trim()
+  })
 }
 
 function handleOpenProjectStorage(project) {
@@ -705,23 +911,23 @@ function resolveStageMenuKey(stage = '') {
             v-for="item in workspaceStepOptions"
             :key="item.key"
             class="generator-form__row generator-form__row--checkbox"
-            :class="{ 'work-center-studio__step-chip--active': resolveEnabledSteps()[item.key] }"
+            :class="{ 'work-center-studio__step-chip--active': enabledWorkspaceSteps[item.key] }"
           >
             <span class="generator-form__label work-center-studio__step-chip-label">{{ item.label }}</span>
             <label class="work-center-studio__step-chip-control">
               <input
-                :checked="resolveEnabledSteps()[item.key]"
+                :checked="enabledWorkspaceSteps[item.key]"
                 type="checkbox"
                 @change="handleStepToggle(item.key, $event.target.checked)"
               >
             </label>
             <div class="work-center-studio__toggle">
-              <span class="work-center-studio__step-chip-state">{{ resolveEnabledSteps()[item.key] ? '开启' : '关闭' }}</span>
+              <span class="work-center-studio__step-chip-state">{{ enabledWorkspaceSteps[item.key] ? '开启' : '关闭' }}</span>
             </div>
           </div>
         </div>
 
-        <div class="generator-form__row">
+        <div v-if="requiresSourceImage" class="generator-form__row">
           <span class="generator-form__label">原图上传</span>
           <div class="generator-form__asset">
             <button
@@ -743,171 +949,275 @@ function resolveStageMenuKey(stage = '') {
           </div>
         </div>
 
-        <div class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">标题模板</span>
-            <select
-              :value="resolveProjectTemplateSelection().titleTemplateId"
-              @change="handlePromptTemplateApply('titlePrompt', $event.target.value)"
-            >
-              <option value="">默认</option>
-              <option v-for="item in titlePromptTemplates" :key="item.id" :value="item.id">
-                {{ item.name || '未命名模板' }}
-              </option>
-            </select>
+        <div v-if="enabledWorkspaceSteps.title" class="work-center-studio__stage-section">
+          <div class="work-center-studio__stage-heading">
+            <strong>标题</strong>
           </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">描述模板</span>
-            <select
-              :value="resolveProjectTemplateSelection().descriptionTemplateId"
-              @change="handlePromptTemplateApply('descriptionPrompt', $event.target.value)"
-            >
-              <option value="">默认</option>
-              <option v-for="item in descriptionPromptTemplates" :key="item.id" :value="item.id">
-                {{ item.name || '未命名模板' }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">图片模板</span>
-            <select
-              :value="resolveProjectTemplateSelection().imageTemplateId"
-              @change="handlePromptTemplateApply('imagePrompt', $event.target.value)"
-            >
-              <option value="">默认</option>
-              <option v-for="item in imagePromptTemplates" :key="item.id" :value="item.id">
-                {{ item.name || imageTemplateTypeMap[item.id] || '未命名模板' }}
-              </option>
-            </select>
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">视频模板</span>
-            <select
-              :value="resolveProjectTemplateSelection().videoTemplateId"
-              @change="handlePromptTemplateApply('videoPrompt', $event.target.value)"
-            >
-              <option value="">默认</option>
-              <option v-for="item in videoPromptTemplates" :key="item.id" :value="item.id">
-                {{ item.name || '未命名模板' }}
-              </option>
-            </select>
-          </div>
-        </div>
-
-        <div class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">图片模型</span>
-            <select
-              :value="resolveDraftSelectValue('imageModel', imageModelOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ imageModel: $event.target.value })"
-            >
-              <option v-for="option in imageModelOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">图片尺寸</span>
-            <select
-              :value="resolveDraftSelectValue('size', imageSizeOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ size: $event.target.value })"
-            >
-              <option v-for="option in imageSizeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+          <div class="generator-form__group">
+            <div class="generator-form__row">
+              <span class="generator-form__label">语言</span>
+              <select
+                :value="resolveDraftLanguage()"
+                @change="handleProjectFieldUpdate('language', $event.target.value)"
+              >
+                <option v-for="option in languageOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">字数</span>
+              <input
+                :value="resolveDraftValue('titleMaxChars', 60)"
+                type="number"
+                min="1"
+                max="300"
+                @input="updateProjectGenerationConfig({ titleMaxChars: Number($event.target.value) || 60 })"
+              >
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">数量</span>
+              <input
+                :value="resolveDraftValue('titleQuantity', 3)"
+                type="number"
+                min="1"
+                max="20"
+                @input="updateProjectGenerationConfig({ titleQuantity: Number($event.target.value) || 3 })"
+              >
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">标题模板</span>
+              <select
+                :value="resolveProjectTemplateSelection().titleTemplateId"
+                @change="handlePromptTemplateApply('titlePrompt', $event.target.value)"
+              >
+                <option value="">默认</option>
+                <option v-for="item in titlePromptTemplates" :key="item.id" :value="item.id">
+                  {{ item.name || '未命名模板' }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__card work-center-studio__prompt-card">
+              <textarea
+                :value="resolveDraftValue('titlePrompt', '')"
+                rows="6"
+                placeholder="标题提示词"
+                @input="updateProjectGenerationConfig({ titlePrompt: $event.target.value })"
+              ></textarea>
+            </div>
           </div>
         </div>
 
-        <div class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">视频模型</span>
-            <select
-              :value="resolveDraftSelectValue('videoModel', videoModelOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ videoModel: $event.target.value })"
-            >
-              <option v-for="option in videoModelOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+        <div v-if="shouldShowStageDivider('title')" class="work-center-studio__param-divider" aria-hidden="true"></div>
+
+        <div v-if="enabledWorkspaceSteps.description" class="work-center-studio__stage-section">
+          <div class="work-center-studio__stage-heading">
+            <strong>描述</strong>
           </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">视频时长</span>
-            <select
-              :value="resolveDraftSelectValue('duration', videoDurationOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ duration: $event.target.value })"
-            >
-              <option v-for="option in videoDurationOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+          <div class="generator-form__group">
+            <div class="generator-form__row">
+              <span class="generator-form__label">语言</span>
+              <select
+                :value="resolveDraftLanguage()"
+                @change="handleProjectFieldUpdate('language', $event.target.value)"
+              >
+                <option v-for="option in languageOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">字数</span>
+              <input
+                :value="resolveDraftValue('descriptionMaxChars', 300)"
+                type="number"
+                min="1"
+                max="2000"
+                @input="updateProjectGenerationConfig({ descriptionMaxChars: Number($event.target.value) || 300 })"
+              >
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">数量</span>
+              <input
+                :value="resolveDraftValue('descriptionQuantity', 2)"
+                type="number"
+                min="1"
+                max="20"
+                @input="updateProjectGenerationConfig({ descriptionQuantity: Number($event.target.value) || 2 })"
+              >
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">描述模板</span>
+              <select
+                :value="resolveProjectTemplateSelection().descriptionTemplateId"
+                @change="handlePromptTemplateApply('descriptionPrompt', $event.target.value)"
+              >
+                <option value="">默认</option>
+                <option v-for="item in descriptionPromptTemplates" :key="item.id" :value="item.id">
+                  {{ item.name || '未命名模板' }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__card work-center-studio__prompt-card">
+              <textarea
+                :value="resolveDraftValue('descriptionPrompt', '')"
+                rows="6"
+                placeholder="描述提示词"
+                @input="updateProjectGenerationConfig({ descriptionPrompt: $event.target.value })"
+              ></textarea>
+            </div>
           </div>
         </div>
 
-        <div class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">视频清晰度</span>
-            <select
-              :value="resolveDraftSelectValue('resolution', videoResolutionOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ resolution: $event.target.value })"
+        <div v-if="shouldShowStageDivider('description')" class="work-center-studio__param-divider" aria-hidden="true"></div>
+
+        <div v-if="enabledWorkspaceSteps.image" class="work-center-studio__stage-section">
+          <div class="work-center-studio__stage-heading">
+            <strong>套图</strong>
+          </div>
+          <div class="generator-form__group">
+            <div class="generator-form__row">
+              <span class="generator-form__label">数量</span>
+              <input
+                type="number"
+                min="1"
+                max="12"
+                :value="resolveProjectGenerateCount()"
+                @input="handleProjectGenerateCountChange($event.target.value)"
+              />
+            </div>
+            <div
+              v-for="assignment in resolveProjectImageAssignments()"
+              :key="assignment.id"
+              class="generator-form__row"
             >
-              <option v-for="option in videoResolutionOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">运动强度</span>
-            <select
-              :value="resolveDraftSelectValue('motionStrength', videoMotionOptions[0]?.value)"
-              @change="updateProjectGenerationConfig({ motionStrength: $event.target.value })"
+              <span class="generator-form__label">图片模板 {{ assignment.index }}</span>
+              <select
+                :value="assignment.templateId"
+                @change="handleProjectImageTemplateChange(assignment.index - 1, $event.target.value)"
+              >
+                <option
+                  v-for="option in seriesImageTemplateOptions"
+                  :key="option.templateId"
+                  :value="option.templateId"
+                >
+                  {{ option.imageType }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">图片模型</span>
+              <select
+                :value="resolveDraftSelectValue('imageModel', imageModelOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ imageModel: $event.target.value })"
+              >
+                <option v-for="option in imageModelOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">图片尺寸</span>
+              <select
+                :value="resolveDraftSelectValue('size', imageSizeOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ size: $event.target.value })"
+              >
+                <option v-for="option in imageSizeOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div
+              v-for="assignment in resolveProjectImageAssignments()"
+              :key="`${assignment.id}-prompt`"
+              class="generator-form__card work-center-studio__prompt-card"
             >
-              <option v-for="option in videoMotionOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+              <textarea
+                :value="assignment.prompt || ''"
+                rows="5"
+                :placeholder="`图片模板 ${assignment.index} 提示词`"
+                @input="handleProjectImagePromptChange(assignment.index - 1, $event.target.value)"
+              ></textarea>
+            </div>
           </div>
         </div>
 
-        <div class="generator-form__row">
-          <span class="generator-form__label">关键词</span>
-          <textarea
-            :value="resolveDraftKeywords()"
-            rows="4"
-            placeholder="输入关键词、卖点、风格"
-            @input="handleProjectFieldUpdate('keywordsText', $event.target.value)"
-          ></textarea>
-        </div>
+        <div v-if="shouldShowStageDivider('image')" class="work-center-studio__param-divider" aria-hidden="true"></div>
 
-        <div class="generator-form__card">
-          <textarea
-            :value="resolveDraftNotes()"
-            rows="7"
-            placeholder="补充项目要求、风格和限制条件"
-            @input="handleProjectFieldUpdate('notes', $event.target.value)"
-          ></textarea>
-        </div>
-
-        <div class="work-center-studio__shortcut-block">
-          <div class="work-center-studio__shortcut-head">
-            <span>快捷入口</span>
+        <div v-if="enabledWorkspaceSteps.video" class="work-center-studio__stage-section">
+          <div class="work-center-studio__stage-heading">
+            <strong>视频</strong>
           </div>
-
-          <div class="generator-form__group work-center-studio__entry-grid">
-            <button class="secondary-action work-center-studio__shortcut-button" type="button" @click="handleOpenStep('title-generate')">标题生成</button>
-            <button class="secondary-action work-center-studio__shortcut-button" type="button" @click="handleOpenStep('description-generate')">描述生成</button>
-            <button class="secondary-action work-center-studio__shortcut-button" type="button" @click="handleOpenStep('series-generate')">套图生成</button>
-            <button class="secondary-action work-center-studio__shortcut-button" type="button" @click="handleOpenStep('video-generate')">视频生成</button>
+          <div class="generator-form__group">
+            <div class="generator-form__row">
+              <span class="generator-form__label">视频模板</span>
+              <select
+                :value="resolveProjectTemplateSelection().videoTemplateId"
+                @change="handlePromptTemplateApply('videoPrompt', $event.target.value)"
+              >
+                <option value="">默认</option>
+                <option v-for="item in videoPromptTemplates" :key="item.id" :value="item.id">
+                  {{ item.name || '未命名模板' }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">视频模型</span>
+              <select
+                :value="resolveDraftSelectValue('videoModel', videoModelOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ videoModel: $event.target.value })"
+              >
+                <option v-for="option in videoModelOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">视频时长</span>
+              <select
+                :value="resolveDraftSelectValue('duration', videoDurationOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ duration: $event.target.value })"
+              >
+                <option v-for="option in videoDurationOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">视频清晰度</span>
+              <select
+                :value="resolveDraftSelectValue('resolution', videoResolutionOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ resolution: $event.target.value })"
+              >
+                <option v-for="option in videoResolutionOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
+              <span class="generator-form__label">运动强度</span>
+              <select
+                :value="resolveDraftSelectValue('motionStrength', videoMotionOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ motionStrength: $event.target.value })"
+              >
+                <option v-for="option in videoMotionOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__card work-center-studio__prompt-card">
+              <textarea
+                :value="resolveDraftValue('videoPrompt', '')"
+                rows="6"
+                placeholder="视频提示词"
+                @input="updateProjectGenerationConfig({ videoPrompt: $event.target.value })"
+              ></textarea>
+            </div>
           </div>
         </div>
 
         <div class="work-center-studio__submit-bar">
-          <div class="work-center-studio__submit-copy">
-            <strong>一键执行当前项目</strong>
-          </div>
+          <div class="work-center-studio__submit-copy"></div>
           <button
             class="primary-action work-center-studio__submit-button"
             type="button"
@@ -932,7 +1242,7 @@ function resolveStageMenuKey(stage = '') {
           <header class="latest-task-progress__header">
             <div class="work-center-studio__panel-copy">
               <div class="latest-task-progress__meta work-center-studio__status-pills">
-                <span class="task-status">{{ activeProjectEntry?.latestRun ? resolveLatestRunStatus(activeProjectEntry.latestRun) : '未开始' }}</span>
+                <span class="task-status" :class="resolveTaskStatusClass(activeProjectEntry?.latestRun ? resolveLatestRunStatus(activeProjectEntry.latestRun) : '未开始')">{{ activeProjectEntry?.latestRun ? resolveLatestRunStatus(activeProjectEntry.latestRun) : '未开始' }}</span>
                 <span class="task-status">{{ currentProjectCompletion }}%</span>
               </div>
             </div>
@@ -959,6 +1269,9 @@ function resolveStageMenuKey(stage = '') {
               <div class="work-center-studio__flow-copy">
                 <strong>{{ step.index }}.{{ step.label }}</strong>
                 <span>{{ step.isDone ? '已完成' : step.isRunning ? '生成中' : step.status }}</span>
+              </div>
+              <div v-if="step.error" class="work-center-studio__flow-error">
+                {{ step.error }}
               </div>
             </div>
           </div>
@@ -1049,6 +1362,13 @@ function resolveStageMenuKey(stage = '') {
                 <span>{{ resolveProjectLanguage(inspectedProjectEntry.project) }}</span>
                 <span>{{ resolveTimeLabel(inspectedProjectEntry.project?.updatedAt || inspectedProjectEntry.project?.createdAt) }}</span>
               </div>
+              <div
+                v-if="resolveWorkspaceFailureSummary(inspectedProjectEntry.latestRun).length"
+                class="work-center-studio__inspect-warning"
+              >
+                <strong>失败步骤</strong>
+                <span>{{ resolveWorkspaceFailureSummary(inspectedProjectEntry.latestRun).join('；') }}</span>
+              </div>
               <div class="work-center-studio__inspect-grid">
                 <div class="work-center-studio__inspect-cell">
                   <span>标题</span>
@@ -1128,7 +1448,17 @@ function resolveStageMenuKey(stage = '') {
                     <strong class="work-center-studio__title-ellipsis work-center-studio__title-ellipsis--double">{{ item.name }}</strong>
                     <span>{{ item.currentStage }}</span>
                   </div>
-                  <span class="task-status">{{ item.status }}</span>
+                  <div class="work-center-studio__queue-status-stack">
+                    <span class="task-status" :class="resolveTaskStatusClass(item.status)">{{ item.status }}</span>
+                    <span
+                      v-if="['失败', '部分完成'].includes(item.status) && item.error"
+                      class="work-center-studio__queue-error-badge"
+                      :title="item.error"
+                      aria-label="报错信息"
+                    >
+                      !
+                    </span>
+                  </div>
                 </div>
 
                 <div class="work-center-studio__queue-card-meta">
@@ -1140,13 +1470,15 @@ function resolveStageMenuKey(stage = '') {
                   <span class="task-progress__bar" :style="{ width: `${item.progress}%` }"></span>
                 </div>
 
-                <div v-if="item.status === '失败' && item.error" class="work-center-studio__queue-card-error">
-                  {{ item.error }}
-                </div>
-
                 <div class="work-center-studio__queue-card-actions">
-                  <button class="secondary-action work-center-studio__mini-button" type="button" @click="handleOpenProjectStorage(item.project)">查看结果</button>
-                  <button class="secondary-action work-center-studio__mini-button" type="button" @click="handleFocusQueueProject(item.project)">定位项目</button>
+                  <button
+                    v-if="['排队中', '生成中'].includes(item.status)"
+                    class="secondary-action work-center-studio__mini-button work-center-studio__mini-button--wide"
+                    type="button"
+                    @click="handleCancelTask(item)"
+                  >
+                    停止任务
+                  </button>
                 </div>
               </article>
 
@@ -1267,6 +1599,34 @@ function resolveStageMenuKey(stage = '') {
 .work-center-studio__submit-copy {
   display: flex;
   align-items: center;
+}
+
+.work-center-studio__stage-section {
+  display: grid;
+  gap: 10px;
+}
+
+.work-center-studio__prompt-card {
+  grid-column: 1 / -1;
+}
+
+.work-center-studio__stage-heading {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.work-center-studio__stage-heading strong {
+  font-size: 13px;
+  line-height: 1.2;
+  color: rgba(243, 247, 255, 0.92);
+}
+
+.work-center-studio__param-divider {
+  width: 100%;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(100, 186, 255, 0.24), rgba(255, 255, 255, 0.04));
 }
 
 .work-center-studio__submit-button {
@@ -1532,14 +1892,29 @@ function resolveStageMenuKey(stage = '') {
   background: linear-gradient(90deg, rgba(255, 120, 117, 0.56), rgba(255, 120, 117, 0.16));
 }
 
-.work-center-studio__queue-card-error {
-  font-size: 12px;
-  line-height: 1.5;
+.work-center-studio__queue-status-stack {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.work-center-studio__queue-error-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 120, 117, 0.38);
+  background: rgba(255, 120, 117, 0.14);
   color: #ffb3a8;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 120, 117, 0.08);
-  border: 1px solid rgba(255, 120, 117, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
 }
 
 .work-center-studio__flow-step--pending .work-center-studio__flow-copy strong {
@@ -1596,6 +1971,18 @@ function resolveStageMenuKey(stage = '') {
   color: rgba(226, 232, 244, 0.88);
   line-height: 1.6;
   word-break: break-word;
+}
+
+.work-center-studio__inspect-warning {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 120, 117, 0.14);
+  background: rgba(255, 120, 117, 0.08);
+  color: #ffd2ca;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .work-center-studio__inline-actions,
@@ -1843,8 +2230,20 @@ function resolveStageMenuKey(stage = '') {
 }
 
 .work-center-studio__queue-card-actions {
-  display: flex;
+  display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.work-center-studio__queue-card-actions .work-center-studio__mini-button {
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.work-center-studio__queue-card-actions .work-center-studio__mini-button--wide {
+  grid-column: auto;
 }
 
 .work-center-studio__storage-meta span {
@@ -1968,6 +2367,7 @@ function resolveStageMenuKey(stage = '') {
   .work-center-studio__export-stack {
     grid-template-rows: auto auto;
   }
+
 }
 </style>
 

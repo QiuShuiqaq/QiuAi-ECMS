@@ -18,7 +18,9 @@ function createWorkspaceStateMaintenanceService({
   getNowMs,
   exportScanCacheTtlMs = 3000,
   queuedTaskExecutions,
-  activeTaskControllers
+  activeTaskControllers,
+  normalizeProjectRuns,
+  upsertProjectRun
 } = {}) {
   let cachedExportItemsByMenu = null
   let cachedExportItemsAt = 0
@@ -63,6 +65,87 @@ function createWorkspaceStateMaintenanceService({
     }
 
     return reconciledTasks
+  }
+
+  async function reconcileOrphanedProjectRuns(reconciledTasks = []) {
+    if (!Array.isArray(reconciledTasks) || !reconciledTasks.length) {
+      return []
+    }
+
+    const state = getStoredState()
+    const projectRuns = typeof normalizeProjectRuns === 'function'
+      ? normalizeProjectRuns(state.projectRuns)
+      : Array.isArray(state.projectRuns)
+        ? state.projectRuns
+        : []
+    const taskMap = new Map(
+      reconciledTasks
+        .map((task) => [String(task?.id || '').trim(), task])
+        .filter(([taskId]) => taskId)
+    )
+    let nextProjectRuns = projectRuns
+    const updatedRunIds = []
+
+    for (const projectRun of projectRuns) {
+      const taskId = String(projectRun?.taskId || '').trim()
+      if (!taskMap.has(taskId)) {
+        continue
+      }
+
+      const reconciledTask = taskMap.get(taskId)
+      const completedAt = reconciledTask?.updatedAt || reconciledTask?.completedAt || reconciledTask?.createdAt || ''
+      const nextStepStates = Object.fromEntries(
+        Object.entries(projectRun?.stepStates && typeof projectRun.stepStates === 'object' ? projectRun.stepStates : {})
+          .map(([stepKey, stepState]) => {
+            const currentStatus = String(stepState?.status || 'pending').trim().toLowerCase()
+            if (!['pending', 'queued', 'running', 'processing', 'submitting'].includes(currentStatus)) {
+              return [stepKey, stepState]
+            }
+
+            return [
+              stepKey,
+              {
+                ...stepState,
+                status: 'failed',
+                error: '任务已中断，请重新提交',
+                completedAt
+              }
+            ]
+          })
+      )
+
+      const nextProjectRun = {
+        ...projectRun,
+        status: 'failed',
+        progress: 100,
+        error: '任务已中断，请重新提交',
+        stepStates: nextStepStates,
+        completedAt
+      }
+
+      nextProjectRuns = typeof upsertProjectRun === 'function'
+        ? upsertProjectRun(nextProjectRuns, nextProjectRun)
+        : nextProjectRuns.map((item) => (item.id === projectRun.id ? nextProjectRun : item))
+      updatedRunIds.push(String(projectRun.id || '').trim())
+    }
+
+    if (!updatedRunIds.length) {
+      return []
+    }
+
+    saveState({
+      ...state,
+      projectRuns: nextProjectRuns
+    })
+
+    await safeRuntimeLog(runtimeLogger, {
+      level: 'warn',
+      scope: 'studio-workspace',
+      message: 'Reconciled orphaned project runs after runtime restart',
+      projectRunIds: updatedRunIds
+    })
+
+    return updatedRunIds
   }
 
   function getResolvedExportItemsByMenu(state = getStoredState()) {
@@ -125,6 +208,7 @@ function createWorkspaceStateMaintenanceService({
   return {
     invalidateExportItemsCache,
     reconcileOrphanedActiveTasks,
+    reconcileOrphanedProjectRuns,
     getResolvedExportItemsByMenu,
     clearRuntimeState
   }

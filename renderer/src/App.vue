@@ -58,13 +58,13 @@ import {
   workspaceClient
 } from './services/platformClient'
 
-const legacyFallbackMenuItems = [
+/* legacy fallback menu removed
   { key: 'workbench', label: '工作台', section: '主线' },
   { key: 'purchase-center', label: '购买中心', section: '主线' },
   { key: 'prompt-library', label: '提示词库', section: '主线' },
   { key: 'account-device', label: '账户与用量', section: '支持' },
   { key: 'settings-center', label: '设置与支持', section: '支持' }
-]
+] */
 
 const fallbackMenuItems = [
   { key: 'selection-center', label: 'Selection Center', section: '工作区' },
@@ -134,6 +134,13 @@ const studioAgentReadiness = ref({
 const workspaceDashboard = ref({
   creditOverview: { ledgers: [] },
   creditMessages: { ledgers: [] }
+})
+const settingsSummary = ref({
+  dashboardCreditState: {
+    text: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+    image: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' },
+    video: { balanceCny: 0, subscriptionBalanceCny: 0, permanentBalanceCny: 0, lastSyncedAt: '', syncStatus: 'idle' }
+  }
 })
 const studioRemoteServiceCapacity = ref(null)
 const promptTemplates = ref([])
@@ -282,9 +289,64 @@ const remoteServiceCapacity = computed(() => {
   return activationState.value.remoteServiceCapacity || studioRemoteServiceCapacity.value || null
 })
 
+const effectiveWalletSummary = computed(() => {
+  const remoteWalletSummary = activationState.value?.walletSummary
+  if (remoteWalletSummary && typeof remoteWalletSummary === 'object') {
+    const hasSplitBalances = remoteWalletSummary.splitBalances && typeof remoteWalletSummary.splitBalances === 'object'
+    const hasLegacyBalances = remoteWalletSummary.subscriptionBalances || remoteWalletSummary.permanentBalances
+    if (hasSplitBalances || hasLegacyBalances) {
+      return remoteWalletSummary
+    }
+  }
+
+  const dashboardCreditState = settingsSummary.value?.dashboardCreditState || {}
+  const buildResourceSummary = (resourceKey) => {
+    const resourceState = dashboardCreditState?.[resourceKey] || {}
+    const subscriptionBalanceCny = Math.max(0, Number(resourceState.subscriptionBalanceCny) || 0)
+    const permanentBalanceCny = Math.max(0, Number(resourceState.permanentBalanceCny) || 0)
+    const totalBalanceCny = Math.max(0, Number(resourceState.balanceCny) || (subscriptionBalanceCny + permanentBalanceCny))
+
+    return {
+      totalBalanceCny,
+      subscriptionBalanceCny,
+      permanentBalanceCny
+    }
+  }
+
+  const text = buildResourceSummary('text')
+  const image = buildResourceSummary('image')
+  const video = buildResourceSummary('video')
+
+  return {
+    textBalanceCny: text.totalBalanceCny,
+    imageBalanceCny: image.totalBalanceCny,
+    videoBalanceCny: video.totalBalanceCny,
+    subscriptionBalances: {
+      text: text.subscriptionBalanceCny,
+      image: image.subscriptionBalanceCny,
+      video: video.subscriptionBalanceCny
+    },
+    permanentBalances: {
+      text: text.permanentBalanceCny,
+      image: image.permanentBalanceCny,
+      video: video.permanentBalanceCny
+    },
+    splitBalances: {
+      text,
+      image,
+      video
+    },
+    updatedAt: [
+      dashboardCreditState?.text?.lastSyncedAt || '',
+      dashboardCreditState?.image?.lastSyncedAt || '',
+      dashboardCreditState?.video?.lastSyncedAt || ''
+    ].filter(Boolean).sort().at(-1) || ''
+  }
+})
+
 function getWalletBalanceSummary() {
-  const walletSummary = activationState.value?.walletSummary || {}
-  const resolveBalance = (resourceKey, legacyField) => {
+  const walletSummary = effectiveWalletSummary.value
+  const resolveBalance = (resourceKey) => {
     const splitBalance = walletSummary?.splitBalances?.[resourceKey]
     if (splitBalance && typeof splitBalance === 'object') {
       return Math.max(0, Number(splitBalance.totalBalanceCny) || 0)
@@ -297,13 +359,13 @@ function getWalletBalanceSummary() {
       return combined
     }
 
-    return Math.max(0, Number(walletSummary?.[legacyField]) || 0)
+    return 0
   }
 
   return {
-    text: resolveBalance('text', 'textBalanceCny'),
-    image: resolveBalance('image', 'imageBalanceCny'),
-    video: resolveBalance('video', 'videoBalanceCny')
+    text: resolveBalance('text'),
+    image: resolveBalance('image'),
+    video: resolveBalance('video')
   }
 }
 
@@ -417,6 +479,7 @@ function applyStudioRuntimeSnapshot(snapshot = {}) {
   studioTasks.value = snapshot.tasks || []
   studioAgentReadiness.value = snapshot.agentReadiness || studioAgentReadiness.value
   studioRemoteServiceCapacity.value = snapshot.remoteServiceCapacity || studioRemoteServiceCapacity.value
+  settingsSummary.value = snapshot.settingsSummary || settingsSummary.value
 }
 
 function isStudioTaskActive(task = {}) {
@@ -704,6 +767,7 @@ async function loadStudioSnapshot() {
   const snapshot = await workspaceClient.getSnapshot()
   formDrafts.value = snapshot.formDrafts || {}
   workspaceDashboard.value = snapshot.workspaceDashboard || workspaceDashboard.value
+  settingsSummary.value = snapshot.settingsSummary || settingsSummary.value
   applyStudioRuntimeSnapshot(snapshot)
 }
 
@@ -2152,6 +2216,34 @@ async function handleRunProject(project) {
   }
 }
 
+async function handleCancelTask(payload = {}) {
+  const projectId = String(payload?.projectId || payload?.id || '').trim()
+  const taskId = String(payload?.taskId || '').trim()
+
+  if (!projectId && !taskId) {
+    return
+  }
+
+  try {
+    await workspaceClient.cancelTask({
+      projectId,
+      taskId
+    })
+    await loadStudioSnapshot()
+    showActionFeedback({
+      type: 'success',
+      title: '已停止',
+      message: '任务已结束'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '停止失败',
+      message: buildErrorMessage(error, '任务停止失败')
+    })
+  }
+}
+
 async function handlePickGeneratorImage() {
   if (!activeGeneratorMenuKey.value) {
     return
@@ -2529,11 +2621,6 @@ async function handleRenameProjectTemplate(payload) {
       message: buildErrorMessage(error, '更新模板失败')
     })
   }
-}
-
-function openPurchaseCenter() {
-  activeGeneratorMenu.value = ''
-  activeMenu.value = 'purchase-center'
 }
 
 function openLicensePurchase() {
@@ -2925,6 +3012,7 @@ onUnmounted(() => {
           :selection-state="selectionItemsState"
           @create-project="handleCreateProject"
           @run-project="handleRunProject"
+          @cancel-task="handleCancelTask"
           @update-draft="handleTextGeneratorDraftUpdate"
           @save-project-template="handleSaveProjectTemplate"
           @replace-project-image="handleReplaceProjectImage"
@@ -2965,8 +3053,10 @@ onUnmounted(() => {
         <DataCenterPage
           v-else-if="activeMenu === 'data-center'"
           :activation-state="activationState"
+          :wallet-summary="effectiveWalletSummary"
           :is-refreshing-balances="isDataCenterRefreshingBalances"
           :product-projects="productProjects"
+          :project-runs="projectRuns"
           @refresh-balances="handleRefreshDataCenterBalances"
         />
 
@@ -3015,7 +3105,7 @@ onUnmounted(() => {
         <PurchaseCenterPage
           v-else-if="activeMenu === 'purchase-center'"
           :activation-state="activationState"
-          :wallet-summary="activationState.walletSummary || null"
+          :wallet-summary="effectiveWalletSummary"
           :software-packages="softwarePackages"
           :compute-packages="computePackages"
           :current-software-order="currentSoftwareOrder"

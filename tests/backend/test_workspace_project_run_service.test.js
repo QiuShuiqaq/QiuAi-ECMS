@@ -28,6 +28,8 @@ describe('workspaceProjectRunService', () => {
         taskNumber: value.taskNumber || '',
         triggerMenuKey: value.triggerMenuKey || '',
         status: value.status || 'pending',
+        progress: Number(value.progress || 0),
+        error: value.error || '',
         stepStates: value.stepStates || {},
         outputs: value.outputs || {
           title: '',
@@ -40,6 +42,7 @@ describe('workspaceProjectRunService', () => {
           video: null
         },
         storage: value.storage || { runDirectory: '', titleFile: '', descriptionFile: '', imageDirectory: '', videoDirectory: '' },
+        usage: value.usage || { totalAmountCny: 0, currency: 'CNY', billedAt: '', lines: [] },
         createdAt: value.createdAt || '',
         completedAt: value.completedAt || ''
       }),
@@ -154,9 +157,9 @@ describe('workspaceProjectRunService', () => {
       menuKey: 'workspace',
       resultPayload: {
         textResults: [
-          { kind: 'title', title: '标题 1', content: '标题候选 A' },
-          { kind: 'title', title: '标题 2', content: '标题候选 B' },
-          { kind: 'description', title: '描述 1', content: '描述候选 A' }
+          { kind: 'title', title: '鏍囬 1', content: '鏍囬鍊欓€?A' },
+          { kind: 'title', title: '鏍囬 2', content: '鏍囬鍊欓€?B' },
+          { kind: 'description', title: '鎻忚堪 1', content: '鎻忚堪鍊欓€?A' }
         ],
         groupedResults: []
       },
@@ -169,12 +172,124 @@ describe('workspaceProjectRunService', () => {
       completedAt: '2026-06-21T10:06:00.000Z'
     })
 
-    expect(completed.outputs.title).toBe('标题候选 A')
-    expect(completed.outputs.description).toBe('描述候选 A')
-    expect(completed.outputs.titleCandidates).toEqual(['标题候选 A', '标题候选 B'])
-    expect(completed.outputs.descriptionCandidates).toEqual(['描述候选 A'])
-    expect(completed.outputs.selectedTitle).toBe('标题候选 A')
-    expect(completed.outputs.selectedDescription).toBe('描述候选 A')
+    expect(completed.outputs.title).toBe('鏍囬鍊欓€?A')
+    expect(completed.outputs.description).toBe('鎻忚堪鍊欓€?A')
+    expect(completed.outputs.titleCandidates).toEqual(['鏍囬鍊欓€?A', '鏍囬鍊欓€?B'])
+    expect(completed.outputs.descriptionCandidates).toEqual(['鎻忚堪鍊欓€?A'])
+    expect(completed.outputs.selectedTitle).toBe('鏍囬鍊欓€?A')
+    expect(completed.outputs.selectedDescription).toBe('鎻忚堪鍊欓€?A')
+  })
+
+  it('marks workspace runs partial when some steps succeed and others fail', async () => {
+    const service = await createService()
+    const completed = service.buildProjectRunUpdateFromResult({
+      projectRun: service.buildStartedProjectRun({
+        projectRun: service.buildProjectRunRecord({
+          runId: 'run-workspace-partial',
+          projectId: 'project-partial',
+          menuKey: 'workspace',
+          draft: {},
+          createdAt: '2026-06-21T10:00:00.000Z'
+        }),
+        menuKey: 'workspace',
+        startedAt: '2026-06-21T10:05:00.000Z'
+      }),
+      menuKey: 'workspace',
+      resultPayload: {
+        textResults: [
+          { kind: 'title', title: 'title 1', content: 'title result A' }
+        ],
+        groupedResults: [],
+        workspaceStepStates: {
+          title: { status: 'success', error: '', startedAt: '2026-06-21T10:05:00.000Z', completedAt: '2026-06-21T10:05:10.000Z' },
+          description: { status: 'failed', error: 'description failed', startedAt: '2026-06-21T10:05:11.000Z', completedAt: '2026-06-21T10:05:20.000Z' },
+          image: { status: 'success', error: '', startedAt: '', completedAt: '2026-06-21T10:00:00.000Z' },
+          video: { status: 'success', error: '', startedAt: '', completedAt: '2026-06-21T10:00:00.000Z' }
+        }
+      },
+      exportItems: [
+        {
+          directoryPath: 'F:/output/workspace/task-partial/group-1'
+        }
+      ],
+      outputDirectory: 'F:/output/workspace/task-partial',
+      completedAt: '2026-06-21T10:06:00.000Z'
+    })
+
+    expect(completed.status).toBe('partial')
+    expect(completed.stepStates.title.status).toBe('success')
+    expect(completed.stepStates.description.status).toBe('failed')
+    expect(completed.outputs.title).toBe('title result A')
+  })
+
+  it('stores usage summary from workspace result payload into the project run record', async () => {
+    const service = await createService()
+    const completed = service.buildProjectRunUpdateFromResult({
+      projectRun: service.buildStartedProjectRun({
+        projectRun: service.buildProjectRunRecord({
+          runId: 'run-workspace-usage',
+          projectId: 'project-usage',
+          menuKey: 'workspace',
+          draft: {},
+          createdAt: '2026-06-21T10:00:00.000Z'
+        }),
+        menuKey: 'workspace',
+        startedAt: '2026-06-21T10:05:00.000Z'
+      }),
+      menuKey: 'workspace',
+      resultPayload: {
+        textResults: [
+          { kind: 'title', title: 'title 1', content: 'title result A' }
+        ],
+        groupedResults: [],
+        usageSummary: {
+          totalAmountCny: 0.23,
+          currency: 'CNY',
+          billedAt: '2026-06-21T10:06:00.000Z',
+          lines: [
+            {
+              kind: 'text',
+              label: '标题',
+              model: 'title-generator',
+              units: 1,
+              unitPriceCny: 0.01,
+              amountCny: 0.01
+            },
+            {
+              kind: 'image',
+              label: '套图',
+              model: 'gpt-image-2',
+              units: 1,
+              unitPriceCny: 0.12,
+              amountCny: 0.12
+            },
+            {
+              kind: 'video',
+              label: '视频',
+              model: 'MiniMax-Hailuo-2.3-Fast',
+              units: 1,
+              unitPriceCny: 0.1,
+              amountCny: 0.1
+            }
+          ]
+        }
+      },
+      exportItems: [],
+      outputDirectory: 'F:/output/workspace/task-usage',
+      completedAt: '2026-06-21T10:06:00.000Z'
+    })
+
+    expect(completed.usage).toMatchObject({
+      totalAmountCny: 0.23,
+      currency: 'CNY',
+      billedAt: '2026-06-21T10:06:00.000Z'
+    })
+    expect(completed.usage.lines).toHaveLength(3)
+    expect(completed.usage.lines[1]).toMatchObject({
+      kind: 'image',
+      model: 'gpt-image-2',
+      amountCny: 0.12
+    })
   })
 
   it('marks unresolved steps failed for workspace runs', async () => {

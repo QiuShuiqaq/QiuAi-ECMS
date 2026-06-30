@@ -41,9 +41,47 @@ describe('studioWorkspaceService video flow', () => {
     const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
 
     const settingsService = createSettingsStoreService({ store })
+    await settingsService.saveSettings({
+      authPlatform: {
+        enabled: true,
+        sessionToken: 'video-test-session'
+      }
+    })
     const service = createStudioWorkspaceService({
       store,
       settingsService,
+      remoteLicensePlatformClient: {
+        getWalletSummary: async () => ({
+          subscriptionBalances: {
+            text: 10,
+            image: 10,
+            video: 10
+          },
+          permanentBalances: {
+            text: 10,
+            image: 10,
+            video: 10
+          },
+          splitBalances: {
+            text: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            },
+            image: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            },
+            video: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            }
+          },
+          updatedAt: '2026-06-13T10:00:00.000Z'
+        })
+      },
       outputRootDirectory,
       ensureDirectory: async () => undefined,
       persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
@@ -132,9 +170,47 @@ describe('studioWorkspaceService video flow', () => {
 
     const observedPrompts = []
     const settingsService = createSettingsStoreService({ store })
+    await settingsService.saveSettings({
+      authPlatform: {
+        enabled: true,
+        sessionToken: 'video-test-session'
+      }
+    })
     const service = createStudioWorkspaceService({
       store,
       settingsService,
+      remoteLicensePlatformClient: {
+        getWalletSummary: async () => ({
+          subscriptionBalances: {
+            text: 10,
+            image: 10,
+            video: 10
+          },
+          permanentBalances: {
+            text: 10,
+            image: 10,
+            video: 10
+          },
+          splitBalances: {
+            text: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            },
+            image: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            },
+            video: {
+              totalBalanceCny: 20,
+              subscriptionBalanceCny: 10,
+              permanentBalanceCny: 10
+            }
+          },
+          updatedAt: '2026-06-13T10:00:00.000Z'
+        })
+      },
       outputRootDirectory,
       ensureDirectory: async () => undefined,
       persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {

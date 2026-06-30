@@ -23,16 +23,9 @@ describe('workspaceTaskLifecycleService', () => {
       getStoredTasks: () => [],
       settingsService: {
         getSettings: () => ({
-          creditState: {
-            remainingCredits: 1000,
-            frozenCredits: 0,
-            usedCredits: 0,
-            activityHistory: [],
-            taskLedger: {}
-          },
           dashboardCreditState: {
             text: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
-            image: { balanceCny: 10, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+            image: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
             video: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' }
           }
         }),
@@ -102,7 +95,7 @@ describe('workspaceTaskLifecycleService', () => {
         synced: false,
         dashboardCreditState: {
           text: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
-          image: { balanceCny: 10, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' },
           video: { balanceCny: 10, lastSyncedAt: '', syncStatus: 'success' }
         }
       })),
@@ -203,7 +196,7 @@ describe('workspaceTaskLifecycleService', () => {
         synced: true,
         dashboardCreditState: {
           text: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'success' },
-          image: { balanceCny: 9, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
           video: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' }
         }
       }))
@@ -235,7 +228,7 @@ describe('workspaceTaskLifecycleService', () => {
         synced: true,
         dashboardCreditState: {
           text: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
-          image: { balanceCny: 9, totalCredits: 0, remainingCredits: 0, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
           video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'success' }
         }
       }))
@@ -252,5 +245,38 @@ describe('workspaceTaskLifecycleService', () => {
 
     expect(persistTaskAndState).not.toHaveBeenCalled()
     expect(enqueueTaskExecution).not.toHaveBeenCalled()
+  })
+
+  it('does not require video balance for workspace video step when no source image is provided', async () => {
+    const { service, persistTaskAndState, enqueueTaskExecution } = await createService({
+      syncCreditStateWithRealtimeBalance: vi.fn(async () => ({
+        synced: true,
+        dashboardCreditState: {
+          text: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
+          image: { balanceCny: 9, lastSyncedAt: '', syncStatus: 'success' },
+          video: { balanceCny: 0, lastSyncedAt: '', syncStatus: 'success' }
+        }
+      }))
+    })
+
+    const task = await service.createTask({
+      menuKey: 'workspace',
+      draft: {
+        productName: 'Lamp',
+        enabledSteps: {
+          title: true,
+          description: false,
+          image: false,
+          video: true
+        },
+        sourceImage: null
+      }
+    })
+
+    expect(task).toMatchObject({
+      id: 'id-1'
+    })
+    expect(persistTaskAndState).toHaveBeenCalledTimes(1)
+    expect(enqueueTaskExecution).toHaveBeenCalledTimes(1)
   })
 })

@@ -83,6 +83,8 @@ function createWorkspaceProjectRunService({
       taskNumber,
       triggerMenuKey: menuKey,
       status: 'pending',
+      progress: 0,
+      error: '',
       stepStates: buildProjectRunStepStatesForTask({
         menuKey,
         draft,
@@ -129,17 +131,23 @@ function createWorkspaceProjectRunService({
       ? stepStates
       : createDefaultProjectRunStepStates()
     const statuses = Object.values(normalizedStepStates).map((stepState) => stepState?.status || 'pending')
+    const hasSuccess = statuses.some((status) => status === 'success')
+    const hasFailed = statuses.some((status) => status === 'failed')
 
-    if (statuses.some((status) => status === 'failed')) {
+    if (statuses.some((status) => status === 'running')) {
+      return 'running'
+    }
+
+    if (hasFailed && hasSuccess) {
+      return 'partial'
+    }
+
+    if (hasFailed) {
       return 'failed'
     }
 
     if (statuses.every((status) => status === 'success')) {
       return 'success'
-    }
-
-    if (statuses.some((status) => status === 'running')) {
-      return 'running'
     }
 
     return 'pending'
@@ -197,13 +205,10 @@ function createWorkspaceProjectRunService({
     }
 
     if (menuKey === 'workspace') {
-      for (const stepKey of Object.keys(nextStepStates)) {
-        if (nextStepStates[stepKey]?.status !== 'pending') {
-          continue
-        }
-
-        nextStepStates[stepKey] = {
-          ...nextStepStates[stepKey],
+      const firstPendingStepKey = Object.keys(nextStepStates).find((stepKey) => nextStepStates[stepKey]?.status === 'pending')
+      if (firstPendingStepKey) {
+        nextStepStates[firstPendingStepKey] = {
+          ...nextStepStates[firstPendingStepKey],
           status: 'running',
           startedAt
         }
@@ -222,6 +227,8 @@ function createWorkspaceProjectRunService({
     return normalizeProjectRun({
       ...normalizedProjectRun,
       status: 'running',
+      progress: Math.max(1, Number(normalizedProjectRun.progress) || 0),
+      error: '',
       stepStates: nextStepStates
     })
   }
@@ -271,6 +278,12 @@ function createWorkspaceProjectRunService({
       ...nextProjectRun.storage,
       runDirectory
     }
+    const usageSummary = resultPayload?.usageSummary && typeof resultPayload.usageSummary === 'object'
+      ? resultPayload.usageSummary
+      : null
+    const workspaceStepStates = resultPayload?.workspaceStepStates && typeof resultPayload.workspaceStepStates === 'object'
+      ? resultPayload.workspaceStepStates
+      : null
 
     if (menuKey === 'workspace') {
       const titleCandidates = (resultPayload.textResults || [])
@@ -279,14 +292,17 @@ function createWorkspaceProjectRunService({
         .filter(Boolean)
       const titleValue = titleCandidates[0] || ''
       const titleStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
-      nextOutputs.title = String(titleValue || '').trim()
-      nextOutputs.titleCandidates = titleCandidates
-      nextOutputs.selectedTitle = String(titleValue || '').trim()
-      nextStorage.titleFile = titleStorage.titleFile || nextStorage.titleFile
+      if (titleCandidates.length) {
+        nextOutputs.title = String(titleValue || '').trim()
+        nextOutputs.titleCandidates = titleCandidates
+        nextOutputs.selectedTitle = String(titleValue || '').trim()
+        nextStorage.titleFile = titleStorage.titleFile || nextStorage.titleFile
+      }
       stepStates.title = {
         ...stepStates.title,
-        status: 'success',
-        completedAt
+        ...(workspaceStepStates?.title || {}),
+        status: workspaceStepStates?.title?.status || 'success',
+        completedAt: workspaceStepStates?.title?.completedAt || completedAt
       }
     }
 
@@ -297,14 +313,17 @@ function createWorkspaceProjectRunService({
         .filter(Boolean)
       const descriptionValue = descriptionCandidates[0] || ''
       const textStorage = resolveTextStorageFromResultPayload(resultPayload, exportItems)
-      nextOutputs.description = String(descriptionValue || '').trim()
-      nextOutputs.descriptionCandidates = descriptionCandidates
-      nextOutputs.selectedDescription = String(descriptionValue || '').trim()
-      nextStorage.descriptionFile = textStorage.descriptionFile || nextStorage.descriptionFile
+      if (descriptionCandidates.length) {
+        nextOutputs.description = String(descriptionValue || '').trim()
+        nextOutputs.descriptionCandidates = descriptionCandidates
+        nextOutputs.selectedDescription = String(descriptionValue || '').trim()
+        nextStorage.descriptionFile = textStorage.descriptionFile || nextStorage.descriptionFile
+      }
       stepStates.description = {
         ...stepStates.description,
-        status: 'success',
-        completedAt
+        ...(workspaceStepStates?.description || {}),
+        status: workspaceStepStates?.description?.status || 'success',
+        completedAt: workspaceStepStates?.description?.completedAt || completedAt
       }
     }
 
@@ -318,8 +337,9 @@ function createWorkspaceProjectRunService({
       }
       stepStates.image = {
         ...stepStates.image,
-        status: 'success',
-        completedAt
+        ...(workspaceStepStates?.image || {}),
+        status: workspaceStepStates?.image?.status || 'success',
+        completedAt: workspaceStepStates?.image?.completedAt || completedAt
       }
     }
 
@@ -339,16 +359,33 @@ function createWorkspaceProjectRunService({
       }
       stepStates.video = {
         ...stepStates.video,
-        status: 'success',
-        completedAt
+        ...(workspaceStepStates?.video || {}),
+        status: workspaceStepStates?.video?.status || 'success',
+        completedAt: workspaceStepStates?.video?.completedAt || completedAt
       }
     }
 
     nextProjectRun = normalizeProjectRun({
       ...nextProjectRun,
+      progress: 100,
+      error: Array.from(
+        new Set(
+          Object.values(stepStates)
+            .map((stepState) => String(stepState?.error || '').trim())
+            .filter(Boolean)
+        )
+      ).join('；'),
       stepStates,
       outputs: nextOutputs,
       storage: nextStorage,
+      usage: usageSummary
+        ? {
+            totalAmountCny: Math.max(0, Number(usageSummary.totalAmountCny) || 0),
+            currency: String(usageSummary.currency || 'CNY').trim() || 'CNY',
+            billedAt: String(usageSummary.billedAt || '').trim(),
+            lines: Array.isArray(usageSummary.lines) ? usageSummary.lines : []
+          }
+        : nextProjectRun.usage,
       completedAt
     })
 
@@ -398,6 +435,8 @@ function createWorkspaceProjectRunService({
     return normalizeProjectRun({
       ...normalizedProjectRun,
       status: 'failed',
+      progress: 100,
+      error: String(errorMessage || '').trim(),
       stepStates: nextStepStates,
       completedAt: failedAt
     })

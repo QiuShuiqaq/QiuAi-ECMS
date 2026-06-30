@@ -178,6 +178,76 @@ describe('authorization service', () => {
     }))
   })
 
+  it('reactivates automatically when the status endpoint returns not_logged_in for the same device', async () => {
+    const remoteClient = {
+      getAuthorizationStatus: vi.fn().mockResolvedValue({
+        status: 'not_logged_in',
+        mode: 'server-license',
+        authType: 'session-token',
+        canUseApp: false,
+        customerName: '',
+        userId: '',
+        licenseId: '',
+        inviteCode: '',
+        deviceCode: 'QAI-REMOTE-DEVICE',
+        activatedAt: '',
+        expiresAt: '',
+        sessionToken: '',
+        nextAction: 'activate-license'
+      }),
+      activateLicense: vi.fn().mockResolvedValue({
+        status: 'activated',
+        mode: 'server-license',
+        authType: 'session-token',
+        canUseApp: true,
+        customerName: 'Remote Alice',
+        userId: 'user-1',
+        licenseId: 'license-1',
+        inviteCode: 'QAI123456',
+        deviceCode: 'QAI-REMOTE-DEVICE',
+        activatedAt: '2026-06-15T10:00:00.000Z',
+        expiresAt: '2026-07-15T10:00:00.000Z',
+        sessionToken: 'session-2',
+        nextAction: 'enter-app'
+      }),
+      getServiceCapacityProfile: vi.fn().mockResolvedValue({
+        effectiveImageConcurrency: 2
+      })
+    }
+
+    const saveSettings = vi.fn().mockResolvedValue(undefined)
+    const service = createAuthorizationService({
+      remoteLicensePlatformClient: remoteClient,
+      settingsService: {
+        saveSettings
+      },
+      getRemoteConfig: () => ({
+        enabled: true,
+        baseUrl: 'https://api.qiuaihub.com',
+        sessionToken: 'session-stale',
+        customerName: 'Remote Alice',
+        contact: '13800138000',
+        inviteCode: 'QAI123456'
+      }),
+      getDeviceCode: vi.fn().mockResolvedValue('QAI-REMOTE-DEVICE')
+    })
+
+    const result = await service.getActivationStatus()
+
+    expect(remoteClient.activateLicense).toHaveBeenCalledWith({
+      customerName: 'Remote Alice',
+      contact: '13800138000',
+      inviteCode: 'QAI123456',
+      deviceName: 'QiuAi Desktop',
+      deviceFingerprint: 'QAI-REMOTE-DEVICE'
+    })
+    expect(result).toMatchObject({
+      status: 'activated',
+      sessionToken: 'session-2',
+      customerName: 'Remote Alice'
+    })
+  })
+
   it('returns a local activated state when dev bypass is enabled', async () => {
     const previousEnv = {
       DEV_BYPASS_LICENSE: process.env.DEV_BYPASS_LICENSE,
@@ -272,7 +342,7 @@ describe('authorization service', () => {
     }
   })
 
-  it('clears the persisted local session when the remote status is no longer valid', async () => {
+  it('clears the persisted local session when the remote status is no longer valid and auto-reactivation is unavailable', async () => {
     const remoteClient = {
       getAuthorizationStatus: vi.fn().mockResolvedValue({
         status: 'not_logged_in',
@@ -296,9 +366,7 @@ describe('authorization service', () => {
       getRemoteConfig: () => ({
         enabled: true,
         baseUrl: 'https://api.qiuaihub.com',
-        sessionToken: 'session-stale',
-        customerName: 'Remote Alice',
-        contact: '13800138000'
+        sessionToken: 'session-stale'
       }),
       getDeviceCode: vi.fn().mockResolvedValue('QAI-REMOTE-DEVICE')
     })

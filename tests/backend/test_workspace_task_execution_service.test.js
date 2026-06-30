@@ -82,7 +82,7 @@ describe('workspaceTaskExecutionService', () => {
         buildFailedProjectRun: ({ projectRun, errorMessage }) => ({ ...projectRun, status: 'failed', error: errorMessage })
       },
       settingsService: {
-        getSettings: () => ({ creditState: { remainingCredits: 300 } }),
+        getSettings: () => ({ dashboardCreditState: {} }),
         saveSettings: async () => undefined
       },
       safeRuntimeLog: async () => undefined,

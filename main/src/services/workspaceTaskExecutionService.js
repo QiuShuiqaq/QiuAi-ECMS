@@ -23,15 +23,33 @@ function createWorkspaceTaskExecutionService({
   upsertProjectRun,
   workspaceProjectRunService,
   settingsService,
+  workspaceCreditService,
   safeRuntimeLog,
   runtimeLogger
 } = {}) {
+  function hasLocalSourcePath(sourceImage = null) {
+    if (!sourceImage || typeof sourceImage !== 'object') {
+      return false
+    }
+
+    return Boolean(
+      String(sourceImage.path || '').trim() ||
+      String(sourceImage.storedPath || '').trim()
+    )
+  }
+
   async function prepareDraftForExecution({ menuKey, draft, inputDirectory, outputDirectory }) {
     await ensureDirectory(inputDirectory)
     await ensureDirectory(outputDirectory)
 
     const sourcePaths = []
     const sourcePathAssignments = []
+
+    if (menuKey === 'workspace' && hasLocalSourcePath(draft.sourceImage)) {
+      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+      sourcePathAssignments.push({ type: 'workspace-source' })
+      sourcePaths.push(sourcePath)
+    }
 
     if (menuKey === 'series-generate') {
       const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
@@ -64,6 +82,10 @@ function createWorkspaceTaskExecutionService({
       }
 
       if (assignment.type === 'series-generate-source' && preparedDraft.sourceImage) {
+        preparedDraft.sourceImage.storedPath = storedPath
+      }
+
+      if (assignment.type === 'workspace-source' && preparedDraft.sourceImage) {
         preparedDraft.sourceImage.storedPath = storedPath
       }
 
@@ -130,27 +152,75 @@ function createWorkspaceTaskExecutionService({
         return
       }
 
-      const handleTaskProgress = async ({ progress, status } = {}) => {
+      const handleTaskProgress = async ({ progress, status, error = '', workspaceStepStates = null } = {}) => {
         if (executionController.isStopped()) {
           return
         }
 
         const normalizedProgress = normalizeTaskProgress(progress, latestRunningTask.progress)
+        const normalizedStatus = String(status || '').trim().toLowerCase()
         const cappedProgress = status === 'succeeded'
           ? Math.min(99, normalizedProgress)
           : normalizedProgress
+        const latestState = getStoredState()
+        const latestProjectRun = projectRunId
+          ? normalizeProjectRuns(latestState.projectRuns).find((projectRun) => projectRun.id === projectRunId) || null
+          : null
+        const hasWorkspaceStepStates = workspaceStepStates && typeof workspaceStepStates === 'object'
+        let projectRunsPatch = null
 
-        if (cappedProgress <= latestRunningTask.progress) {
+        if (latestProjectRun && hasWorkspaceStepStates) {
+          const nextStepStates = {
+            ...latestProjectRun.stepStates,
+            ...workspaceStepStates
+          }
+          const stepStatuses = Object.values(nextStepStates).map((stepState) => String(stepState?.status || 'pending').trim())
+          const hasRunningStep = stepStatuses.includes('running')
+          const hasFailedStep = stepStatuses.includes('failed')
+          const hasSuccessStep = stepStatuses.includes('success')
+          const hasPendingStep = stepStatuses.includes('pending')
+          const nextStatus = ['running', 'processing', 'submitting'].includes(normalizedStatus)
+            ? 'running'
+            : hasRunningStep
+              ? 'running'
+              : hasFailedStep && hasSuccessStep
+                ? 'partial'
+                : hasFailedStep && hasPendingStep
+                  ? 'running'
+                  : hasFailedStep
+                    ? 'failed'
+                    : stepStatuses.every((stepStatus) => stepStatus === 'success')
+                      ? 'success'
+                      : latestProjectRun.status
+          const nextError = String(error || '').trim() || Object.values(nextStepStates)
+            .map((stepState) => String(stepState?.error || '').trim())
+            .filter(Boolean)
+            .join('；')
+
+          projectRunsPatch = upsertProjectRun(latestState.projectRuns, {
+            ...latestProjectRun,
+            status: nextStatus,
+            error: nextError,
+            stepStates: nextStepStates
+          })
+        }
+
+        const shouldPersistTaskProgress = cappedProgress > latestRunningTask.progress
+        const shouldPersistProjectRun = Boolean(projectRunsPatch)
+
+        if (!shouldPersistTaskProgress && !shouldPersistProjectRun) {
           return
         }
 
         latestRunningTask = {
           ...latestRunningTask,
-          progress: cappedProgress
+          progress: shouldPersistTaskProgress ? cappedProgress : latestRunningTask.progress,
+          ...(String(error || '').trim() ? { error: String(error || '').trim() } : {})
         }
 
         await persistTaskAndState({
-          task: latestRunningTask
+          task: latestRunningTask,
+          projectRunsPatch
         })
       }
 
@@ -277,6 +347,12 @@ function createWorkspaceTaskExecutionService({
         projectRunsPatch: nextProjectRuns,
         activeProjectRunId: currentProjectRunAfterExecution?.id || null
       })
+
+      if (workspaceCreditService && typeof workspaceCreditService.refreshDashboardCredits === 'function') {
+        await workspaceCreditService.refreshDashboardCredits({
+          target: 'all'
+        }).catch(() => undefined)
+      }
 
       await safeRuntimeLog(runtimeLogger, {
         level: 'info',

@@ -61,8 +61,25 @@ const platformOptions = [
 
 const languageOptions = [
   { label: '中文', value: 'zh-CN' },
-  { label: 'English', value: 'en-US' },
-  { label: 'Русский', value: 'ru-RU' }
+  { label: '英语', value: 'en-US' },
+  { label: '俄语', value: 'ru-RU' },
+  { label: '西班牙语', value: 'es-ES' },
+  { label: '葡萄牙语', value: 'pt-PT' },
+  { label: '葡萄牙语（巴西）', value: 'pt-BR' },
+  { label: '法语', value: 'fr-FR' },
+  { label: '德语', value: 'de-DE' },
+  { label: '意大利语', value: 'it-IT' },
+  { label: '荷兰语', value: 'nl-NL' },
+  { label: '波兰语', value: 'pl-PL' },
+  { label: '土耳其语', value: 'tr-TR' },
+  { label: '阿拉伯语', value: 'ar-SA' },
+  { label: '日语', value: 'ja-JP' },
+  { label: '韩语', value: 'ko-KR' },
+  { label: '泰语', value: 'th-TH' },
+  { label: '越南语', value: 'vi-VN' },
+  { label: '印尼语', value: 'id-ID' },
+  { label: '马来语', value: 'ms-MY' },
+  { label: '印地语', value: 'hi-IN' }
 ]
 
 const imageSizeOptions = [
@@ -1163,25 +1180,25 @@ function resolvePlatformDraftReadinessIssues(project = {}) {
               </label>
               <label class="project-task-card__field">
                 <span>图片尺寸</span>
-                <select :value="item.project.generationConfig?.imageSize || '1:1'" @change="updateProjectGenerationConfig(item.project, { imageSize: $event.target.value })">
+                <select :value="item.project.generationConfig?.size || '1:1'" @change="updateProjectGenerationConfig(item.project, { size: $event.target.value })">
                   <option v-for="option in imageSizeOptions" :key="`${item.project.id}-image-size-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
               <label class="project-task-card__field">
                 <span>视频时长</span>
-                <select :value="item.project.generationConfig?.videoDuration || '6s'" @change="updateProjectGenerationConfig(item.project, { videoDuration: $event.target.value })">
+                <select :value="item.project.generationConfig?.duration || '6s'" @change="updateProjectGenerationConfig(item.project, { duration: $event.target.value })">
                   <option v-for="option in videoDurationOptions" :key="`${item.project.id}-video-duration-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
               <label class="project-task-card__field">
                 <span>视频清晰度</span>
-                <select :value="item.project.generationConfig?.videoResolution || '768P'" @change="updateProjectGenerationConfig(item.project, { videoResolution: $event.target.value })">
+                <select :value="item.project.generationConfig?.resolution || '768P'" @change="updateProjectGenerationConfig(item.project, { resolution: $event.target.value })">
                   <option v-for="option in videoResolutionOptions" :key="`${item.project.id}-video-resolution-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
               <label class="project-task-card__field">
                 <span>视频动效</span>
-                <select :value="item.project.generationConfig?.videoMotionStrength || 'auto'" @change="updateProjectGenerationConfig(item.project, { videoMotionStrength: $event.target.value })">
+                <select :value="item.project.generationConfig?.motionStrength || 'auto'" @change="updateProjectGenerationConfig(item.project, { motionStrength: $event.target.value })">
                   <option v-for="option in videoMotionOptions" :key="`${item.project.id}-video-motion-${option.value}`" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>

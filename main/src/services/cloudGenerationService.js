@@ -182,13 +182,39 @@ function calculateProgress(job = {}) {
     return 100
   }
 
-  const items = Array.isArray(job.items) ? job.items : []
-  if (!items.length) {
-    return 0
+  if (jobStatus === 'PENDING') {
+    return 8
   }
 
-  const completedCount = items.filter((item) => TERMINAL_ITEM_STATUSES.has(String(item.status || ''))).length
-  return Math.max(5, Math.min(100, Math.round((completedCount / items.length) * 100)))
+  const items = Array.isArray(job.items) ? job.items : []
+  if (!items.length) {
+    return jobStatus === 'RUNNING' ? 35 : 5
+  }
+
+  const completedCount = items.filter((item) => TERMINAL_ITEM_STATUSES.has(String(item.status || '').trim().toUpperCase())).length
+  const runningCount = items.filter((item) => String(item.status || '').trim().toUpperCase() === 'RUNNING').length
+  const pendingCount = items.filter((item) => String(item.status || '').trim().toUpperCase() === 'PENDING').length
+  const totalCount = items.length
+
+  if (completedCount <= 0) {
+    if (runningCount > 0) {
+      return Math.max(20, Math.min(78, Math.round((runningCount / totalCount) * 60)))
+    }
+
+    if (pendingCount > 0) {
+      return 10
+    }
+
+    return jobStatus === 'RUNNING' ? 35 : 5
+  }
+
+  const weightedProgress = (
+    completedCount +
+    (runningCount * 0.65) +
+    (pendingCount * 0.15)
+  ) / totalCount
+
+  return Math.max(10, Math.min(95, Math.round(weightedProgress * 100)))
 }
 
 function resolveJobFailureMessage(job = {}, fallbackMessage = 'Remote generation failed.') {
@@ -207,6 +233,30 @@ function resolveJobFailureMessage(job = {}, fallbackMessage = 'Remote generation
   }
 
   return fallbackMessage
+}
+
+function normalizeUsageSummary(usageSummary = null) {
+  if (!usageSummary || typeof usageSummary !== 'object') {
+    return null
+  }
+
+  return {
+    billed: usageSummary.billed === true,
+    billedAt: trimString(usageSummary.billedAt || ''),
+    currency: trimString(usageSummary.currency || 'CNY') || 'CNY',
+    totalAmountCny: Math.max(0, Number(usageSummary.totalAmountCny) || 0),
+    lines: Array.isArray(usageSummary.lines)
+      ? usageSummary.lines.map((line) => ({
+          kind: trimString(line?.kind || ''),
+          label: trimString(line?.label || ''),
+          model: trimString(line?.model || ''),
+          units: Math.max(0, Number(line?.units) || 0),
+          unitPriceCny: Math.max(0, Number(line?.unitPriceCny) || 0),
+          amountCny: Math.max(0, Number(line?.amountCny) || 0),
+          metadata: line?.metadata && typeof line.metadata === 'object' ? line.metadata : {}
+        }))
+      : []
+  }
 }
 
 function mapGroupStatus(status = '') {
@@ -322,6 +372,7 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
         textResults: [],
         comparisonResults: [],
         groupedResults,
+        usageSummary: normalizeUsageSummary(job.usageSummary),
         summary: {
           title: `Image Sets ${groupedResults.length}`,
           description: `${trimString(draft.model || 'gpt-image-2')} / ${trimString(draft.sourceImage?.name || 'reference')}`
@@ -406,10 +457,11 @@ function buildVideoPayload({ draft, sessionToken }) {
                     resolution: trimString(draft.resolution || '768P'),
                     format: 'mp4'
                   }
-                ]
+            ]
               : []
           }
         ],
+        usageSummary: normalizeUsageSummary(job.usageSummary),
         summary: {
           title: 'Video Result',
           description: `${trimString(draft.model || 'MiniMax-Hailuo-2.3-Fast')} / ${trimString(draft.resolution || '768P')} / ${trimString(draft.duration || '6s')}`
@@ -507,7 +559,10 @@ function buildTextPayload({ draft, sessionToken }) {
         throw new Error('Remote text generation returned no usable results.')
       }
 
-      return textResults
+      return {
+        textResults,
+        usageSummary: normalizeUsageSummary(job.usageSummary)
+      }
     }
   }
 }
@@ -605,6 +660,7 @@ async function runRemoteJob({
 async function runRemoteTextJob({
   payloadBuilder,
   remoteLicensePlatformClient,
+  onProgress,
   pollIntervalMs,
   pollTimeoutMs
 }) {
@@ -619,6 +675,11 @@ async function runRemoteTextJob({
   const createdJob = await remoteLicensePlatformClient.createGenerationJob(jobPayload)
   let latestJob = createdJob
 
+  await onProgress?.({
+    progress: 5,
+    status: 'running'
+  })
+
   while (!TERMINAL_JOB_STATUSES.has(String(latestJob.status || ''))) {
     if (Date.now() - startedAt >= pollTimeoutMs) {
       throw new Error('Remote text generation timed out. Please retry later.')
@@ -629,6 +690,12 @@ async function runRemoteTextJob({
       id: createdJob.id,
       sessionToken: jobPayload.sessionToken,
       mode: 'compact'
+    })
+
+    await onProgress?.({
+      progress: calculateProgress(latestJob),
+      status: ['FAILED', 'CANCELLED', 'PARTIAL_FAILED'].includes(String(latestJob.status || '')) ? 'failed' : 'running',
+      error: resolveJobFailureMessage(latestJob, 'Remote text generation failed.')
     })
   }
 
@@ -641,6 +708,14 @@ async function runRemoteTextJob({
   if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
     throw new Error(resolveJobFailureMessage(latestJob, 'Remote text generation failed.'))
   }
+
+  await onProgress?.({
+    progress: 100,
+    status: latestJob.status === 'PARTIAL_FAILED' ? 'failed' : 'succeeded',
+    error: latestJob.status === 'PARTIAL_FAILED'
+      ? resolveJobFailureMessage(latestJob, 'Remote text generation partially failed.')
+      : ''
+  })
 
   return payloadBuilder.mapResult({
     job: latestJob
@@ -691,12 +766,13 @@ function createCloudGenerationService({
     })
   }
 
-  async function generateTextResults({ draft }) {
+  async function generateTextResults({ draft, onProgress }) {
     const { sessionToken } = ensureRemoteReady(settingsService)
 
     return runRemoteTextJob({
       payloadBuilder: buildTextPayload({ draft, sessionToken }),
       remoteLicensePlatformClient,
+      onProgress,
       pollIntervalMs,
       pollTimeoutMs
     })

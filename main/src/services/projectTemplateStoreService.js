@@ -111,17 +111,17 @@ function buildTemplateFromProject(project = {}, getNow = () => new Date().toISOS
         prompt: trimString(generationConfig.imagePrompt || ''),
         templateId: trimString(generationConfig.imageTemplateId || ''),
         model: trimString(generationConfig.imageModel || ''),
-        size: trimString(generationConfig.imageSize || generationConfig.size || ''),
+        size: trimString(generationConfig.size || generationConfig.imageSize || ''),
         generateCount: Number(generationConfig.generateCount || 0) || 0
       },
       video: {
         prompt: trimString(generationConfig.videoPrompt || ''),
         templateId: trimString(generationConfig.videoTemplateId || ''),
         model: trimString(generationConfig.videoModel || ''),
-        duration: trimString(generationConfig.videoDuration || ''),
-        resolution: trimString(generationConfig.videoResolution || ''),
-        motionStrength: trimString(generationConfig.videoMotionStrength || ''),
-        aspectRatio: trimString(generationConfig.videoAspectRatio || '')
+        duration: trimString(generationConfig.duration || generationConfig.videoDuration || ''),
+        resolution: trimString(generationConfig.resolution || generationConfig.videoResolution || ''),
+        motionStrength: trimString(generationConfig.motionStrength || generationConfig.videoMotionStrength || ''),
+        aspectRatio: trimString(generationConfig.aspectRatio || generationConfig.videoAspectRatio || '')
       }
     },
     summary: {

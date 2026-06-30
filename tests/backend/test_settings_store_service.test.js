@@ -238,7 +238,7 @@ describe('settingsStoreService', () => {
     })
   })
 
-  it('allows credit saves without rewriting stale upload directory data', async () => {
+  it('allows dashboard balance saves without rewriting stale upload directory data', async () => {
     const store = createMemoryStore()
 
     const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
@@ -250,20 +250,25 @@ describe('settingsStoreService', () => {
         workspace: 'Z:/missing-folder',
         'series-generate': ''
       },
-      creditState: {
-        totalPurchasedCredits: 500,
-        remainingCredits: 300
+      dashboardCreditState: {
+        image: {
+          balanceCny: 8,
+          subscriptionBalanceCny: 3,
+          permanentBalanceCny: 5
+        }
       }
     })
 
     await expect(service.saveSettings({
-      creditAdjustment: {
-        operation: 'increase',
-        amount: 100
+      dashboardCreditState: {
+        image: {
+          balanceCny: 9,
+          subscriptionBalanceCny: 4,
+          permanentBalanceCny: 5
+        }
       }
     }, {
-      isDirectory: () => false,
-      getNow: () => '2026-05-01T10:00:00.000Z'
+      isDirectory: () => false
     })).resolves.toBeTruthy()
 
     expect(service.getSettings()).toMatchObject({
@@ -272,9 +277,12 @@ describe('settingsStoreService', () => {
         workspace: 'Z:/missing-folder',
         'series-generate': ''
       },
-      creditState: {
-        totalPurchasedCredits: 600,
-        remainingCredits: 400
+      dashboardCreditState: {
+        image: {
+          balanceCny: 9,
+          subscriptionBalanceCny: 4,
+          permanentBalanceCny: 5
+        }
       }
     })
   })
@@ -327,8 +335,8 @@ describe('settingsStoreService', () => {
         syncStatus: 'idle'
       },
       image: {
-        totalCredits: 9000,
-        remainingCredits: 4200,
+        balanceCny: 0,
+        permanentBalanceCny: 0,
         syncStatus: 'success'
       },
       video: {

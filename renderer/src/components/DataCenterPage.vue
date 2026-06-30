@@ -6,11 +6,19 @@ const props = defineProps({
     type: Object,
     required: true
   },
+  walletSummary: {
+    type: Object,
+    default: null
+  },
   isRefreshingBalances: {
     type: Boolean,
     default: false
   },
   productProjects: {
+    type: Array,
+    default: () => []
+  },
+  projectRuns: {
     type: Array,
     default: () => []
   }
@@ -28,12 +36,15 @@ const copy = {
   refresh: decode('\\u5237\\u65b0'),
   refreshing: decode('\\u5237\\u65b0\\u4e2d...'),
   historyTitle: decode('\\u5386\\u53f2\\u9879\\u76ee\\u8d44\\u4ea7'),
+  usageTitle: decode('\\u4efb\\u52a1\\u6d88\\u8017'),
   projectCountSuffix: decode('\\u4e2a\\u9879\\u76ee'),
   updatedAtPrefix: decode('\\u66f4\\u65b0\\u4e8e'),
   titleMetric: decode('\\u6807\\u9898'),
   descriptionMetric: decode('\\u63cf\\u8ff0'),
   imageMetric: decode('\\u5957\\u56fe'),
   videoMetric: decode('\\u89c6\\u9891'),
+  totalCost: decode('\\u5408\\u8ba1'),
+  noUsage: decode('\\u6682\\u65e0\\u6d88\\u8017\\u8bb0\\u5f55'),
   emptyTitle: decode('\\u6682\\u65e0\\u9879\\u76ee\\u8d44\\u4ea7'),
   emptyDescription: decode('\\u5b8c\\u6210\\u4efb\\u52a1\\u540e\\uff0c\\u6807\\u9898\\u3001\\u63cf\\u8ff0\\u3001\\u5957\\u56fe\\u548c\\u89c6\\u9891\\u8d44\\u4ea7\\u4f1a\\u5728\\u8fd9\\u91cc\\u7d2f\\u8ba1\\u3002'),
   unnamedProject: decode('\\u672a\\u547d\\u540d\\u9879\\u76ee'),
@@ -44,25 +55,15 @@ const copy = {
 }
 
 function resolveWalletSourceBalance(resourceKey, sourceKey) {
-  const walletSummary = props.activationState?.walletSummary || {}
+  const walletSummary = props.walletSummary || props.activationState?.walletSummary || {}
   const splitBalance = walletSummary?.splitBalances?.[resourceKey]
   if (splitBalance && typeof splitBalance === 'object') {
     return Math.max(0, Number(splitBalance?.[sourceKey] || 0)).toFixed(2)
   }
 
-  const legacyMap = {
-    text: 'textBalanceCny',
-    image: 'imageBalanceCny',
-    video: 'videoBalanceCny'
-  }
-
   if (sourceKey === 'permanentBalanceCny') {
-    const subscription = Math.max(0, Number(walletSummary?.subscriptionBalances?.[resourceKey]) || 0)
     const permanent = Math.max(0, Number(walletSummary?.permanentBalances?.[resourceKey]) || 0)
-    if (subscription + permanent > 0) {
-      return permanent.toFixed(2)
-    }
-    return Math.max(0, Number(walletSummary?.[legacyMap[resourceKey]]) || 0).toFixed(2)
+    return permanent.toFixed(2)
   }
 
   return Math.max(0, Number(walletSummary?.subscriptionBalances?.[resourceKey]) || 0).toFixed(2)
@@ -112,6 +113,20 @@ const historicalAssets = computed(() => {
     const leftTime = new Date(left.updatedAt || 0).getTime()
     return rightTime - leftTime
   })
+})
+
+const usageRecords = computed(() => {
+  return (props.projectRuns || [])
+    .filter((item) => Number(item?.usage?.totalAmountCny) > 0)
+    .map((item) => ({
+      id: item.id,
+      name: String(item?.outputs?.selectedTitle || item?.outputs?.title || item?.taskNumber || copy.unnamedProject).trim() || copy.unnamedProject,
+      totalAmountCny: Number(item?.usage?.totalAmountCny || 0).toFixed(2),
+      billedAt: String(item?.usage?.billedAt || item?.completedAt || '').trim(),
+      lines: Array.isArray(item?.usage?.lines) ? item.usage.lines : []
+    }))
+    .sort((left, right) => new Date(right.billedAt || 0).getTime() - new Date(left.billedAt || 0).getTime())
+    .slice(0, 12)
 })
 
 function formatDateTime(value = '') {
@@ -194,6 +209,36 @@ function handleRefresh() {
       <div v-else class="data-center-page__empty">
         <strong>{{ copy.emptyTitle }}</strong>
         <span>{{ copy.emptyDescription }}</span>
+      </div>
+    </section>
+
+    <section class="data-center-page__panel">
+      <header class="data-center-page__panel-header">
+        <strong>{{ copy.usageTitle }}</strong>
+      </header>
+
+      <div v-if="usageRecords.length" class="data-center-page__usage-list">
+        <article
+          v-for="item in usageRecords"
+          :key="item.id"
+          class="data-center-page__usage-card"
+        >
+          <div class="data-center-page__project-copy">
+            <strong>{{ item.name }}</strong>
+            <span>{{ copy.updatedAtPrefix }} {{ formatDateTime(item.billedAt) }}</span>
+          </div>
+
+          <div class="data-center-page__usage-lines">
+            <span v-for="(line, index) in item.lines" :key="`${item.id}-${index}`">
+              {{ line.label }} {{ Number(line.amountCny || 0).toFixed(2) }} CNY
+            </span>
+            <span class="data-center-page__usage-total">{{ copy.totalCost }} {{ item.totalAmountCny }} CNY</span>
+          </div>
+        </article>
+      </div>
+
+      <div v-else class="data-center-page__empty">
+        <strong>{{ copy.noUsage }}</strong>
       </div>
     </section>
   </section>
@@ -327,11 +372,27 @@ function handleRefresh() {
   gap: 12px;
 }
 
+.data-center-page__usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .data-center-page__project-card {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px;
+}
+
+.data-center-page__usage-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 18, 30, 0.88);
 }
 
 .data-center-page__project-copy,
@@ -349,11 +410,30 @@ function handleRefresh() {
   align-items: center;
 }
 
+.data-center-page__usage-lines {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
 .data-center-page__project-metrics span {
   padding: 8px 12px;
   border-radius: 999px;
   background: rgba(9, 13, 23, 0.72);
   color: rgba(226, 232, 244, 0.9);
+}
+
+.data-center-page__usage-lines span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(9, 13, 23, 0.72);
+  color: rgba(226, 232, 244, 0.9);
+}
+
+.data-center-page__usage-total {
+  background: rgba(100, 186, 255, 0.16) !important;
 }
 
 .data-center-page__empty {

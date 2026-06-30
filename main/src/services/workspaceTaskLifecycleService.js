@@ -2,10 +2,12 @@ const studioMenuConfig = require('../../../shared/studio-menu-config.json')
 
 function resolveTaskBalanceRequirements(menuKey, draft = {}) {
   if (menuKey === 'workspace') {
+    const hasSourceImage = Boolean(draft.sourceImage)
+
     return {
       textRequired: Boolean(draft.enabledSteps?.title || draft.enabledSteps?.description),
-      imageRequired: Boolean(draft.enabledSteps?.image && draft.sourceImage),
-      videoRequired: Boolean(draft.enabledSteps?.video)
+      imageRequired: Boolean(draft.enabledSteps?.image && hasSourceImage),
+      videoRequired: Boolean(draft.enabledSteps?.video && hasSourceImage)
     }
   }
 

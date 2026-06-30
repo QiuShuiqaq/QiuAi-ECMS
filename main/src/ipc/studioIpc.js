@@ -97,6 +97,11 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
     return studioWorkspaceService.createTask(payload)
   })
 
+  ipcMain.handle(ipcChannels.STUDIO_CANCEL_TASK, async (_event, payload = {}) => {
+    await activationGuard?.assertActivated?.()
+    return studioWorkspaceService.cancelTask(payload)
+  })
+
   ipcMain.handle(ipcChannels.STUDIO_PICK_INPUT_ASSETS, async (_event, payload = {}) => {
     const result = await dialog.showOpenDialog({
       defaultPath: resolveUploadDefaultPath(settingsService, payload.menuKey),

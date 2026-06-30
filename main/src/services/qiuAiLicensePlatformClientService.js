@@ -8,6 +8,15 @@ function normalizeBaseUrl(baseUrl = '') {
   return trimString(baseUrl).replace(/\/+$/, '')
 }
 
+function buildSessionHeaders(sessionToken = '') {
+  const normalizedSessionToken = trimString(sessionToken)
+  return normalizedSessionToken
+    ? {
+        Authorization: `Bearer ${normalizedSessionToken}`
+      }
+    : {}
+}
+
 function isAbsoluteHttpUrl(value = '') {
   return /^https?:\/\//i.test(trimString(value))
 }
@@ -64,13 +73,6 @@ function normalizeRechargeOrderPayload(payload = {}) {
     amountCny: normalizePositiveNumber(payload.amountCny, { allowZero: false }),
     couponCode: trimString(payload.couponCode),
     sessionToken: trimString(payload.sessionToken)
-  }
-}
-
-function normalizeUserAgreementAcceptPayload(payload = {}) {
-  return {
-    sessionToken: trimString(payload.sessionToken),
-    agreementVersion: trimString(payload.agreementVersion)
   }
 }
 
@@ -140,6 +142,35 @@ function normalizeGenerationJobItem(item = {}) {
   }
 
   return normalizedItem
+}
+
+function normalizeGenerationUsageLine(line = {}) {
+  return {
+    kind: trimString(line.kind),
+    label: trimString(line.label),
+    model: trimString(line.model),
+    units: Math.max(0, Number(line.units) || 0),
+    unitPriceCny: Math.max(0, Number(line.unitPriceCny) || 0),
+    amountCny: Math.max(0, Number(line.amountCny) || 0),
+    metadata: line.metadata && typeof line.metadata === 'object' ? line.metadata : {}
+  }
+}
+
+function normalizeGenerationJobResponse(job = {}) {
+  const usageSummary = job.usageSummary && typeof job.usageSummary === 'object'
+    ? {
+        billed: job.usageSummary.billed === true,
+        billedAt: trimString(job.usageSummary.billedAt),
+        currency: trimString(job.usageSummary.currency || 'CNY') || 'CNY',
+        totalAmountCny: Math.max(0, Number(job.usageSummary.totalAmountCny) || 0),
+        lines: Array.isArray(job.usageSummary.lines) ? job.usageSummary.lines.map((line) => normalizeGenerationUsageLine(line)) : []
+      }
+    : null
+
+  return {
+    ...job,
+    usageSummary
+  }
 }
 
 function normalizeGenerationJobPayload(payload = {}) {
@@ -238,7 +269,7 @@ function createQiuAiLicensePlatformClientService({
     return resolvedBaseUrl
   }
 
-  async function request(method, path, { params, data } = {}) {
+  async function request(method, path, { params, data, sessionToken = '' } = {}) {
     try {
       const currentBaseUrl = resolveBaseUrl()
       const response = await requestClient.request({
@@ -248,7 +279,8 @@ function createQiuAiLicensePlatformClientService({
         data,
         timeout: timeoutMs,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...buildSessionHeaders(sessionToken)
         }
       })
 
@@ -267,7 +299,7 @@ function createQiuAiLicensePlatformClientService({
     }
   }
 
-  async function requestBinary(pathOrUrl, { params } = {}) {
+  async function requestBinary(pathOrUrl, { params, sessionToken = '' } = {}) {
     try {
       const normalizedPathOrUrl = trimString(pathOrUrl)
       const currentBaseUrl = resolveBaseUrl()
@@ -278,7 +310,8 @@ function createQiuAiLicensePlatformClientService({
           : `${currentBaseUrl}${normalizedPathOrUrl}`,
         params,
         timeout: timeoutMs,
-        responseType: 'arraybuffer'
+        responseType: 'arraybuffer',
+        headers: buildSessionHeaders(sessionToken)
       })
 
       return Buffer.isBuffer(response.data) ? response.data : Buffer.from(response.data)
@@ -298,8 +331,8 @@ function createQiuAiLicensePlatformClientService({
 
   async function getAuthorizationStatus({ sessionToken = '', deviceFingerprint = '' } = {}) {
     return request('get', '/api/activation/status', {
+      sessionToken,
       params: {
-        sessionToken: trimString(sessionToken),
         deviceFingerprint: trimString(deviceFingerprint)
       }
     })
@@ -307,17 +340,13 @@ function createQiuAiLicensePlatformClientService({
 
   async function getWalletSummary({ sessionToken = '' } = {}) {
     return request('get', '/api/wallet/summary', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
   async function getServiceCapacityProfile({ sessionToken = '' } = {}) {
     return request('get', '/api/service-capacity/profile', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -327,25 +356,9 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function getUserAgreementStatus({ sessionToken = '' } = {}) {
-    return request('get', '/api/activation/agreement-status', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
-    })
-  }
-
-  async function acceptUserAgreement(payload = {}) {
-    return request('post', '/api/activation/agreement-accept', {
-      data: normalizeUserAgreementAcceptPayload(payload)
-    })
-  }
-
   async function listSoftwarePackages({ sessionToken = '' } = {}) {
     return request('get', '/api/packages', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -357,8 +370,8 @@ function createQiuAiLicensePlatformClientService({
 
   async function getSoftwareOrder({ id = '', sessionToken = '', orderAccessToken = '' } = {}) {
     return request('get', `/api/orders/${trimString(id)}`, {
+      sessionToken,
       params: {
-        sessionToken: trimString(sessionToken),
         orderAccessToken: trimString(orderAccessToken)
       }
     })
@@ -366,9 +379,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function listComputePackages({ sessionToken = '' } = {}) {
     return request('get', '/api/compute-packages', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -380,9 +391,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function getComputePackageOrder({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/compute-package-orders/${trimString(id)}`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -394,44 +403,52 @@ function createQiuAiLicensePlatformClientService({
 
   async function getSelectionManifest ({ sessionToken = '' } = {}) {
     return request('get', '/api/client/selection/manifest', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
   async function listSelectionPlatforms ({ sessionToken = '' } = {}) {
     return request('get', '/api/client/selection/platforms', {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
   async function listSelectionSites (payload = {}) {
+    const normalizedPayload = normalizeSelectionSitesPayload(payload)
     return request('get', '/api/client/selection/sites', {
-      params: normalizeSelectionSitesPayload(payload)
+      sessionToken: normalizedPayload.sessionToken,
+      params: {
+        platform: normalizedPayload.platform
+      }
     })
   }
 
   async function listSelectionItems (payload = {}) {
+    const normalizedPayload = normalizeSelectionItemsPayload(payload)
     return request('get', '/api/client/selection/items', {
-      params: normalizeSelectionItemsPayload(payload)
+      sessionToken: normalizedPayload.sessionToken,
+      params: {
+        platform: normalizedPayload.platform,
+        boardType: normalizedPayload.boardType,
+        siteCode: normalizedPayload.siteCode,
+        keyword: normalizedPayload.keyword,
+        ...(normalizedPayload.page ? { page: normalizedPayload.page } : {}),
+        ...(normalizedPayload.pageSize ? { pageSize: normalizedPayload.pageSize } : {})
+      }
     })
   }
 
   async function getSelectionItemDetail ({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/client/selection/items/${trimString(id)}`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
   async function createGenerationJob(payload = {}) {
-    return request('post', '/api/generation/jobs', {
+    const response = await request('post', '/api/generation/jobs', {
       data: normalizeGenerationJobPayload(payload)
     })
+    return normalizeGenerationJobResponse(response)
   }
 
   async function upsertPublishDraft (payload = {}) {
@@ -441,22 +458,25 @@ function createQiuAiLicensePlatformClientService({
   }
 
   async function listPublishChannelAccounts (payload = {}) {
+    const normalizedPayload = normalizePublishChannelAccountsPayload(payload)
     return request('get', '/api/client/publish/channel-accounts', {
-      params: normalizePublishChannelAccountsPayload(payload)
+      sessionToken: normalizedPayload.sessionToken,
+      params: {
+        platform: normalizedPayload.platform
+      }
     })
   }
 
   async function getPublishClientConfig (payload = {}) {
+    const normalizedPayload = normalizePublishClientConfigPayload(payload)
     return request('get', '/api/client/publish/config', {
-      params: normalizePublishClientConfigPayload(payload)
+      sessionToken: normalizedPayload.sessionToken
     })
   }
 
   async function getPublishDraft ({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/client/publish/drafts/${trimString(id)}`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -478,9 +498,7 @@ function createQiuAiLicensePlatformClientService({
 
   async function getPublishTask ({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/client/publish/tasks/${trimString(id)}`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
@@ -494,39 +512,35 @@ function createQiuAiLicensePlatformClientService({
   }
 
   async function getGenerationJob({ id = '', sessionToken = '', mode = 'full' } = {}) {
-    return request('get', `/api/generation/jobs/${trimString(id)}`, {
+    const response = await request('get', `/api/generation/jobs/${trimString(id)}`, {
+      sessionToken,
       params: {
-        sessionToken: trimString(sessionToken),
         mode: trimString(mode || 'full') || 'full'
       }
     })
+    return normalizeGenerationJobResponse(response)
   }
 
   async function downloadGenerationArtifact({ id = '', sessionToken = '', downloadUrl = '' } = {}) {
     const normalizedDownloadUrl = trimString(downloadUrl)
     const artifactUrl = normalizedDownloadUrl || `/api/generation/artifacts/${trimString(id)}/download`
-    const params = normalizedDownloadUrl && isAbsoluteHttpUrl(normalizedDownloadUrl)
-      ? undefined
-      : {
-          sessionToken: trimString(sessionToken)
-        }
-
-    return requestBinary(artifactUrl, { params })
+    return requestBinary(artifactUrl, {
+      sessionToken,
+      params: normalizedDownloadUrl && isAbsoluteHttpUrl(normalizedDownloadUrl)
+        ? undefined
+        : undefined
+    })
   }
 
   async function getRechargeOrder({ id = '', sessionToken = '' } = {}) {
     return request('get', `/api/recharge/orders/${trimString(id)}`, {
-      params: {
-        sessionToken: trimString(sessionToken)
-      }
+      sessionToken
     })
   }
 
   const activation = {
     getStatus: getAuthorizationStatus,
-    activate: activateLicense,
-    getUserAgreementStatus,
-    acceptUserAgreement
+    activate: activateLicense
   }
 
   const wallet = {
@@ -590,14 +604,12 @@ function createQiuAiLicensePlatformClientService({
     generation,
     publish,
     activateLicense,
-    acceptUserAgreement,
     createComputePackageOrder,
     createGenerationJob,
     createRechargeOrder,
     createSoftwareOrder,
     downloadGenerationArtifact,
     getAuthorizationStatus,
-    getUserAgreementStatus,
     getComputePackageOrder,
     getGenerationJob,
     getPublishClientConfig,

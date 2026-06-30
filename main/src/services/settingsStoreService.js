@@ -2,20 +2,6 @@ const fs = require('node:fs')
 const { normalizeCompliance } = require('./userAgreementService')
 
 const SETTINGS_KEY = 'userSettings'
-const CREDIT_HISTORY_LIMIT = 20
-
-const defaultCreditState = {
-  totalPurchasedCredits: 0,
-  remainingCredits: 0,
-  frozenCredits: 0,
-  usedCredits: 0,
-  lastAdjustmentAt: '',
-  lastAdjustmentOperation: '',
-  lastAdjustmentAmount: 0,
-  adjustmentHistory: [],
-  activityHistory: [],
-  taskLedger: {}
-}
 
 const defaultDashboardCreditState = {
   text: {
@@ -26,8 +12,6 @@ const defaultDashboardCreditState = {
     syncStatus: 'idle'
   },
   image: {
-    totalCredits: 0,
-    remainingCredits: 0,
     balanceCny: 0,
     subscriptionBalanceCny: 0,
     permanentBalanceCny: 0,
@@ -110,7 +94,6 @@ const defaultSettings = {
   themeMode: 'dark',
   downloadCleanupEnabled: true,
   dashboardCreditState: defaultDashboardCreditState,
-  creditState: defaultCreditState,
   authPlatform: defaultAuthPlatform,
   compliance: defaultCompliance
 }
@@ -136,26 +119,6 @@ function normalizeDownloadCleanupEnabled(downloadCleanupEnabled = true) {
   return downloadCleanupEnabled !== false
 }
 
-function normalizeNonNegativeInteger(value = 0) {
-  const numericValue = Number(value)
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return 0
-  }
-
-  return Math.round(numericValue)
-}
-
-function normalizeCreditHistoryEntry(entry = {}) {
-  return {
-    id: typeof entry.id === 'string' ? entry.id : '',
-    operation: entry.operation === 'decrease' ? 'decrease' : 'increase',
-    amount: normalizeNonNegativeInteger(entry.amount),
-    createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : '',
-    note: typeof entry.note === 'string' ? entry.note : ''
-  }
-}
-
 function normalizeUploadDirectoryPatch(uploadDirectories = {}) {
   if (!uploadDirectories || typeof uploadDirectories !== 'object') {
     return {}
@@ -172,70 +135,6 @@ function normalizeUploadDirectoryPatch(uploadDirectories = {}) {
   return patch
 }
 
-function normalizeCreditActivityEntry(entry = {}) {
-  return {
-    id: typeof entry.id === 'string' ? entry.id : '',
-    type: typeof entry.type === 'string' ? entry.type : '',
-    operation: entry.operation === 'decrease' ? 'decrease' : 'increase',
-    amount: normalizeNonNegativeInteger(entry.amount),
-    createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : '',
-    note: typeof entry.note === 'string' ? entry.note : '',
-    taskId: typeof entry.taskId === 'string' ? entry.taskId : '',
-    taskNumber: typeof entry.taskNumber === 'string' ? entry.taskNumber : '',
-    taskName: typeof entry.taskName === 'string' ? entry.taskName : '',
-    menuKey: typeof entry.menuKey === 'string' ? entry.menuKey : '',
-    modelSummary: typeof entry.modelSummary === 'string' ? entry.modelSummary : ''
-  }
-}
-
-function normalizeTaskLedgerEntry(entry = {}) {
-  return {
-    taskId: typeof entry.taskId === 'string' ? entry.taskId : '',
-    taskNumber: typeof entry.taskNumber === 'string' ? entry.taskNumber : '',
-    menuKey: typeof entry.menuKey === 'string' ? entry.menuKey : '',
-    taskName: typeof entry.taskName === 'string' ? entry.taskName : '',
-    modelSummary: typeof entry.modelSummary === 'string' ? entry.modelSummary : '',
-    estimatedCredits: normalizeNonNegativeInteger(entry.estimatedCredits),
-    status: typeof entry.status === 'string' ? entry.status : '',
-    createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : '',
-    updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : ''
-  }
-}
-
-function normalizeTaskLedger(taskLedger = {}) {
-  if (!taskLedger || typeof taskLedger !== 'object' || Array.isArray(taskLedger)) {
-    return {}
-  }
-
-  return Object.fromEntries(Object.entries(taskLedger).map(([taskId, entry]) => {
-    return [taskId, normalizeTaskLedgerEntry({
-      ...entry,
-      taskId: entry?.taskId || taskId
-    })]
-  }))
-}
-
-function normalizeCreditState(rawCreditState = {}) {
-  const sourceCreditState = rawCreditState && typeof rawCreditState === 'object' ? rawCreditState : {}
-
-  return {
-    totalPurchasedCredits: normalizeNonNegativeInteger(sourceCreditState.totalPurchasedCredits),
-    remainingCredits: normalizeNonNegativeInteger(sourceCreditState.remainingCredits),
-    frozenCredits: normalizeNonNegativeInteger(sourceCreditState.frozenCredits),
-    usedCredits: normalizeNonNegativeInteger(sourceCreditState.usedCredits),
-    lastAdjustmentAt: typeof sourceCreditState.lastAdjustmentAt === 'string' ? sourceCreditState.lastAdjustmentAt : '',
-    lastAdjustmentOperation: typeof sourceCreditState.lastAdjustmentOperation === 'string' ? sourceCreditState.lastAdjustmentOperation : '',
-    lastAdjustmentAmount: normalizeNonNegativeInteger(sourceCreditState.lastAdjustmentAmount),
-    adjustmentHistory: Array.isArray(sourceCreditState.adjustmentHistory)
-      ? sourceCreditState.adjustmentHistory.slice(0, CREDIT_HISTORY_LIMIT).map((entry) => normalizeCreditHistoryEntry(entry))
-      : [],
-    activityHistory: Array.isArray(sourceCreditState.activityHistory)
-      ? sourceCreditState.activityHistory.slice(0, CREDIT_HISTORY_LIMIT).map((entry) => normalizeCreditActivityEntry(entry))
-      : [],
-    taskLedger: normalizeTaskLedger(sourceCreditState.taskLedger)
-  }
-}
-
 function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
   const source = rawDashboardCreditState && typeof rawDashboardCreditState === 'object'
     ? rawDashboardCreditState
@@ -245,6 +144,7 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
     Object.prototype.hasOwnProperty.call(source, 'totalCredits') ||
     Object.prototype.hasOwnProperty.call(source, 'remainingCredits')
   ) {
+    const legacyImageBalance = Math.max(0, Number(source.balanceCny) || 0)
     return {
       text: {
         balanceCny: 0,
@@ -254,11 +154,9 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
         syncStatus: 'idle'
       },
       image: {
-        totalCredits: normalizeNonNegativeInteger(source.totalCredits),
-        remainingCredits: normalizeNonNegativeInteger(source.remainingCredits),
-        balanceCny: Math.max(0, Number(source.balanceCny) || 0),
+        balanceCny: legacyImageBalance,
         subscriptionBalanceCny: 0,
-        permanentBalanceCny: Math.max(0, Number(source.balanceCny) || 0),
+        permanentBalanceCny: legacyImageBalance,
         lastSyncedAt: '',
         syncStatus: 'success'
       },
@@ -281,8 +179,6 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
       syncStatus: typeof source.text?.syncStatus === 'string' ? source.text.syncStatus : 'idle'
     },
     image: {
-      totalCredits: normalizeNonNegativeInteger(source.image?.totalCredits),
-      remainingCredits: normalizeNonNegativeInteger(source.image?.remainingCredits),
       balanceCny: Math.max(0, Number(source.image?.balanceCny) || 0),
       subscriptionBalanceCny: Math.max(0, Number(source.image?.subscriptionBalanceCny) || 0),
       permanentBalanceCny: Math.max(0, Number(source.image?.permanentBalanceCny) || 0),
@@ -320,57 +216,6 @@ function normalizeAuthPlatform(rawAuthPlatform = {}) {
       ? source.remoteServiceCapacity
       : null
   }
-}
-
-function applyCreditAdjustment(creditState, adjustment = {}, { getNow = () => new Date().toISOString() } = {}) {
-  const normalizedCreditState = normalizeCreditState(creditState)
-  const amount = normalizeNonNegativeInteger(adjustment.amount)
-
-  if (!amount) {
-    return normalizedCreditState
-  }
-
-  const operation = adjustment.operation === 'decrease' ? 'decrease' : 'increase'
-  if (operation === 'decrease' && normalizedCreditState.remainingCredits < amount) {
-    throw new Error('???????????')
-  }
-
-  const createdAt = getNow()
-  const nextRemainingCredits = operation === 'increase'
-    ? normalizedCreditState.remainingCredits + amount
-    : normalizedCreditState.remainingCredits - amount
-
-  return normalizeCreditState({
-    ...normalizedCreditState,
-    totalPurchasedCredits: operation === 'increase'
-      ? normalizedCreditState.totalPurchasedCredits + amount
-      : normalizedCreditState.totalPurchasedCredits,
-    remainingCredits: nextRemainingCredits,
-    lastAdjustmentAt: createdAt,
-    lastAdjustmentOperation: operation,
-    lastAdjustmentAmount: amount,
-    adjustmentHistory: [
-      normalizeCreditHistoryEntry({
-        id: `credit-adjustment-${createdAt}-${operation}`,
-        operation,
-        amount,
-        createdAt,
-        note: typeof adjustment.note === 'string' ? adjustment.note : ''
-      }),
-      ...normalizedCreditState.adjustmentHistory
-    ].slice(0, CREDIT_HISTORY_LIMIT),
-    activityHistory: [
-      normalizeCreditActivityEntry({
-        id: `credit-activity-${createdAt}-${operation}`,
-        type: operation === 'decrease' ? 'manual_decrease' : 'manual_increase',
-        operation,
-        amount,
-        createdAt,
-        note: typeof adjustment.note === 'string' ? adjustment.note : ''
-      }),
-      ...normalizedCreditState.activityHistory
-    ].slice(0, CREDIT_HISTORY_LIMIT)
-  })
 }
 
 function defaultIsDirectory(targetPath = '') {
@@ -416,7 +261,6 @@ function normalizeSettings(rawSettings = {}) {
     uploadDirectories,
     downloadCleanupEnabled,
     dashboardCreditState,
-    creditState,
     authPlatform,
     compliance
   } = mergedSettings
@@ -429,7 +273,6 @@ function normalizeSettings(rawSettings = {}) {
     themeMode: normalizeThemeMode(mergedSettings.themeMode),
     downloadCleanupEnabled: normalizeDownloadCleanupEnabled(downloadCleanupEnabled),
     dashboardCreditState: normalizeDashboardCreditState(dashboardCreditState),
-    creditState: normalizeCreditState(creditState),
     authPlatform: normalizeAuthPlatform(authPlatform),
     compliance: normalizeCompliance(compliance)
   }
@@ -442,10 +285,7 @@ function createSettingsStoreService({ store }) {
 
   async function saveSettings(payload = {}, options = {}) {
     const currentSettings = getSettings()
-    const {
-      creditAdjustment,
-      ...restPayload
-    } = payload || {}
+    const restPayload = payload || {}
     const hasUploadDirectoriesPatch = Object.prototype.hasOwnProperty.call(payload, 'uploadDirectories')
     const uploadDirectories = hasUploadDirectoriesPatch
       ? {
@@ -465,23 +305,11 @@ function createSettingsStoreService({ store }) {
       validateGlobalUploadDirectory(globalUploadDirectory, options)
     }
 
-    let creditState = Object.prototype.hasOwnProperty.call(restPayload, 'creditState')
-      ? normalizeCreditState({
-          ...currentSettings.creditState,
-          ...restPayload.creditState
-        })
-      : normalizeCreditState(currentSettings.creditState)
-
-    if (creditAdjustment && typeof creditAdjustment === 'object') {
-      creditState = applyCreditAdjustment(creditState, creditAdjustment, options)
-    }
-
     const nextSettings = normalizeSettings({
       ...currentSettings,
       ...restPayload,
       globalUploadDirectory,
-      uploadDirectories,
-      creditState
+      uploadDirectories
     })
 
     store.set(SETTINGS_KEY, nextSettings)
@@ -497,7 +325,6 @@ function createSettingsStoreService({ store }) {
 module.exports = {
   createSettingsStoreService,
   defaultSettings,
-  defaultCreditState,
   defaultDashboardCreditState,
   defaultAuthPlatform,
   defaultCompliance

@@ -5,8 +5,8 @@ function createMainWindow () {
   const mainWindow = new BrowserWindow({
     width: 1320,
     height: 880,
-    minWidth: 1100,
-    minHeight: 760,
+    minWidth: 1320,
+    minHeight: 880,
     backgroundColor: '#f4ecdf',
     icon: path.resolve(__dirname, '../../assets/app-icon.png'),
     webPreferences: {

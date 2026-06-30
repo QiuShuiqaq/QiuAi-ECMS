@@ -36,13 +36,8 @@ describe('desktopBridge', () => {
     expect(loaded.settingsSummary).toMatchObject({
       dashboardCreditState: {
         text: { balanceCny: 0 },
-        image: { totalCredits: 0, remainingCredits: 0 },
+        image: { balanceCny: 0 },
         video: { balanceCny: 0 }
-      },
-      creditState: {
-        remainingCredits: 0,
-        frozenCredits: 0,
-        usedCredits: 0
       }
     })
     const activationState = await getStudioSnapshot().then(() => null).catch(() => null)
@@ -176,12 +171,14 @@ describe('desktopBridge', () => {
   it('invokes current studio bridge channels for project and runtime actions', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce({ id: 'project-1' })
+      .mockResolvedValueOnce({ ok: true, canceled: true })
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
 
     window.qiuai = {
       channels: {
         STUDIO_CREATE_PROJECT: 'studio:create-project',
+        STUDIO_CANCEL_TASK: 'studio:cancel-task',
         STUDIO_PICK_INPUT_ASSETS: 'studio:pick-input-assets',
         STUDIO_CLEAR_RUNTIME_STATE: 'studio:clear-runtime-state'
       },
@@ -189,6 +186,7 @@ describe('desktopBridge', () => {
     }
 
     const {
+      cancelStudioTask,
       createStudioProject,
       pickStudioInputAssets,
       clearStudioRuntimeState
@@ -196,6 +194,10 @@ describe('desktopBridge', () => {
 
     await createStudioProject({
       productName: '露营灯'
+    })
+    await cancelStudioTask({
+      projectId: 'project-1',
+      taskId: 'task-1'
     })
     await pickStudioInputAssets({
       menuKey: 'workspace',
@@ -206,11 +208,15 @@ describe('desktopBridge', () => {
     expect(invoke).toHaveBeenNthCalledWith(1, 'studio:create-project', {
       productName: '露营灯'
     })
-    expect(invoke).toHaveBeenNthCalledWith(2, 'studio:pick-input-assets', {
+    expect(invoke).toHaveBeenNthCalledWith(2, 'studio:cancel-task', {
+      projectId: 'project-1',
+      taskId: 'task-1'
+    })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'studio:pick-input-assets', {
       menuKey: 'workspace',
       allowMultiple: true
     })
-    expect(invoke).toHaveBeenNthCalledWith(3, 'studio:clear-runtime-state', undefined)
+    expect(invoke).toHaveBeenNthCalledWith(4, 'studio:clear-runtime-state', undefined)
   })
 
   it('invokes remote activation and recharge channels through the desktop bridge', async () => {
