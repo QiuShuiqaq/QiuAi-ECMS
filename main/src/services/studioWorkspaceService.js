@@ -3527,7 +3527,6 @@ module.exports = {
   menuItems,
   batchOptions,
   imageModelOptions,
-  modelPricingCatalog,
   createStudioWorkspaceService
 }
 
