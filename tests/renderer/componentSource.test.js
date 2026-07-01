@@ -106,9 +106,10 @@ describe('component sources', () => {
     expect(purchaseCenterSource).toContain("emit('update-recharge-form'")
     expect(purchaseCenterSource).toContain("emit('create-recharge')")
     expect(purchaseCenterSource).toContain('purchase-center__recharge-form')
-    expect(purchaseCenterSource).toContain('Recharge Center')
-    expect(purchaseCenterSource).toContain('Software License')
-    expect(purchaseCenterSource).toContain('Compute Plans')
+    expect(purchaseCenterSource).toContain('Purchase Center')
+    expect(purchaseCenterSource).toContain('购买中心')
+    expect(purchaseCenterSource).toContain('授权套餐')
+    expect(purchaseCenterSource).toContain('算力套餐')
     expect(purchaseCenterSource).not.toContain('Manage software licenses, monthly compute packages, and direct balance recharge in one place')
 
     expect(promptLibrarySource).toContain('CATEGORY_ORDER')

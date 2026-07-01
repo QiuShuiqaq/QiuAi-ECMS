@@ -142,19 +142,28 @@ function registerLicenseIpc({
 
     const agreementRecord = createAcceptedAgreementRecord(activationStatus)
 
-    await remoteLicensePlatformClient.acceptUserAgreement({
-      sessionToken: await requireSessionToken(settingsService),
-      agreementTitle: agreementRecord.title,
-      agreementVersion: agreementRecord.version,
-      deviceId: agreementRecord.deviceCode,
-      source: agreementRecord.source
-    })
-
     await settingsService.saveSettings({
       compliance: {
         userAgreement: agreementRecord
       }
     })
+
+    // Remote syncing is best-effort only and must not block desktop usage.
+    try {
+      const sessionToken = await getSessionToken(settingsService)
+      const remoteAcceptUserAgreement = remoteLicensePlatformClient?.['acceptUserAgreement']
+      if (sessionToken && typeof remoteAcceptUserAgreement === 'function') {
+        await remoteAcceptUserAgreement({
+          sessionToken,
+          agreementTitle: agreementRecord.title,
+          agreementVersion: agreementRecord.version,
+          deviceId: agreementRecord.deviceCode,
+          source: agreementRecord.source
+        })
+      }
+    } catch (error) {
+      console.warn('[license] user agreement sync skipped:', error?.message || error)
+    }
 
     return getUserAgreementStatus({
       authorizationService,

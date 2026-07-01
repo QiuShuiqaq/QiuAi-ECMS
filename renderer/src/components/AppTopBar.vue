@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { openExternalResource } from '../services/desktopBridge'
 
 defineProps({
   brandLabel: {
@@ -19,7 +20,6 @@ defineProps({
 const emit = defineEmits(['cleanup-click', 'purchase-license-click', 'purchase-compute-click', 'purchase-recharge-click', 'show-model-pricing-click'])
 
 const wechatIconUrl = new URL('../../../icon/weixin.png', import.meta.url).href
-const enterpriseWechatIconUrl = new URL('../../../icon/qiyeweixin.png', import.meta.url).href
 
 const contactGroups = [
   {
@@ -33,18 +33,6 @@ const contactGroups = [
         url: new URL('../../../icon/Dockerfans.jpg', import.meta.url).href
       }
     ]
-  },
-  {
-    key: 'enterprise-wechat',
-    label: '企业微信',
-    iconUrl: enterpriseWechatIconUrl,
-    description: '点击图片查看企业微信联系方式',
-    images: [
-      {
-        name: 'Qiyeweixin',
-        url: new URL('../../../icon/Qiyeweixin.jpg', import.meta.url).href
-      }
-    ]
   }
 ]
 
@@ -54,12 +42,25 @@ const activeContactGroup = computed(() => {
   return contactGroups.find((item) => item.key === activeContactKey.value) || null
 })
 
+const websiteLabel = 'qiuaihub.com'
+const websiteUrl = 'https://qiuaihub.com'
+
 function openContactPreview(contactKey) {
   activeContactKey.value = contactKey
 }
 
 function closeContactPreview() {
   activeContactKey.value = ''
+}
+
+async function openOfficialWebsite() {
+  try {
+    await openExternalResource({ target: websiteUrl })
+  } catch {
+    if (typeof window !== 'undefined') {
+      window.open(websiteUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
 }
 </script>
 
@@ -111,6 +112,16 @@ function closeContactPreview() {
         >
           <img :src="contact.iconUrl" alt="" />
           <span>{{ contact.label }}</span>
+        </button>
+
+        <button
+          class="topbar-contact-button topbar-contact-button--link"
+          type="button"
+          :aria-label="websiteLabel"
+          :title="websiteLabel"
+          @click="openOfficialWebsite"
+        >
+          <span>{{ websiteLabel }}</span>
         </button>
       </div>
     </div>

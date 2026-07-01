@@ -157,9 +157,9 @@ describe('workspaceProjectRunService', () => {
       menuKey: 'workspace',
       resultPayload: {
         textResults: [
-          { kind: 'title', title: '鏍囬 1', content: '鏍囬鍊欓€?A' },
-          { kind: 'title', title: '鏍囬 2', content: '鏍囬鍊欓€?B' },
-          { kind: 'description', title: '鎻忚堪 1', content: '鎻忚堪鍊欓€?A' }
+          { kind: 'title', title: '标题 1', content: '标题候选 A' },
+          { kind: 'title', title: '标题 2', content: '标题候选 B' },
+          { kind: 'description', title: '描述 1', content: '描述候选 A' }
         ],
         groupedResults: []
       },
@@ -172,12 +172,12 @@ describe('workspaceProjectRunService', () => {
       completedAt: '2026-06-21T10:06:00.000Z'
     })
 
-    expect(completed.outputs.title).toBe('鏍囬鍊欓€?A')
-    expect(completed.outputs.description).toBe('鎻忚堪鍊欓€?A')
-    expect(completed.outputs.titleCandidates).toEqual(['鏍囬鍊欓€?A', '鏍囬鍊欓€?B'])
-    expect(completed.outputs.descriptionCandidates).toEqual(['鎻忚堪鍊欓€?A'])
-    expect(completed.outputs.selectedTitle).toBe('鏍囬鍊欓€?A')
-    expect(completed.outputs.selectedDescription).toBe('鎻忚堪鍊欓€?A')
+    expect(completed.outputs.title).toBe('标题候选 A')
+    expect(completed.outputs.description).toBe('描述候选 A')
+    expect(completed.outputs.titleCandidates).toEqual(['标题候选 A', '标题候选 B'])
+    expect(completed.outputs.descriptionCandidates).toEqual(['描述候选 A'])
+    expect(completed.outputs.selectedTitle).toBe('标题候选 A')
+    expect(completed.outputs.selectedDescription).toBe('描述候选 A')
   })
 
   it('marks workspace runs partial when some steps succeed and others fail', async () => {

@@ -30,6 +30,7 @@ describe('studio menu contract source', () => {
       'selection-center',
       'data-center',
       'template-center',
+      'publish-center',
       'title-generate',
       'description-generate',
       'series-generate',

@@ -337,7 +337,7 @@ describe('settingsStoreService', () => {
       image: {
         balanceCny: 0,
         permanentBalanceCny: 0,
-        syncStatus: 'success'
+        syncStatus: 'idle'
       },
       video: {
         balanceCny: 0,

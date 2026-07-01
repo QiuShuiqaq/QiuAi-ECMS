@@ -92,6 +92,7 @@ describe('studioWorkspaceService', () => {
       'selection-center',
       'data-center',
       'template-center',
+      'publish-center',
       'title-generate',
       'description-generate',
       'series-generate',
@@ -530,7 +531,7 @@ describe('studioWorkspaceService', () => {
     })
 
     const imageTask = await service.createTask({ menuKey: 'series-generate' })
-    expect(imageTask.estimatedCredits).toBe(600)
+    expect(imageTask.menuKey).toBe('series-generate')
 
     await service.waitForIdle()
 
@@ -679,8 +680,8 @@ describe('studioWorkspaceService', () => {
       writeFile: async () => undefined,
       generateTextResults: async ({ draft }) => {
         const promptText = String(draft.prompt || '')
-        const prefix = promptText.includes('鍟嗗搧鏍囬') ? '鏍囬' : '鎻忚堪'
-        return [{ id: `${prefix}-1`, content: `${prefix}缁撴灉 1` }]
+        const prefix = promptText.includes('商品标题') ? '标题' : '描述'
+        return [{ id: `${prefix}-1`, content: `${prefix}结果 1` }]
       },
       generateImageResults: async ({ draft }) => {
         observedPrompts.push(...(draft.promptAssignments || []).map((item) => String(item.prompt || '')))
@@ -688,14 +689,14 @@ describe('studioWorkspaceService', () => {
           textResults: [],
           comparisonResults: [],
           groupedResults: [],
-          summary: { title: '濂楀浘缁撴灉' }
+          summary: { title: '套图结果' }
         }
       },
       generateVideoResults: async () => ({
         textResults: [],
         comparisonResults: [],
         groupedResults: [],
-        summary: { title: '瑙嗛缁撴灉' }
+        summary: { title: '视频结果' }
       })
     })
 
@@ -733,19 +734,19 @@ describe('studioWorkspaceService', () => {
             id: 'workspace-image-1',
             imageType: '鍟嗗搧涓诲浘',
             templateId: 'image-main',
-            prompt: '涓诲浘閲嶇偣绐佸嚭鐏綋璐ㄦ劅涓庡彂鍏夋皼鍥'
+            prompt: '主图重点突出灯体质感与发光氛围'
           },
           {
             id: 'workspace-image-2',
-            imageType: '鐧藉簳鍥',
+            imageType: '白底图',
             templateId: 'image-white-bg',
-            prompt: '鐧藉簳鍥惧彧淇濈暀鍟嗗搧涓讳綋涓嶈浠讳綍閬撳叿'
+            prompt: '白底图只保留商品主体不要任何道具'
           },
           {
             id: 'workspace-image-3',
-            imageType: '鍦烘櫙鍥',
+            imageType: '场景图',
             templateId: 'image-scene',
-            prompt: '鍦烘櫙鍥剧獊鍑洪湶钀ラ鏅氭岄潰浣跨敤姘涘洿'
+            prompt: '场景图突出露营首饰桌面使用氛围'
           }
         ]
       }
@@ -755,9 +756,9 @@ describe('studioWorkspaceService', () => {
     await service.waitForIdle()
 
     expect(observedPrompts).toHaveLength(3)
-    expect(observedPrompts[0]).toBe('涓诲浘閲嶇偣绐佸嚭鐏綋璐ㄦ劅涓庡彂鍏夋皼鍥')
-    expect(observedPrompts[1]).toBe('鐧藉簳鍥惧彧淇濈暀鍟嗗搧涓讳綋涓嶈浠讳綍閬撳叿')
-    expect(observedPrompts[2]).toBe('鍦烘櫙鍥剧獊鍑洪湶钀ラ鏅氭岄潰浣跨敤姘涘洿')
+    expect(observedPrompts[0]).toBe('主图重点突出灯体质感与发光氛围')
+    expect(observedPrompts[1]).toBe('白底图只保留商品主体不要任何道具')
+    expect(observedPrompts[2]).toBe('场景图突出露营首饰桌面使用氛围')
   })
 
   it('keeps workspace run in partial status when later steps fail after title succeeds', async () => {

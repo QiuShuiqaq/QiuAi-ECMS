@@ -2637,6 +2637,9 @@ async function handleApplyProjectTemplate(template) {
       imageModel: payload?.parameters?.image?.model || formDrafts.value.workspace?.imageModel || 'gpt-image-2',
       videoModel: payload?.parameters?.video?.model || formDrafts.value.workspace?.videoModel || 'MiniMax-Hailuo-2.3-Fast',
       generateCount: payload?.parameters?.image?.generateCount || 4,
+      promptAssignments: Array.isArray(payload?.parameters?.image?.promptAssignments)
+        ? payload.parameters.image.promptAssignments
+        : formDrafts.value.workspace?.promptAssignments || [],
       size: payload?.parameters?.image?.size || '1:1',
       duration: payload?.parameters?.video?.duration || '6s',
       resolution: payload?.parameters?.video?.resolution || '768P',

@@ -199,7 +199,7 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenNthCalledWith(9, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/recharge/orders',
-      data: { sessionToken: 'session-1', walletType: 'image', amountCny: 100, channel: 'alipay', couponCode: '' }
+      data: { sessionToken: 'session-1', walletType: 'image', amountCny: 100, channel: 'alipay' }
     }))
     expect(request).toHaveBeenNthCalledWith(10, expect.objectContaining({
       method: 'get',
@@ -490,7 +490,6 @@ describe('qiuAiLicensePlatformClientService', () => {
         sessionToken: 'session-1',
         walletType: 'image',
         amountCny: 100.5,
-        couponCode: 'TEST',
         channel: 'alipay'
       }
     }))
