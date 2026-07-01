@@ -32,16 +32,6 @@ function handleMenuClick(menuKey) {
 
 <template>
   <section class="sidebar-shell module-scroll">
-    <div class="sidebar-shell__brand">
-      <div class="sidebar-shell__brand-mark">
-        <span class="sidebar-shell__brand-orb"></span>
-        <div class="sidebar-shell__brand-copy">
-          <span class="sidebar-shell__eyebrow">QiuAi ECMS</span>
-          <strong>QiuAi 客户端</strong>
-        </div>
-      </div>
-    </div>
-
     <div class="sidebar-shell__groups scrollbar-hidden">
       <section v-for="group in groupedMenuItems" :key="group.section" class="sidebar-group">
         <header class="sidebar-group__header">

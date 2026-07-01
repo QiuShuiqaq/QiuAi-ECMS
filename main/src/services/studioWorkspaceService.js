@@ -2,7 +2,6 @@
 const fsSync = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { pathToFileURL } = require('node:url')
 const axios = require('axios')
 const studioMenuConfig = require('../../../shared/studio-menu-config.json')
 const { createWorkspaceExportService } = require('./workspaceExportService')
@@ -25,6 +24,7 @@ const {
 } = require('./dataPathsService')
 const { persistSourceFiles } = require('./inputAssetStorageService')
 const { ensureDraftWithinCapability } = require('./packageCapabilityService')
+const { createLocalMediaPreviewUrl } = require('./localMediaPreviewService')
 
 const STUDIO_WORKSPACE_KEY = 'studioWorkspace'
 
@@ -73,15 +73,6 @@ const imageModelOptions = [
 const videoModelOptions = [
   { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
 ]
-
-const modelPricingCatalog = [
-  { name: 'nano-banana-fast', credits: '440 / 次' },
-  { name: 'gpt-image-2', credits: '600 / 次' },
-  { name: 'nano-banana-2', credits: '1200 / 次' }
-]
-const modelCreditCostMap = Object.fromEntries(modelPricingCatalog.map((item) => {
-  return [item.name, Number.parseInt(String(item.credits), 10) || 0]
-}))
 
 const batchOptions = [
   { label: '单批 4 个结果', value: 'batch-4' },
@@ -353,15 +344,7 @@ function formatDisplayDateTime(dateValue) {
 }
 
 function createPreviewUrlFromSavedPath(savedPath = '') {
-  if (!savedPath) {
-    return ''
-  }
-
-  try {
-    return pathToFileURL(path.resolve(savedPath)).href
-  } catch {
-    return ''
-  }
+  return createLocalMediaPreviewUrl(savedPath)
 }
 
 function hydratePreviewForDisplay(item = {}) {
@@ -479,6 +462,34 @@ function formatAssetSizeLabel(size = 0) {
 
 function hydrateProjectRunsForDisplay(projectRuns = []) {
   return normalizeProjectRuns(projectRuns).map((projectRun) => hydrateProjectRunForDisplay(projectRun))
+}
+
+function hydrateProductProjectForDisplay(project = {}) {
+  const normalizedProject = normalizeProductProject(project)
+  const assets = normalizedProject.assets || {}
+
+  return {
+    ...normalizedProject,
+    assets: {
+      ...assets,
+      sourceImages: Array.isArray(assets.sourceImages)
+        ? assets.sourceImages.map((item) => ({
+            ...item,
+            preview: item.preview || createPreviewUrlFromSavedPath(item.storedPath || item.path)
+          }))
+        : [],
+      generatedImages: Array.isArray(assets.generatedImages)
+        ? assets.generatedImages.map((item) => hydratePreviewForDisplay(item))
+        : [],
+      generatedVideo: assets.generatedVideo
+        ? hydratePreviewForDisplay(assets.generatedVideo)
+        : null
+    }
+  }
+}
+
+function hydrateProductProjectsForDisplay(productProjects = []) {
+  return normalizeProductProjects(productProjects).map((project) => hydrateProductProjectForDisplay(project))
 }
 
 function createDefaultDrafts() {
@@ -1590,27 +1601,6 @@ function countCurrentResults(resultPayload = {}) {
   return (resultPayload.textResults || []).length + (resultPayload.comparisonResults || []).length + groupedResultCount
 }
 
-function resolveModelCreditCost(modelName = '') {
-  return modelCreditCostMap[modelName] || 0
-}
-
-function estimateTaskCredits(menuKey, draft = {}) {
-  if (menuKey === 'workspace') {
-    const imageCost = Math.max(1, Number(draft.generateCount) || 4) * resolveModelCreditCost(draft.imageModel || 'gpt-image-2')
-    return draft.sourceImage ? imageCost : 0
-  }
-
-  if (menuKey === 'series-generate') {
-    return resolveGroupImageCount(menuKey, draft) * Math.max(1, Number(draft.batchCount) || 1) * resolveModelCreditCost(draft.model)
-  }
-
-  if (menuKey === 'video-generate') {
-    return 0
-  }
-
-  return 0
-}
-
 function createWorkspaceStepStates(enabledSteps = {}, nowIso = () => new Date().toISOString()) {
   return {
     title: enabledSteps.title
@@ -1681,6 +1671,7 @@ function buildWorkspaceExecutionContext(draft = {}) {
 
 function buildWorkspaceTitleTaskDraft(draft = {}, context = {}) {
   return {
+    taskKind: 'title',
     model: draft.model,
     quantity: Math.max(1, Number(draft.titleQuantity) || 1),
     prompt: [
@@ -1702,6 +1693,7 @@ function buildWorkspaceTitleTaskDraft(draft = {}, context = {}) {
 
 function buildWorkspaceDescriptionTaskDraft(draft = {}, context = {}, titleResults = []) {
   return {
+    taskKind: 'description',
     model: draft.model,
     quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
     prompt: [
@@ -2663,7 +2655,6 @@ function buildTaskRecord({
   batchCount,
   status,
   progress,
-  estimatedCredits = 0,
   error = '',
   groupImageCount = 0,
   totalSubtaskCount = 0,
@@ -2685,7 +2676,6 @@ function buildTaskRecord({
     batchCount,
     status,
     progress,
-    estimatedCredits,
     createdAt,
     inputDirectory,
     outputDirectory,
@@ -2723,7 +2713,6 @@ function buildQueuedTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt,
       : 1,
     status: '等待中',
     progress: 0,
-    estimatedCredits: estimateTaskCredits(menuKey, draft),
     ...groupedProgress
   })
 }
@@ -2792,7 +2781,6 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
       : 1,
     status: finalStatus,
     progress: 100,
-    estimatedCredits: estimateTaskCredits(menuKey, draft),
     error: normalizedErrorMessage,
     ...groupedProgress
   })
@@ -2816,7 +2804,6 @@ function buildFailedTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt,
       : 1,
     status: '失败',
     progress: 100,
-    estimatedCredits: estimateTaskCredits(menuKey, draft),
     error: errorMessage,
     ...groupedProgress
   })
@@ -3042,7 +3029,9 @@ function createStudioWorkspaceService({
     applyImageResultsToProject,
     applyVideoResultsToProject,
     attachProjectRunToProject: workspaceProjectRunService.attachProjectRunToProject,
-    normalizeImageAsset
+    normalizeImageAsset,
+    inputRootDirectory: INPUT_ROOT_DIRECTORY,
+    outputRootDirectory: OUTPUT_ROOT_DIRECTORY
   })
   const workspaceTaskExecutionService = createWorkspaceTaskExecutionService({
     createTaskExecutionController,
@@ -3142,6 +3131,7 @@ function createStudioWorkspaceService({
     refreshDashboardCredits: (...args) => workspaceCreditService.refreshDashboardCredits(...args),
     hydrateResultsByMenuForDisplay,
     hydrateProjectRunsForDisplay,
+    hydrateProductProjectsForDisplay,
     normalizeRequestMetrics,
     sortTasks,
     countCurrentResults,
@@ -3149,8 +3139,7 @@ function createStudioWorkspaceService({
     stateMenuItems: runtimeStateMenuItems,
     workspaceDashboardSections: publicWorkspaceDashboardSections,
     menuLabelMap: runtimeStateMenuLabelMap,
-    taskMenuMapByCategory: publicSnapshotTaskMenuMapByCategory,
-    modelCreditCostMap
+    taskMenuMapByCategory: publicSnapshotTaskMenuMapByCategory
   })
 
   async function persistTaskAndState({

@@ -63,19 +63,6 @@ const PLATFORM_CONFIGS = [
     }
   },
   {
-    key: 'sumaitong',
-    label: '速卖通',
-    apiBaseUrl: 'https://api.sumaitongshuju.com',
-    fixedSiteId: 1,
-    detailUrl: ({ goodsId }) => `https://www.aliexpress.us/item/${encodeURIComponent(String(goodsId || ''))}.html`,
-    defaultQuery: {
-      'hot-sale': { sort: 'totalSold', order: 'descend' },
-      'hot-sale-new': { sort: 'totalSold', order: 'descend', onSaleTimeMonthsAgo: 1 },
-      'new-mall-hot-sale': { sort: 'totalSold', order: 'descend', mallOpenTimeMonthsAgo: 1 },
-      'big-sale-new': { sort: 'mallSold', order: 'descend', onSaleTimeMonthsAgo: 1 }
-    }
-  },
-  {
     key: 'tiktok',
     label: 'TikTok',
     apiBaseUrl: 'https://api.tiktokshuju.com',
@@ -184,13 +171,56 @@ function normalizeManifest(rawManifest = {}) {
   }
 }
 
+function normalizeRemoteImageUrl(rawUrl = '', platformConfig = null) {
+  const normalizedUrl = String(rawUrl || '').trim()
+  if (!normalizedUrl) {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    return normalizedUrl
+  }
+
+  if (normalizedUrl.startsWith('//')) {
+    return `https:${normalizedUrl}`
+  }
+
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(normalizedUrl)) {
+    return `https://${normalizedUrl}`
+  }
+
+  if (normalizedUrl.startsWith('/')) {
+    const baseUrl = String(platformConfig?.apiBaseUrl || '').trim().replace(/\/+$/, '')
+    return baseUrl ? `${baseUrl}${normalizedUrl}` : normalizedUrl
+  }
+
+  return normalizedUrl
+}
+
+function normalizeCachedSelectionItem(item = {}, platformConfig = null) {
+  const source = item && typeof item === 'object' ? item : {}
+  return {
+    ...source,
+    primaryImageUrl: normalizeRemoteImageUrl(source.primaryImageUrl, platformConfig)
+  }
+}
+
+function normalizeCachedBoardItems(items = [], platformConfig = null) {
+  return (Array.isArray(items) ? items : []).map((item) => {
+    return normalizeCachedSelectionItem(item, platformConfig)
+  })
+}
+
 function normalizeSelectionItem(rawItem = {}, { platform = '', boardType = '' } = {}) {
   const source = rawItem && typeof rawItem === 'object' ? rawItem : {}
   const goodsId = String(source.goodsId || source.id || '').trim()
   const categoryItems = Array.isArray(source.catItems) ? source.catItems : []
   const leafCategory = categoryItems.length ? categoryItems[categoryItems.length - 1] : null
   const title = String(source.goodsNameCn || source.goodsNameEn || source.goodsName || '').trim()
-  const imageUrl = String(source.thumbnailCn || source.thumbnail || '').trim()
+  const imageUrl = normalizeRemoteImageUrl(
+    String(source.thumbnailCn || source.thumbnail || '').trim(),
+    PLATFORM_MAP.get(platform) || null
+  )
   const regionId = String(source.regionId || source.siteUID || 'us').trim().toLowerCase()
 
   return {
@@ -236,13 +266,6 @@ function getPrimarySortValue(item = {}, platformKey = '', boardType = '') {
       return Number(metrics.reviewNum) || Number(metrics.monthSold) || 0
     }
     return Number(metrics.monthSold) || Number(metrics.reviewNum) || 0
-  }
-
-  if (platformKey === 'sumaitong') {
-    if (boardType === 'big-sale-new') {
-      return Number(metrics.mallSold) || Number(metrics.totalSold) || 0
-    }
-    return Number(metrics.totalSold) || Number(metrics.monthSold) || Number(metrics.reviewNum) || 0
   }
 
   if (platformKey === 'tiktok') {
@@ -324,15 +347,17 @@ function applyPresentationFields(item = {}, platformKey = '', boardType = '', pl
 
 function normalizeBoardPayload(payload = {}) {
   const source = payload && typeof payload === 'object' ? payload : {}
+  const platform = String(source.platform || '').trim().toLowerCase()
+  const platformConfig = PLATFORM_MAP.get(platform) || null
   return {
-    platform: String(source.platform || '').trim().toLowerCase(),
+    platform,
     boardType: String(source.boardType || '').trim().toLowerCase(),
     boardLabel: String(source.boardLabel || '').trim(),
     siteCode: String(source.siteCode || '').trim().toLowerCase(),
     page: Math.max(1, Number(source.page) || 1),
     pageSize: Math.max(1, Number(source.pageSize) || SELECTION_PAGE_SIZE),
     totalItems: Math.max(0, Number(source.totalItems) || 0),
-    items: Array.isArray(source.items) ? source.items : [],
+    items: normalizeCachedBoardItems(source.items, platformConfig),
     capturedAt: typeof source.capturedAt === 'string' ? source.capturedAt : '',
     requestMeta: source.requestMeta && typeof source.requestMeta === 'object' ? source.requestMeta : {}
   }
@@ -849,7 +874,8 @@ function createSelectionCacheService() {
         return String(item?.id || '').trim() === normalizedId
       })
       if (matchedItem) {
-        return matchedItem
+        const platformConfig = PLATFORM_MAP.get(String(payload.platform || '').trim().toLowerCase()) || null
+        return normalizeCachedSelectionItem(matchedItem, platformConfig)
       }
     }
 
@@ -867,5 +893,6 @@ function createSelectionCacheService() {
 
 module.exports = {
   createSelectionCacheService,
-  normalizeBoardKey
+  normalizeBoardKey,
+  normalizeRemoteImageUrl
 }

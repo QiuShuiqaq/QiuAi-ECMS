@@ -9,6 +9,7 @@ function createWorkspaceSnapshotService({
   refreshDashboardCredits,
   hydrateResultsByMenuForDisplay,
   hydrateProjectRunsForDisplay,
+  hydrateProductProjectsForDisplay = (productProjects = []) => productProjects,
   normalizeRequestMetrics,
   sortTasks,
   countCurrentResults,
@@ -284,7 +285,7 @@ function createWorkspaceSnapshotService({
     return {
       themeMode: settings.themeMode || 'dark',
       menuItems,
-      productProjects: state.productProjects,
+      productProjects: hydrateProductProjectsForDisplay(state.productProjects),
       activeProductProjectId: state.activeProductProjectId,
       projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
       activeProjectRunId: state.activeProjectRunId,
@@ -315,7 +316,7 @@ function createWorkspaceSnapshotService({
     return {
       themeMode: settings.themeMode || 'dark',
       menuItems,
-      productProjects: state.productProjects,
+      productProjects: hydrateProductProjectsForDisplay(state.productProjects),
       activeProductProjectId: state.activeProductProjectId,
       projectRuns: state.projectRuns,
       activeProjectRunId: state.activeProjectRunId,
@@ -340,7 +341,7 @@ function createWorkspaceSnapshotService({
     } = buildBaseSnapshot()
 
     return {
-      productProjects: state.productProjects,
+      productProjects: hydrateProductProjectsForDisplay(state.productProjects),
       activeProductProjectId: state.activeProductProjectId,
       projectRuns: hydrateProjectRunsForDisplay(state.projectRuns),
       activeProjectRunId: state.activeProjectRunId,

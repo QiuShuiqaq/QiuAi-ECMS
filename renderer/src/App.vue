@@ -189,7 +189,7 @@ const computePackages = ref([])
 const rechargeForm = reactive({
   walletType: 'image',
   channel: 'alipay',
-  amountCny: '0.01',
+  amountCny: '1',
   couponCode: ''
 })
 const actionNotice = reactive({
@@ -873,6 +873,15 @@ async function refreshSelectionManifest({ silent = false } = {}) {
 async function loadSelectionAssistantState() {
   await refreshSelectionManifest()
   selectionPlatforms.value = await selectionClient.listPlatforms()
+  const availablePlatformKeys = new Set(selectionPlatforms.value.map((item) => String(item?.key || '').trim()).filter(Boolean))
+  if (availablePlatformKeys.size && !availablePlatformKeys.has(selectionItemsState.value.platform)) {
+    selectionItemsState.value = {
+      ...selectionItemsState.value,
+      platform: selectionPlatforms.value[0]?.key || 'temu',
+      siteCode: '',
+      page: 1
+    }
+  }
   await refreshSelectionSites(selectionItemsState.value.platform)
   await refreshSelectionItems()
 }

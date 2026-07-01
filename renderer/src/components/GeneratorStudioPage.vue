@@ -441,7 +441,7 @@ function formatTaskLabel(task) {
               <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
             </select>
           </div>
-          <div class="generator-form__card">
+          <div class="generator-form__card generator-form__card--full">
             <textarea :value="currentVideoPromptValue" rows="10" placeholder="视频提示词" @input="updateField('prompt', $event.target.value)"></textarea>
           </div>
         </div>

@@ -499,6 +499,12 @@ function resolveTextMaxTokens(draft = {}) {
 function buildTextPayload({ draft, sessionToken }) {
   const quantity = clampNumber(draft.quantity, 1, 20, 1)
   const model = trimString(draft.model || 'deepseek-chat')
+  const taskKind = trimString(draft.taskKind || '').toLowerCase()
+  const titlePrefix = taskKind === 'description'
+    ? 'Description'
+    : taskKind === 'title'
+      ? 'Title'
+      : 'Text'
 
   return {
     sessionToken,
@@ -524,8 +530,9 @@ function buildTextPayload({ draft, sessionToken }) {
             providerType: 'DEEPSEEK',
             providerModel: model,
             inputSnapshot: {
+              taskKind,
               quantity,
-              titlePrefix: 'Text',
+              titlePrefix,
               systemPrompt: buildTextSystemPrompt(),
               userPrompt: buildTextUserPrompt(draft),
               maxTokens: resolveTextMaxTokens(draft),

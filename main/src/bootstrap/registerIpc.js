@@ -90,12 +90,14 @@ function registerIpc() {
     settingsService
   })
   registerPromptIpc({ promptTemplateService })
-  registerProjectTemplateIpc({ projectTemplateService })
+  registerProjectTemplateIpc({ projectTemplateService, activationGuard })
   registerPublishIpc({
-    publishDraftService
+    publishDraftService,
+    activationGuard
   })
   registerSelectionIpc({
-    selectionCacheService
+    selectionCacheService,
+    activationGuard
   })
   registerStudioIpc({
     studioWorkspaceService,

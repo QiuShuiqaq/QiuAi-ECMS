@@ -1109,6 +1109,16 @@ select optgroup {
   background: rgba(255, 255, 255, 0.025);
 }
 
+.generator-form__card--full {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.generator-form__card--full textarea {
+  width: 100%;
+}
+
 .generator-form__row {
   display: grid;
   gap: 8px;

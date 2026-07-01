@@ -149,98 +149,100 @@ function handleRefresh() {
       </div>
     </header>
 
-    <section class="data-center-page__panel">
-      <header class="data-center-page__panel-header">
-        <strong>{{ copy.walletTitle }}</strong>
-        <button
-          class="data-center-page__refresh-button"
-          type="button"
-          :disabled="isRefreshingBalances"
-          @click="handleRefresh"
-        >
-          {{ isRefreshingBalances ? copy.refreshing : copy.refresh }}
-        </button>
-      </header>
+    <div class="data-center-page__asset-grid">
+      <section class="data-center-page__panel data-center-page__asset-panel">
+        <header class="data-center-page__panel-header">
+          <strong>{{ copy.walletTitle }}</strong>
+          <button
+            class="data-center-page__refresh-button"
+            type="button"
+            :disabled="isRefreshingBalances"
+            @click="handleRefresh"
+          >
+            {{ isRefreshingBalances ? copy.refreshing : copy.refresh }}
+          </button>
+        </header>
 
-      <div class="data-center-page__wallet-grid">
-        <article v-for="panel in walletPanels" :key="panel.key" class="data-center-page__wallet-card">
-          <header class="data-center-page__wallet-card-header">
-            <strong>{{ panel.title }}</strong>
-          </header>
-          <div class="data-center-page__wallet-rows">
-            <div v-for="row in panel.rows" :key="`${panel.key}-${row.key}`" class="data-center-page__wallet-row">
-              <span>{{ row.label }}</span>
-              <div class="data-center-page__wallet-row-value">
-                <strong>{{ row.value }}</strong>
-                <small>{{ copy.unit }}</small>
+        <div class="data-center-page__wallet-grid">
+          <article v-for="panel in walletPanels" :key="panel.key" class="data-center-page__wallet-card">
+            <header class="data-center-page__wallet-card-header">
+              <strong>{{ panel.title }}</strong>
+            </header>
+            <div class="data-center-page__wallet-rows">
+              <div v-for="row in panel.rows" :key="`${panel.key}-${row.key}`" class="data-center-page__wallet-row">
+                <span>{{ row.label }}</span>
+                <div class="data-center-page__wallet-row-value">
+                  <strong>{{ row.value }}</strong>
+                  <small>{{ copy.unit }}</small>
+                </div>
               </div>
             </div>
-          </div>
-        </article>
-      </div>
-    </section>
+          </article>
+        </div>
+      </section>
 
-    <section class="data-center-page__panel">
-      <header class="data-center-page__panel-header">
-        <strong>{{ copy.historyTitle }}</strong>
-        <span>{{ historicalAssets.length }} {{ copy.projectCountSuffix }}</span>
-      </header>
+      <section class="data-center-page__panel data-center-page__asset-panel">
+        <header class="data-center-page__panel-header">
+          <strong>{{ copy.historyTitle }}</strong>
+          <span>{{ historicalAssets.length }} {{ copy.projectCountSuffix }}</span>
+        </header>
 
-      <div v-if="historicalAssets.length" class="data-center-page__project-list">
-        <article
-          v-for="item in historicalAssets"
-          :key="item.id"
-          class="data-center-page__project-card"
-        >
-          <div class="data-center-page__project-copy">
-            <strong>{{ item.name }}</strong>
-            <span>{{ copy.updatedAtPrefix }} {{ formatDateTime(item.updatedAt) }}</span>
-          </div>
+        <div v-if="historicalAssets.length" class="data-center-page__project-list">
+          <article
+            v-for="item in historicalAssets"
+            :key="item.id"
+            class="data-center-page__project-card"
+          >
+            <div class="data-center-page__project-copy">
+              <strong>{{ item.name }}</strong>
+              <span>{{ copy.updatedAtPrefix }} {{ formatDateTime(item.updatedAt) }}</span>
+            </div>
 
-          <div class="data-center-page__project-metrics">
-            <span>{{ copy.titleMetric }} {{ item.hasTitle ? '1' : '0' }}</span>
-            <span>{{ copy.descriptionMetric }} {{ item.hasDescription ? '1' : '0' }}</span>
-            <span>{{ copy.imageMetric }} {{ item.imageCount }}</span>
-            <span>{{ copy.videoMetric }} {{ item.videoCount }}</span>
-          </div>
-        </article>
-      </div>
+            <div class="data-center-page__project-metrics">
+              <span>{{ copy.titleMetric }} {{ item.hasTitle ? '1' : '0' }}</span>
+              <span>{{ copy.descriptionMetric }} {{ item.hasDescription ? '1' : '0' }}</span>
+              <span>{{ copy.imageMetric }} {{ item.imageCount }}</span>
+              <span>{{ copy.videoMetric }} {{ item.videoCount }}</span>
+            </div>
+          </article>
+        </div>
 
-      <div v-else class="data-center-page__empty">
-        <strong>{{ copy.emptyTitle }}</strong>
-        <span>{{ copy.emptyDescription }}</span>
-      </div>
-    </section>
+        <div v-else class="data-center-page__empty">
+          <strong>{{ copy.emptyTitle }}</strong>
+          <span>{{ copy.emptyDescription }}</span>
+        </div>
+      </section>
 
-    <section class="data-center-page__panel">
-      <header class="data-center-page__panel-header">
-        <strong>{{ copy.usageTitle }}</strong>
-      </header>
+      <section class="data-center-page__panel data-center-page__asset-panel">
+        <header class="data-center-page__panel-header">
+          <strong>{{ copy.usageTitle }}</strong>
+        </header>
 
-      <div v-if="usageRecords.length" class="data-center-page__usage-list">
-        <article
-          v-for="item in usageRecords"
-          :key="item.id"
-          class="data-center-page__usage-card"
-        >
-          <div class="data-center-page__project-copy">
-            <strong>{{ item.name }}</strong>
-            <span>{{ copy.updatedAtPrefix }} {{ formatDateTime(item.billedAt) }}</span>
-          </div>
+        <div v-if="usageRecords.length" class="data-center-page__usage-list">
+          <article
+            v-for="item in usageRecords"
+            :key="item.id"
+            class="data-center-page__usage-card"
+          >
+            <div class="data-center-page__project-copy">
+              <strong>{{ item.name }}</strong>
+              <span>{{ copy.updatedAtPrefix }} {{ formatDateTime(item.billedAt) }}</span>
+            </div>
 
-          <div class="data-center-page__usage-lines">
-            <span v-for="(line, index) in item.lines" :key="`${item.id}-${index}`">
-              {{ line.label }} {{ Number(line.amountCny || 0).toFixed(2) }} CNY
-            </span>
-            <span class="data-center-page__usage-total">{{ copy.totalCost }} {{ item.totalAmountCny }} CNY</span>
-          </div>
-        </article>
-      </div>
+            <div class="data-center-page__usage-lines">
+              <span v-for="(line, index) in item.lines" :key="`${item.id}-${index}`">
+                {{ line.label }} {{ Number(line.amountCny || 0).toFixed(2) }} CNY
+              </span>
+              <span class="data-center-page__usage-total">{{ copy.totalCost }} {{ item.totalAmountCny }} CNY</span>
+            </div>
+          </article>
+        </div>
 
-      <div v-else class="data-center-page__empty">
-        <strong>{{ copy.noUsage }}</strong>
-      </div>
-    </section>
+        <div v-else class="data-center-page__empty">
+          <strong>{{ copy.noUsage }}</strong>
+        </div>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -263,7 +265,7 @@ function handleRefresh() {
 
 .data-center-page__hero,
 .data-center-page__panel {
-  padding: 22px;
+  padding: 16px;
 }
 
 .data-center-page__eyebrow {
@@ -293,18 +295,41 @@ function handleRefresh() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+.data-center-page__asset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.data-center-page__asset-panel {
+  min-height: 0;
 }
 
 .data-center-page__panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.data-center-page__panel-header strong,
+.data-center-page__panel-header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-center-page__refresh-button {
-  min-height: 34px;
-  padding: 0 14px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
   border: 1px solid rgba(118, 173, 255, 0.28);
   border-radius: 999px;
   background: rgba(26, 36, 58, 0.9);
@@ -325,71 +350,91 @@ function handleRefresh() {
 
 .data-center-page__wallet-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .data-center-page__wallet-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
 }
 
 .data-center-page__wallet-card-header strong {
-  font-size: 18px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
 }
 
 .data-center-page__wallet-rows {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .data-center-page__wallet-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(36px, 0.7fr) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border-radius: 16px;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
   background: rgba(9, 13, 23, 0.72);
+}
+
+.data-center-page__wallet-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-center-page__wallet-row-value {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 5px;
 }
 
 .data-center-page__wallet-row-value strong {
-  font-size: 22px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 17px;
+  line-height: 1;
 }
 
-.data-center-page__project-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.data-center-page__wallet-row-value small {
+  flex: 0 0 auto;
+  font-size: 10px;
 }
 
+.data-center-page__project-list,
 .data-center-page__usage-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  max-height: 430px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
-.data-center-page__project-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
+.data-center-page__project-card,
+.data-center-page__usage-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
 }
 
 .data-center-page__usage-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
   border-radius: 22px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(14, 18, 30, 0.88);
@@ -403,33 +448,43 @@ function handleRefresh() {
 
 .data-center-page__project-copy {
   flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.data-center-page__project-copy strong,
+.data-center-page__project-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .data-center-page__project-metrics {
   flex-wrap: wrap;
   align-items: center;
+  gap: 8px;
 }
 
 .data-center-page__usage-lines {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
-.data-center-page__project-metrics span {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(9, 13, 23, 0.72);
-  color: rgba(226, 232, 244, 0.9);
-}
-
+.data-center-page__project-metrics span,
 .data-center-page__usage-lines span {
-  padding: 8px 12px;
+  max-width: 100%;
+  padding: 6px 9px;
   border-radius: 999px;
   background: rgba(9, 13, 23, 0.72);
   color: rgba(226, 232, 244, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .data-center-page__usage-total {
@@ -444,7 +499,7 @@ function handleRefresh() {
 }
 
 @media (max-width: 1080px) {
-  .data-center-page__wallet-grid {
+  .data-center-page__asset-grid {
     grid-template-columns: 1fr;
   }
 

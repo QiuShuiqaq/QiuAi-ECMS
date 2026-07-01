@@ -2,7 +2,6 @@ const selectionPlatforms = [
   'temu',
   'shein',
   'amazon',
-  'sumaitong',
   'tiktok',
   'shopee'
 ]

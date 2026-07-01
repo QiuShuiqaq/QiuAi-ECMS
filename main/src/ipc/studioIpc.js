@@ -35,6 +35,10 @@ function resolveUploadDefaultPath (settingsService, menuKey = '') {
 }
 
 function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceService, activationGuard }) {
+  async function requireActivated () {
+    await activationGuard?.assertActivated?.()
+  }
+
   ipcMain.handle(ipcChannels.STUDIO_GET_SNAPSHOT, async () => {
     return studioWorkspaceService.getDisplaySnapshot()
   })
@@ -44,19 +48,22 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   })
 
   ipcMain.handle(ipcChannels.STUDIO_CREATE_PROJECT, async (_event, payload = {}) => {
-    await activationGuard?.assertActivated?.()
+    await requireActivated()
     return studioWorkspaceService.createProject(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_UPDATE_PROJECT, async (_event, payload = {}) => {
+    await requireActivated()
     return studioWorkspaceService.updateProject(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_DELETE_PROJECT, async (_event, payload = {}) => {
+    await requireActivated()
     return studioWorkspaceService.deleteProject(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_EXPORT_PROJECT_BUNDLE, async (_event, payload = {}) => {
+    await requireActivated()
     const snapshot = studioWorkspaceService.getSnapshot()
     const project = (snapshot.productProjects || []).find((item) => item.id === payload.projectId)
 
@@ -89,20 +96,22 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   })
 
   ipcMain.handle(ipcChannels.STUDIO_SAVE_DRAFT, async (_event, payload = {}) => {
+    await requireActivated()
     return studioWorkspaceService.saveDraft(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_CREATE_TASK, async (_event, payload = {}) => {
-    await activationGuard?.assertActivated?.()
+    await requireActivated()
     return studioWorkspaceService.createTask(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_CANCEL_TASK, async (_event, payload = {}) => {
-    await activationGuard?.assertActivated?.()
+    await requireActivated()
     return studioWorkspaceService.cancelTask(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_PICK_INPUT_ASSETS, async (_event, payload = {}) => {
+    await requireActivated()
     const result = await dialog.showOpenDialog({
       defaultPath: resolveUploadDefaultPath(settingsService, payload.menuKey),
       properties: payload.allowMultiple ? ['openFile', 'multiSelections'] : ['openFile'],
@@ -121,14 +130,17 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   })
 
   ipcMain.handle(ipcChannels.STUDIO_OPEN_OUTPUT_DIRECTORY, async (_event, payload = {}) => {
+    await requireActivated()
     return openOutputDirectory(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_OPEN_EXTERNAL_RESOURCE, async (_event, payload = {}) => {
+    await requireActivated()
     return openExternalResource(payload)
   })
 
   ipcMain.handle(ipcChannels.STUDIO_CLEAR_RUNTIME_STATE, async () => {
+    await requireActivated()
     const clearedState = await studioWorkspaceService.clearRuntimeState()
     await dataTraceService?.clearRuntimeFiles?.()
 
@@ -136,6 +148,7 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   })
 
   ipcMain.handle(ipcChannels.STUDIO_EXPORT_RESULTS, async (_event, payload = {}) => {
+    await requireActivated()
     const snapshot = studioWorkspaceService.getSnapshot()
     const exportItems = snapshot.exportItemsByMenu?.[payload.menuKey] || []
     const selectedIdSet = new Set(Array.isArray(payload.selectedExportIds) ? payload.selectedExportIds : [])

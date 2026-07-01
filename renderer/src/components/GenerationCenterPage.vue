@@ -70,6 +70,8 @@ const emit = defineEmits([
 const inspectedProjectId = ref('')
 const storageSortMode = ref('updated-desc')
 const storageRefreshToken = ref(0)
+const queuePage = ref(1)
+const queuePageSize = 5
 const storageContextMenu = ref({
   visible: false,
   x: 0,
@@ -431,6 +433,45 @@ function resolveProjectContent(project = {}, latestRun = null) {
   }
 }
 
+function resolveLocalMediaUrl(value = '') {
+  const source = String(value || '').trim()
+  if (!source) return ''
+  if (/^(data|https?|file):/i.test(source)) return source
+
+  const normalizedPath = source.replace(/\\/g, '/')
+  if (/^[A-Za-z]:\//.test(normalizedPath)) {
+    return `file:///${encodeURI(normalizedPath)}`
+  }
+  if (normalizedPath.startsWith('/')) {
+    return `file://${encodeURI(normalizedPath)}`
+  }
+
+  return source
+}
+
+function resolveMediaPreview(item = {}) {
+  return resolveLocalMediaUrl(item.preview || item.thumbnail || item.savedPath || item.path || item.sourceUrl || item.downloadUrl || '')
+}
+
+function resolveFileName(value = '') {
+  const source = String(value || '').trim()
+  if (!source) return '未命名文件'
+  return source.replace(/\\/g, '/').split('/').filter(Boolean).pop() || source
+}
+
+function resolveVideoInfoRows(video = null) {
+  if (!video) return []
+  const savedPath = String(video.savedPath || video.path || '').trim()
+  const rows = [
+    { key: 'name', label: '文件', value: video.title || video.name || resolveFileName(savedPath) },
+    { key: 'format', label: '格式', value: resolveFileName(savedPath).split('.').pop()?.toUpperCase() || 'MP4' },
+    { key: 'model', label: '模型', value: video.model || video.modelName || '' },
+    { key: 'size', label: '大小', value: video.sizeLabel || '' },
+    { key: 'path', label: '位置', value: savedPath }
+  ]
+  return rows.filter((item) => String(item.value || '').trim())
+}
+
 function resolvePackageStatus(content) {
   const completedCount = [
     content.titleText,
@@ -557,8 +598,8 @@ const projectStorageRows = computed(() => {
   })
 })
 
-const queueRows = computed(() => {
-  return sortedProjects.value.slice(0, 12).map((project) => {
+const allQueueRows = computed(() => {
+  return sortedProjects.value.map((project) => {
     const latestRun = projectRunMap.value.get(project.latestRunId) || null
     const status = resolveLatestRunStatus(latestRun)
     const queuePercent = resolveQueueProgress(project, latestRun)
@@ -579,17 +620,34 @@ const queueRows = computed(() => {
   })
 })
 
+const queueTotalPages = computed(() => {
+  return Math.max(1, Math.ceil(allQueueRows.value.length / queuePageSize))
+})
+
+const activeQueuePage = computed(() => {
+  return Math.min(queueTotalPages.value, Math.max(1, queuePage.value))
+})
+
+const queueRows = computed(() => {
+  const startIndex = (activeQueuePage.value - 1) * queuePageSize
+  return allQueueRows.value.slice(startIndex, startIndex + queuePageSize)
+})
+
 const queueSummary = computed(() => {
   let queuedCount = 0
   let runningCount = 0
 
-  queueRows.value.forEach((item) => {
+  allQueueRows.value.forEach((item) => {
     if (item.status === '排队中') queuedCount += 1
     if (item.status === '生成中') runningCount += 1
   })
 
-  return { queuedCount, runningCount, totalCount: queueRows.value.length }
+  return { queuedCount, runningCount, totalCount: allQueueRows.value.length }
 })
+
+function goToQueuePage(nextPage = 1) {
+  queuePage.value = Math.min(queueTotalPages.value, Math.max(1, Number(nextPage) || 1))
+}
 
 function updateDraftPatch(patch = {}) {
   Object.entries(patch || {}).forEach(([field, value]) => {
@@ -1086,25 +1144,6 @@ function resolveStageMenuKey(stage = '') {
                 @input="handleProjectGenerateCountChange($event.target.value)"
               />
             </div>
-            <div
-              v-for="assignment in resolveProjectImageAssignments()"
-              :key="assignment.id"
-              class="generator-form__row"
-            >
-              <span class="generator-form__label">图片模板 {{ assignment.index }}</span>
-              <select
-                :value="assignment.templateId"
-                @change="handleProjectImageTemplateChange(assignment.index - 1, $event.target.value)"
-              >
-                <option
-                  v-for="option in seriesImageTemplateOptions"
-                  :key="option.templateId"
-                  :value="option.templateId"
-                >
-                  {{ option.imageType }}
-                </option>
-              </select>
-            </div>
             <div class="generator-form__row">
               <span class="generator-form__label">图片模型</span>
               <select
@@ -1129,15 +1168,32 @@ function resolveStageMenuKey(stage = '') {
             </div>
             <div
               v-for="assignment in resolveProjectImageAssignments()"
-              :key="`${assignment.id}-prompt`"
-              class="generator-form__card work-center-studio__prompt-card"
+              :key="assignment.id"
+              class="generator-form__card work-center-studio__image-assignment-card"
             >
-              <textarea
-                :value="assignment.prompt || ''"
-                rows="5"
-                :placeholder="`图片模板 ${assignment.index} 提示词`"
-                @input="handleProjectImagePromptChange(assignment.index - 1, $event.target.value)"
-              ></textarea>
+              <div class="generator-form__row work-center-studio__image-assignment-select">
+                <span class="generator-form__label">图片模板 {{ assignment.index }}</span>
+                <select
+                  :value="assignment.templateId"
+                  @change="handleProjectImageTemplateChange(assignment.index - 1, $event.target.value)"
+                >
+                  <option
+                    v-for="option in seriesImageTemplateOptions"
+                    :key="option.templateId"
+                    :value="option.templateId"
+                  >
+                    {{ option.imageType }}
+                  </option>
+                </select>
+              </div>
+              <div class="work-center-studio__prompt-card">
+                <textarea
+                  :value="assignment.prompt || ''"
+                  rows="5"
+                  :placeholder="`图片模板 ${assignment.index} 提示词`"
+                  @input="handleProjectImagePromptChange(assignment.index - 1, $event.target.value)"
+                ></textarea>
+              </div>
             </div>
           </div>
         </div>
@@ -1310,17 +1366,19 @@ function resolveStageMenuKey(stage = '') {
               @dblclick="handleOpenStorageFolder(item.project)"
               @contextmenu.prevent.stop="handleOpenStorageContextMenu($event, item)"
             >
-              <span class="work-center-studio__folder-icon" aria-hidden="true"></span>
+              <span class="work-center-studio__folder-top">
+                <span class="work-center-studio__folder-icon" aria-hidden="true"></span>
+                <span class="work-center-studio__folder-stats">
+                  <span>{{ item.status }}</span>
+                  <span>T{{ item.titleCount }}</span>
+                  <span>D{{ item.descriptionCount }}</span>
+                  <span>I{{ item.imageCount }}</span>
+                  <span>V{{ item.videoCount }}</span>
+                </span>
+              </span>
               <span class="work-center-studio__folder-copy">
                 <strong class="work-center-studio__folder-name">{{ item.name }}</strong>
                 <span class="work-center-studio__folder-meta">{{ resolveTimeLabel(item.updatedAt) }}</span>
-              </span>
-              <span class="work-center-studio__folder-stats">
-                <span>{{ item.status }}</span>
-                <span>T{{ item.titleCount }}</span>
-                <span>D{{ item.descriptionCount }}</span>
-                <span>I{{ item.imageCount }}</span>
-                <span>V{{ item.videoCount }}</span>
               </span>
             </button>
 
@@ -1370,21 +1428,41 @@ function resolveStageMenuKey(stage = '') {
                 <span>{{ resolveWorkspaceFailureSummary(inspectedProjectEntry.latestRun).join('；') }}</span>
               </div>
               <div class="work-center-studio__inspect-grid">
-                <div class="work-center-studio__inspect-cell">
-                  <span>标题</span>
-                  <button class="work-center-studio__inspect-copy" type="button" @click="emit('copy-text', resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).titleText)">
+                <div class="work-center-studio__inspect-cell work-center-studio__inspect-cell--wide">
+                  <div class="work-center-studio__inspect-cell-head">
+                    <span>标题</span>
+                    <button
+                      class="secondary-action work-center-studio__mini-button"
+                      type="button"
+                      :disabled="!resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).titleText"
+                      @click="emit('copy-text', resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).titleText)"
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <p class="work-center-studio__inspect-text">
                     {{ resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).titleText || '暂无标题结果' }}
-                  </button>
+                  </p>
                 </div>
-                <div class="work-center-studio__inspect-cell">
-                  <span>描述</span>
-                  <button class="work-center-studio__inspect-copy" type="button" @click="emit('copy-text', resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).descriptionText)">
+                <div class="work-center-studio__inspect-cell work-center-studio__inspect-cell--wide">
+                  <div class="work-center-studio__inspect-cell-head">
+                    <span>描述</span>
+                    <button
+                      class="secondary-action work-center-studio__mini-button"
+                      type="button"
+                      :disabled="!resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).descriptionText"
+                      @click="emit('copy-text', resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).descriptionText)"
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <p class="work-center-studio__inspect-text work-center-studio__inspect-text--description">
                     {{ resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).descriptionText || '暂无描述结果' }}
-                  </button>
+                  </p>
                 </div>
-                <div class="work-center-studio__inspect-cell">
-                  <span>套图</span>
-                  <div class="work-center-studio__inspect-action-stack">
+                <div class="work-center-studio__inspect-cell work-center-studio__inspect-cell--wide">
+                  <div class="work-center-studio__inspect-cell-head">
+                    <span>套图</span>
                     <strong>{{ resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedImages.length }} 张</strong>
                     <button
                       class="secondary-action work-center-studio__mini-button"
@@ -1395,10 +1473,31 @@ function resolveStageMenuKey(stage = '') {
                       查看
                     </button>
                   </div>
+                  <div
+                    v-if="resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedImages.length"
+                    class="work-center-studio__inspect-image-grid"
+                  >
+                    <article
+                      v-for="(image, imageIndex) in resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedImages"
+                      :key="image.id || image.savedPath || image.path || imageIndex"
+                      class="work-center-studio__inspect-image-card"
+                    >
+                      <img
+                        v-if="resolveMediaPreview(image)"
+                        :src="resolveMediaPreview(image)"
+                        :alt="image.title || image.name || `套图 ${imageIndex + 1}`"
+                      >
+                      <div v-else class="work-center-studio__inspect-image-empty">
+                        无预览
+                      </div>
+                      <span>{{ image.title || image.name || resolveFileName(image.savedPath || image.path) || `套图 ${imageIndex + 1}` }}</span>
+                    </article>
+                  </div>
+                  <div v-else class="work-center-studio__inspect-empty-line">暂无套图结果</div>
                 </div>
-                <div class="work-center-studio__inspect-cell">
-                  <span>视频</span>
-                  <div class="work-center-studio__inspect-action-stack">
+                <div class="work-center-studio__inspect-cell work-center-studio__inspect-cell--wide">
+                  <div class="work-center-studio__inspect-cell-head">
+                    <span>视频</span>
                     <strong>{{ resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedVideo ? '已生成' : '未生成' }}</strong>
                     <button
                       class="secondary-action work-center-studio__mini-button"
@@ -1409,6 +1508,19 @@ function resolveStageMenuKey(stage = '') {
                       查看
                     </button>
                   </div>
+                  <div
+                    v-if="resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedVideo"
+                    class="work-center-studio__inspect-video-info"
+                  >
+                    <div
+                      v-for="row in resolveVideoInfoRows(resolveProjectContent(inspectedProjectEntry.project, inspectedProjectEntry.latestRun).generatedVideo)"
+                      :key="row.key"
+                    >
+                      <span>{{ row.label }}</span>
+                      <strong>{{ row.value }}</strong>
+                    </div>
+                  </div>
+                  <div v-else class="work-center-studio__inspect-empty-line">暂无视频结果</div>
                 </div>
               </div>
               <div class="work-center-studio__inspect-actions">
@@ -1485,6 +1597,26 @@ function resolveStageMenuKey(stage = '') {
               <div v-if="!queueRows.length" class="product-result-empty product-result-empty--compact">
                 <span>当前没有项目任务</span>
               </div>
+            </div>
+
+            <div class="work-center-studio__queue-pagination">
+              <button
+                class="secondary-action work-center-studio__queue-page-button"
+                type="button"
+                :disabled="activeQueuePage <= 1"
+                @click="goToQueuePage(activeQueuePage - 1)"
+              >
+                上一页
+              </button>
+              <span>{{ activeQueuePage }} / {{ queueTotalPages }}</span>
+              <button
+                class="secondary-action work-center-studio__queue-page-button"
+                type="button"
+                :disabled="activeQueuePage >= queueTotalPages"
+                @click="goToQueuePage(activeQueuePage + 1)"
+              >
+                下一页
+              </button>
             </div>
           </section>
 
@@ -1608,6 +1740,20 @@ function resolveStageMenuKey(stage = '') {
 
 .work-center-studio__prompt-card {
   grid-column: 1 / -1;
+}
+
+.work-center-studio__image-assignment-card {
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 12px;
+  border-color: rgba(100, 186, 255, 0.12);
+  background: rgba(9, 13, 23, 0.42);
+}
+
+.work-center-studio__image-assignment-select {
+  grid-template-columns: minmax(86px, 0.34fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
 }
 
 .work-center-studio__stage-heading {
@@ -1893,11 +2039,12 @@ function resolveStageMenuKey(stage = '') {
 }
 
 .work-center-studio__queue-status-stack {
-  display: grid;
-  justify-items: end;
+  display: inline-grid;
+  justify-items: start;
   align-content: start;
   gap: 6px;
-  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .work-center-studio__queue-error-badge {
@@ -1940,6 +2087,7 @@ function resolveStageMenuKey(stage = '') {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+  overflow: hidden;
   gap: 10px;
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2011,7 +2159,8 @@ function resolveStageMenuKey(stage = '') {
 .work-center-studio__queue-panel {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
 }
 
 .work-center-studio__queue-summary {
@@ -2030,32 +2179,41 @@ function resolveStageMenuKey(stage = '') {
 }
 
 .work-center-studio__queue-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-auto-rows: 108px;
   gap: 8px;
   min-height: 0;
-  overflow: auto;
-  padding-right: 4px;
+  max-height: calc(108px * 5 + 8px * 4);
+  overflow: hidden;
 }
 
 .work-center-studio__folder-workspace {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 14px;
   align-content: start;
+  align-items: start;
+  height: 100%;
   min-height: 0;
-  max-height: 220px;
-  overflow: auto;
-  padding-right: 4px;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 4px 20px 0;
+  scrollbar-width: none;
+}
+
+.work-center-studio__folder-workspace::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .work-center-studio__folder-item {
   display: grid;
   grid-template-columns: 1fr;
   justify-items: stretch;
-  gap: 8px;
-  min-height: 132px;
-  padding: 12px;
+  gap: 9px;
+  min-height: 112px;
+  padding: 11px;
   border: 1px solid transparent;
   border-radius: 16px;
   background: transparent;
@@ -2063,6 +2221,14 @@ function resolveStageMenuKey(stage = '') {
   text-align: left;
   cursor: pointer;
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.work-center-studio__folder-top {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .work-center-studio__folder-item:hover {
@@ -2131,16 +2297,22 @@ function resolveStageMenuKey(stage = '') {
 .work-center-studio__folder-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: auto;
+  align-content: center;
+  column-gap: 6px;
+  row-gap: 6px;
+  min-width: 0;
 }
 
 .work-center-studio__folder-stats span {
-  padding: 4px 7px;
+  max-width: 100%;
+  padding: 3px 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(205, 214, 238, 0.72);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .work-center-studio__context-menu {
@@ -2181,10 +2353,17 @@ function resolveStageMenuKey(stage = '') {
   display: grid;
   gap: 6px;
   min-height: 0;
-  padding: 10px 12px;
+  min-width: 0;
+  padding: 10px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(9, 13, 23, 0.72);
+}
+
+.work-center-studio__queue-card {
+  height: 108px;
+  align-content: start;
+  overflow: hidden;
 }
 
 .work-center-studio__queue-card--active,
@@ -2196,23 +2375,24 @@ function resolveStageMenuKey(stage = '') {
 .work-center-studio__queue-card-head,
 .work-center-studio__storage-copy,
 .work-center-studio__inspect-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 5px;
+  min-width: 0;
 }
 
 .work-center-studio__queue-card-copy,
 .work-center-studio__storage-copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .work-center-studio__queue-card-copy strong {
   min-width: 0;
-  line-height: 1.35;
-  max-height: calc(1.35em * 2);
+  line-height: 1.25;
+  max-height: calc(1.25em * 2);
 }
 
 .work-center-studio__queue-card-copy span,
@@ -2224,26 +2404,62 @@ function resolveStageMenuKey(stage = '') {
 }
 
 .work-center-studio__queue-card-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-center-studio__queue-card-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .work-center-studio__queue-card-actions {
   display: grid;
-  gap: 8px;
+  justify-items: stretch;
+  gap: 4px;
   width: 100%;
   min-width: 0;
 }
 
 .work-center-studio__queue-card-actions .work-center-studio__mini-button {
   width: 100%;
+  min-height: 26px;
   min-width: 0;
   padding: 0 8px;
+  white-space: nowrap;
 }
 
 .work-center-studio__queue-card-actions .work-center-studio__mini-button--wide {
   grid-column: auto;
+}
+
+.work-center-studio__queue-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.work-center-studio__queue-pagination span {
+  min-width: 44px;
+  color: rgba(205, 214, 238, 0.78);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.work-center-studio__queue-page-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 
 .work-center-studio__storage-meta span {
@@ -2266,8 +2482,114 @@ function resolveStageMenuKey(stage = '') {
   min-width: 0;
 }
 
+.work-center-studio__inspect-cell--wide {
+  grid-column: 1 / -1;
+}
+
+.work-center-studio__inspect-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
 .work-center-studio__inspect-cell span {
   color: rgba(205, 214, 238, 0.7);
+  font-size: 12px;
+}
+
+.work-center-studio__inspect-text {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(226, 232, 244, 0.9);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.work-center-studio__inspect-text--description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.work-center-studio__inspect-image-grid {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+
+.work-center-studio__inspect-image-card {
+  display: grid;
+  flex: 0 0 calc((100% - 40px) / 5);
+  gap: 6px;
+  min-width: 112px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  scroll-snap-align: start;
+}
+
+.work-center-studio__inspect-image-card img,
+.work-center-studio__inspect-image-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.work-center-studio__inspect-image-empty {
+  display: grid;
+  place-items: center;
+  color: rgba(205, 214, 238, 0.62);
+  font-size: 12px;
+}
+
+.work-center-studio__inspect-image-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-center-studio__inspect-video-info {
+  display: grid;
+  gap: 8px;
+}
+
+.work-center-studio__inspect-video-info div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.work-center-studio__inspect-video-info strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(226, 232, 244, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-center-studio__inspect-empty-line {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(205, 214, 238, 0.62);
   font-size: 12px;
 }
 

@@ -31,7 +31,6 @@ const fallbackPlatformOptions = [
   { key: 'temu', label: 'TEMU' },
   { key: 'shein', label: 'SHEIN' },
   { key: 'amazon', label: 'Amazon' },
-  { key: 'sumaitong', label: '速卖通' },
   { key: 'tiktok', label: 'TikTok' }
 ]
 
@@ -439,7 +438,7 @@ function formatCapturedAt(value = '') {
 
 .selection-table {
   display: grid;
-  grid-template-columns: minmax(360px, 2.2fr) 0.7fr 0.8fr 0.8fr 1fr 1.35fr;
+  grid-template-columns: minmax(360px, 2.2fr) 0.7fr 0.8fr 0.8fr 1fr minmax(188px, 1.35fr);
   gap: 14px;
   align-items: center;
 }
@@ -501,11 +500,19 @@ function formatCapturedAt(value = '') {
 }
 
 .selection-row__actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
-  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.selection-row__actions .secondary-action,
+.selection-row__actions .primary-action {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 10px;
+  white-space: nowrap;
 }
 
 .selection-table--row > span {

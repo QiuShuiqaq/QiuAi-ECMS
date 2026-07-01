@@ -27,7 +27,7 @@ const props = defineProps({
     default: () => ({
       walletType: 'image',
       channel: 'alipay',
-      amountCny: '0.01',
+      amountCny: '1',
       couponCode: ''
     })
   },
@@ -62,6 +62,8 @@ const selectionState = reactive({
   computePackageId: ''
 })
 
+const rechargeAmountPresets = ['10', '50', '100', '200', '500', '1000']
+
 const isSoftwareMode = computed(() => props.mode === 'software')
 const isComputeMode = computed(() => props.mode === 'compute')
 const isRechargeMode = computed(() => props.mode === 'recharge')
@@ -93,6 +95,40 @@ const modeMeta = computed(() => {
 const visibleSoftwarePackages = computed(() => Array.isArray(props.softwarePackages) ? props.softwarePackages : [])
 const visibleComputePackages = computed(() => Array.isArray(props.computePackages) ? props.computePackages : [])
 
+function resolveSoftwareConcurrencyRank(pkg = {}) {
+  const sourceText = `${pkg.code || ''} ${pkg.name || ''} ${pkg.description || ''}`
+  const explicitMatch = sourceText.match(/(?:ENTERPRISE|PERSONAL)_(16|8|4|2)\b/i) || sourceText.match(/\b(16|8|4|2)\s*(?:并发|concurrency)\b/i)
+  const concurrency = explicitMatch ? Number(explicitMatch[1]) : 0
+  const rankMap = {
+    16: 0,
+    8: 1,
+    4: 2,
+    2: 3
+  }
+  return rankMap[concurrency] ?? 99
+}
+
+function resolveSoftwareDurationRank(pkg = {}) {
+  const durationDays = Number(pkg.durationDays || 0)
+  const code = String(pkg.code || '').toUpperCase()
+  if (code.includes('THREE_YEAR') || durationDays > 500) return 0
+  if (code.includes('ANNUAL') || (durationDays > 120 && durationDays <= 500)) return 1
+  if (code.includes('QUARTER') || durationDays <= 120) return 2
+  return 99
+}
+
+const orderedSoftwarePackages = computed(() => {
+  return [...visibleSoftwarePackages.value].sort((left, right) => {
+    const durationDiff = resolveSoftwareDurationRank(left) - resolveSoftwareDurationRank(right)
+    if (durationDiff !== 0) return durationDiff
+
+    const concurrencyDiff = resolveSoftwareConcurrencyRank(left) - resolveSoftwareConcurrencyRank(right)
+    if (concurrencyDiff !== 0) return concurrencyDiff
+
+    return Number(right.priceAmount || 0) - Number(left.priceAmount || 0)
+  })
+})
+
 const submitDisabled = computed(() => {
   if (isSoftwareMode.value) {
     return props.isSoftwareOrderSubmitting || !selectionState.softwarePackageId
@@ -102,7 +138,7 @@ const submitDisabled = computed(() => {
     return props.isComputePackageOrderSubmitting || !selectionState.computePackageId
   }
 
-  return props.isRechargeSubmitting || !(Number(props.rechargeForm.amountCny) >= 0.01)
+  return props.isRechargeSubmitting || !(Number(props.rechargeForm.amountCny) >= 1)
 })
 
 const submitLabel = computed(() => {
@@ -127,7 +163,7 @@ watch(
 
     const exists = packages.some((item) => item.id === selectionState.softwarePackageId)
     if (!exists) {
-      selectionState.softwarePackageId = packages[0].id
+      selectionState.softwarePackageId = orderedSoftwarePackages.value[0]?.id || packages[0].id
     }
   },
   { immediate: true }
@@ -152,6 +188,12 @@ watch(
 function formatAmount(value) {
   const numericValue = Number(value || 0)
   return Number.isFinite(numericValue) ? numericValue.toFixed(2) : '0.00'
+}
+
+function formatBalanceAmount(value) {
+  const numericValue = Number(value || 0)
+  if (!Number.isFinite(numericValue)) return '0'
+  return numericValue % 1 === 0 ? String(numericValue) : numericValue.toFixed(2)
 }
 
 function updateRechargeField(field, value) {
@@ -182,7 +224,14 @@ function submitOrder() {
     :aria-label="modeMeta.title"
     @click.self="emit('close')"
   >
-    <div class="commerce-order-modal__card">
+    <div
+      class="commerce-order-modal__card"
+      :class="{
+        'commerce-order-modal__card--software': isSoftwareMode,
+        'commerce-order-modal__card--compute': isComputeMode,
+        'commerce-order-modal__card--recharge': isRechargeMode
+      }"
+    >
       <header class="commerce-order-modal__header">
         <div>
           <span class="commerce-order-modal__eyebrow">{{ modeMeta.eyebrow }}</span>
@@ -211,11 +260,12 @@ function submitOrder() {
             <span>邀请码</span>
             <input v-model="activationForm.inviteCode" type="text" placeholder="选填">
           </label>
+
         </div>
       </section>
 
-      <section v-if="isRechargeMode" class="commerce-order-modal__section">
-        <div class="commerce-order-modal__grid commerce-order-modal__grid--triple">
+      <section v-if="isRechargeMode" class="commerce-order-modal__section commerce-order-modal__section--recharge">
+        <div class="commerce-order-modal__recharge-stack">
           <label class="commerce-order-modal__field">
             <span>充值到</span>
             <select :value="rechargeForm.walletType" @change="updateRechargeField('walletType', $event.target.value)">
@@ -237,62 +287,83 @@ function submitOrder() {
             <input
               :value="rechargeForm.amountCny"
               type="number"
-              min="0.01"
-              step="0.01"
-              placeholder="0.01"
+              min="1"
+              step="1"
+              placeholder="1"
               @input="updateRechargeField('amountCny', $event.target.value)"
             >
           </label>
+
+          <div class="commerce-order-modal__amount-presets" aria-label="常用充值档位">
+            <button
+              v-for="amount in rechargeAmountPresets"
+              :key="amount"
+              type="button"
+              class="commerce-order-modal__amount-preset"
+              :class="{ 'commerce-order-modal__amount-preset--active': Number(rechargeForm.amountCny) === Number(amount) }"
+              @click="updateRechargeField('amountCny', amount)"
+            >
+              ¥{{ amount }}
+            </button>
+          </div>
         </div>
       </section>
 
-      <section class="commerce-order-modal__section">
+      <section v-if="!isRechargeMode" class="commerce-order-modal__section">
         <div class="commerce-order-modal__section-head">
           <span>{{ isSoftwareMode ? '授权套餐' : (isComputeMode ? '算力套餐' : '订单信息') }}</span>
           <span v-if="isCatalogLoading && !isRechargeMode">加载中...</span>
         </div>
 
-        <div v-if="isSoftwareMode" class="commerce-order-modal__list">
+        <div v-if="isSoftwareMode" class="commerce-order-modal__list commerce-order-modal__list--software">
           <button
-            v-for="pkg in visibleSoftwarePackages"
+            v-for="pkg in orderedSoftwarePackages"
             :key="pkg.id"
             type="button"
-            class="commerce-order-modal__option"
+            class="commerce-order-modal__option commerce-order-modal__option--software"
             :class="{ 'commerce-order-modal__option--active': selectionState.softwarePackageId === pkg.id }"
             @click="selectionState.softwarePackageId = pkg.id"
           >
             <div class="commerce-order-modal__option-copy">
               <strong>{{ pkg.name }}</strong>
-              <span>{{ pkg.description || pkg.productName }}</span>
             </div>
             <div class="commerce-order-modal__option-side">
-              <strong>{{ formatAmount(pkg.priceAmount) }}</strong>
-              <small>{{ pkg.currency || 'CNY' }}</small>
+              <strong>¥{{ formatAmount(pkg.priceAmount) }}</strong>
             </div>
           </button>
         </div>
 
-        <div v-else-if="isComputeMode" class="commerce-order-modal__list">
+        <div v-else-if="isComputeMode" class="commerce-order-modal__list commerce-order-modal__list--compute">
           <button
             v-for="pkg in visibleComputePackages"
             :key="pkg.id"
             type="button"
-            class="commerce-order-modal__option"
+            class="commerce-order-modal__option commerce-order-modal__option--compute"
             :class="{ 'commerce-order-modal__option--active': selectionState.computePackageId === pkg.id }"
             @click="selectionState.computePackageId = pkg.id"
           >
-            <div class="commerce-order-modal__option-copy">
+            <div class="commerce-order-modal__option-copy commerce-order-modal__compute-head">
               <strong>{{ pkg.name }}</strong>
-              <span>{{ pkg.description || pkg.productName }}</span>
+              <span>¥{{ formatAmount(pkg.priceAmount) }}</span>
             </div>
-            <div class="commerce-order-modal__option-side">
-              <strong>{{ formatAmount(pkg.priceAmount) }}</strong>
-              <small>{{ pkg.currency || 'CNY' }}</small>
+            <div class="commerce-order-modal__compute-balances">
+              <span>
+                <em>文本</em>
+                <strong>{{ formatBalanceAmount(pkg.includedTextBalanceCny) }}</strong>
+              </span>
+              <span>
+                <em>图片</em>
+                <strong>{{ formatBalanceAmount(pkg.includedImageBalanceCny) }}</strong>
+              </span>
+              <span>
+                <em>视频</em>
+                <strong>{{ formatBalanceAmount(pkg.includedVideoBalanceCny) }}</strong>
+              </span>
             </div>
           </button>
         </div>
 
-        <div v-else class="commerce-order-modal__summary">
+        <div v-if="false" class="commerce-order-modal__summary">
           <div class="commerce-order-modal__summary-item">
             <span>支付方式</span>
             <strong>{{ rechargeForm.channel === 'wechat' ? '微信' : '支付宝' }}</strong>
@@ -308,7 +379,7 @@ function submitOrder() {
         </div>
       </section>
 
-      <section class="commerce-order-modal__section">
+      <section v-if="!isRechargeMode" class="commerce-order-modal__section">
         <div class="commerce-order-modal__grid commerce-order-modal__grid--single">
           <label class="commerce-order-modal__field">
             <span>支付方式</span>
@@ -358,6 +429,17 @@ function submitOrder() {
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
+.commerce-order-modal__card--software,
+.commerce-order-modal__card--compute {
+  width: min(1080px, 100%);
+}
+
+.commerce-order-modal__card--recharge {
+  width: min(520px, 100%);
+  gap: 16px;
+  padding: 22px;
+}
+
 .commerce-order-modal__header {
   display: flex;
   align-items: flex-start;
@@ -388,6 +470,68 @@ function submitOrder() {
 .commerce-order-modal__section {
   display: grid;
   gap: 12px;
+}
+
+.commerce-order-modal__section--recharge {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(118, 173, 255, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.commerce-order-modal__recharge-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__header {
+  align-items: center;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__header strong {
+  font-size: 26px;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__header p {
+  margin-top: 8px;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__field {
+  gap: 7px;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__field select,
+.commerce-order-modal__card--recharge .commerce-order-modal__field input {
+  min-height: 42px;
+}
+
+.commerce-order-modal__amount-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.commerce-order-modal__amount-preset {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(226, 232, 244, 0.9);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.commerce-order-modal__amount-preset:hover,
+.commerce-order-modal__amount-preset--active {
+  border-color: rgba(118, 173, 255, 0.52);
+  background: rgba(118, 173, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .commerce-order-modal__section-head {
@@ -430,6 +574,21 @@ function submitOrder() {
   padding-right: 4px;
 }
 
+.commerce-order-modal__list--software {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(88px, auto);
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.commerce-order-modal__list--compute {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
 .commerce-order-modal__option {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -445,6 +604,24 @@ function submitOrder() {
   transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
+.commerce-order-modal__option--software {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  align-content: center;
+  gap: 10px;
+  min-height: 88px;
+  padding: 14px 12px;
+  text-align: center;
+}
+
+.commerce-order-modal__option--compute {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 14px;
+  min-height: 178px;
+  padding: 16px;
+}
+
 .commerce-order-modal__option:hover,
 .commerce-order-modal__option--active {
   border-color: rgba(118, 173, 255, 0.5);
@@ -455,10 +632,70 @@ function submitOrder() {
 .commerce-order-modal__option-copy {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .commerce-order-modal__option-copy span {
   color: rgba(205, 214, 238, 0.72);
+}
+
+.commerce-order-modal__option--software .commerce-order-modal__option-copy strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commerce-order-modal__compute-head {
+  gap: 8px;
+}
+
+.commerce-order-modal__compute-head strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(241, 246, 255, 0.96);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commerce-order-modal__compute-head span {
+  color: rgba(118, 173, 255, 0.96);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.commerce-order-modal__compute-balances {
+  display: grid;
+  gap: 8px;
+}
+
+.commerce-order-modal__compute-balances span {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.commerce-order-modal__compute-balances em {
+  color: rgba(205, 214, 238, 0.68);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.commerce-order-modal__compute-balances strong {
+  min-width: 0;
+  color: rgba(241, 246, 255, 0.92);
+  font-size: 15px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .commerce-order-modal__option-side {
@@ -467,8 +704,17 @@ function submitOrder() {
   gap: 4px;
 }
 
+.commerce-order-modal__option--software .commerce-order-modal__option-side {
+  justify-items: center;
+}
+
 .commerce-order-modal__option-side strong {
   font-size: 24px;
+}
+
+.commerce-order-modal__option--software .commerce-order-modal__option-side strong {
+  font-size: 22px;
+  line-height: 1;
 }
 
 .commerce-order-modal__summary {
@@ -501,6 +747,15 @@ function submitOrder() {
   gap: 12px;
 }
 
+.commerce-order-modal__card--recharge .commerce-order-modal__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.commerce-order-modal__card--recharge .commerce-order-modal__footer button {
+  width: 100%;
+}
+
 @media (max-width: 820px) {
   .commerce-order-modal {
     padding: 16px;
@@ -511,9 +766,26 @@ function submitOrder() {
   }
 
   .commerce-order-modal__grid--triple,
-  .commerce-order-modal__option,
   .commerce-order-modal__summary {
     grid-template-columns: 1fr;
+  }
+
+  .commerce-order-modal__option:not(.commerce-order-modal__option--software) {
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-order-modal__list--software {
+    grid-template-columns: repeat(4, minmax(116px, 1fr));
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 4px;
+  }
+
+  .commerce-order-modal__list--compute {
+    grid-template-columns: repeat(4, minmax(180px, 1fr));
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 4px;
   }
 
   .commerce-order-modal__option-side,
