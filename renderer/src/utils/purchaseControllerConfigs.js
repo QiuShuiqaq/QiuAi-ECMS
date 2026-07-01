@@ -34,8 +34,7 @@ export function createRechargeOrderController({
       buildPayload: () => ({
         walletType: rechargeForm.walletType,
         channel: rechargeForm.channel,
-        amountCny: Number(rechargeForm.amountCny),
-        couponCode: rechargeForm.couponCode
+        amountCny: Number(rechargeForm.amountCny)
       }),
       successTitle: '订单已创建',
       successMessage: '请继续完成支付',
@@ -104,10 +103,13 @@ export function createSoftwareOrderController({
     },
     successConfig: {
       refreshActions: () => {
+        const currentOrder = currentSoftwareOrderRef?.value && typeof currentSoftwareOrderRef.value === 'object'
+          ? currentSoftwareOrderRef.value
+          : {}
         const activationPayload = {
-          customerName: activationFormRef?.value?.customerName || '',
-          contact: activationFormRef?.value?.contact || '',
-          inviteCode: activationFormRef?.value?.inviteCode || '',
+          customerName: activationFormRef?.value?.customerName || currentOrder.customerName || '',
+          contact: activationFormRef?.value?.contact || currentOrder.contact || '',
+          inviteCode: activationFormRef?.value?.inviteCode || currentOrder.inviteCode || '',
           deviceName: 'QiuAi Desktop'
         }
 

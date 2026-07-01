@@ -71,8 +71,17 @@ function normalizeRechargeOrderPayload(payload = {}) {
     walletType: trimString(payload.walletType),
     channel: trimString(payload.channel || 'alipay') || 'alipay',
     amountCny: normalizePositiveNumber(payload.amountCny, { allowZero: false }),
-    couponCode: trimString(payload.couponCode),
     sessionToken: trimString(payload.sessionToken)
+  }
+}
+
+function normalizeUserAgreementAcceptPayload(payload = {}) {
+  return {
+    sessionToken: trimString(payload.sessionToken),
+    agreementTitle: trimString(payload.agreementTitle),
+    agreementVersion: trimString(payload.agreementVersion),
+    deviceId: trimString(payload.deviceId),
+    source: trimString(payload.source || 'DESKTOP_QIUAI') || 'DESKTOP_QIUAI'
   }
 }
 
@@ -356,6 +365,12 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function acceptUserAgreement(payload = {}) {
+    return request('post', '/api/activation/agreement', {
+      data: normalizeUserAgreementAcceptPayload(payload)
+    })
+  }
+
   async function listSoftwarePackages({ sessionToken = '' } = {}) {
     return request('get', '/api/packages', {
       sessionToken
@@ -540,7 +555,8 @@ function createQiuAiLicensePlatformClientService({
 
   const activation = {
     getStatus: getAuthorizationStatus,
-    activate: activateLicense
+    activate: activateLicense,
+    acceptUserAgreement
   }
 
   const wallet = {
@@ -604,6 +620,7 @@ function createQiuAiLicensePlatformClientService({
     generation,
     publish,
     activateLicense,
+    acceptUserAgreement,
     createComputePackageOrder,
     createGenerationJob,
     createRechargeOrder,

@@ -140,36 +140,6 @@ function normalizeDashboardCreditState(rawDashboardCreditState = {}) {
     ? rawDashboardCreditState
     : {}
 
-  if (
-    Object.prototype.hasOwnProperty.call(source, 'totalCredits') ||
-    Object.prototype.hasOwnProperty.call(source, 'remainingCredits')
-  ) {
-    const legacyImageBalance = Math.max(0, Number(source.balanceCny) || 0)
-    return {
-      text: {
-        balanceCny: 0,
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: 0,
-        lastSyncedAt: '',
-        syncStatus: 'idle'
-      },
-      image: {
-        balanceCny: legacyImageBalance,
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: legacyImageBalance,
-        lastSyncedAt: '',
-        syncStatus: 'success'
-      },
-      video: {
-        balanceCny: 0,
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: 0,
-        lastSyncedAt: '',
-        syncStatus: 'idle'
-      }
-    }
-  }
-
   return {
     text: {
       balanceCny: Math.max(0, Number(source.text?.balanceCny) || 0),

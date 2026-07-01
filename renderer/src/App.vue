@@ -13,6 +13,7 @@ import GeneratorStudioPage from './components/GeneratorStudioPage.vue'
 import TextGeneratorPage from './components/TextGeneratorPage.vue'
 import DataCenterPage from './components/DataCenterPage.vue'
 import ProjectTemplateCenterPage from './components/ProjectTemplateCenterPage.vue'
+import PublishCenterPage from './components/PublishCenterPage.vue'
 import AccountDevicePage from './components/AccountDevicePage.vue'
 import SettingsCenterPage from './components/SettingsCenterPage.vue'
 import PurchaseCenterPage from './components/PurchaseCenterPage.vue'
@@ -71,6 +72,7 @@ const fallbackMenuItems = [
   { key: 'work-center', label: '工作中心', section: '工作区' },
   { key: 'data-center', label: '数据中心', section: '工作区' },
   { key: 'template-center', label: '模板中心', section: '工作区' },
+  { key: 'publish-center', label: '发布中心', section: '工作区' },
   { key: 'title-generate', label: '标题生成', section: '生成区' },
   { key: 'description-generate', label: '描述生成', section: '生成区' },
   { key: 'series-generate', label: '套图生成', section: '生成区' },
@@ -189,8 +191,7 @@ const computePackages = ref([])
 const rechargeForm = reactive({
   walletType: 'image',
   channel: 'alipay',
-  amountCny: '1',
-  couponCode: ''
+  amountCny: '1'
 })
 const actionNotice = reactive({
   visible: false,
@@ -213,11 +214,78 @@ let publishTaskPollingInFlight = false
 let rechargeOrderController = null
 let softwareOrderController = null
 let computePackageOrderController = null
+const purchaseOrderStorageKey = 'qiuai-purchase-orders'
 const emptyGeneratorResultPayload = {
   textResults: [],
   comparisonResults: [],
   groupedResults: [],
   summary: null
+}
+
+function readPersistedPurchaseOrders() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return {
+      software: null,
+      compute: null,
+      recharge: null
+    }
+  }
+
+  try {
+    const raw = window.localStorage.getItem(purchaseOrderStorageKey)
+    if (!raw) {
+      return {
+        software: null,
+        compute: null,
+        recharge: null
+      }
+    }
+
+    const parsed = JSON.parse(raw)
+    return {
+      software: parsed?.software && typeof parsed.software === 'object' ? parsed.software : null,
+      compute: parsed?.compute && typeof parsed.compute === 'object' ? parsed.compute : null,
+      recharge: parsed?.recharge && typeof parsed.recharge === 'object' ? parsed.recharge : null
+    }
+  } catch {
+    return {
+      software: null,
+      compute: null,
+      recharge: null
+    }
+  }
+}
+
+function writePersistedPurchaseOrders(patch = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return
+  }
+
+  const current = readPersistedPurchaseOrders()
+  const nextValue = {
+    software: Object.prototype.hasOwnProperty.call(patch, 'software') ? patch.software : current.software,
+    compute: Object.prototype.hasOwnProperty.call(patch, 'compute') ? patch.compute : current.compute,
+    recharge: Object.prototype.hasOwnProperty.call(patch, 'recharge') ? patch.recharge : current.recharge
+  }
+
+  window.localStorage.setItem(purchaseOrderStorageKey, JSON.stringify(nextValue))
+}
+
+function persistPurchaseOrder(kind, order) {
+  if (!kind) {
+    return
+  }
+
+  writePersistedPurchaseOrders({
+    [kind]: order && typeof order === 'object' ? order : null
+  })
+}
+
+function restorePersistedPurchaseOrders() {
+  const stored = readPersistedPurchaseOrders()
+  currentSoftwareOrder.value = stored.software
+  currentComputePackageOrder.value = stored.compute
+  currentRechargeOrder.value = stored.recharge
 }
 
 const activeGeneratorMenuKey = computed(() => {
@@ -2865,15 +2933,58 @@ computePackageOrderController = createComputePackageOrderController({
 
 onMounted(() => {
   void (async () => {
+    restorePersistedPurchaseOrders()
     await loadActivationState()
     await loadPromptTemplateState()
     await loadPurchaseCenterCatalog()
     await loadUserAgreementState()
+    if (currentSoftwareOrder.value?.id) {
+      await softwareOrderController?.refresh()
+      if (String(currentSoftwareOrder.value?.status || '') === 'pending') {
+        softwareOrderController?.startPolling()
+      }
+    }
+    if (currentComputePackageOrder.value?.id) {
+      await computePackageOrderController?.refresh()
+      if (String(currentComputePackageOrder.value?.status || '') === 'pending') {
+        computePackageOrderController?.startPolling()
+      }
+    }
+    if (currentRechargeOrder.value?.id) {
+      await rechargeOrderController?.refresh()
+      if (String(currentRechargeOrder.value?.status || '') === 'pending') {
+        rechargeOrderController?.startPolling()
+      }
+    }
     if (canUseActivatedWorkspace.value) {
       await loadActivatedWorkspace()
     }
   })()
 })
+
+watch(
+  currentSoftwareOrder,
+  (value) => {
+    persistPurchaseOrder('software', value)
+  },
+  { deep: true }
+)
+
+watch(
+  currentComputePackageOrder,
+  (value) => {
+    persistPurchaseOrder('compute', value)
+  },
+  { deep: true }
+)
+
+watch(
+  currentRechargeOrder,
+  (value) => {
+    persistPurchaseOrder('recharge', value)
+  },
+  { deep: true }
+)
 
 watch(
   isActivated,
@@ -3075,6 +3186,10 @@ onUnmounted(() => {
           @apply-template="handleApplyProjectTemplate"
           @remove-template="handleRemoveProjectTemplate"
           @rename-template="handleRenameProjectTemplate"
+        />
+
+        <PublishCenterPage
+          v-else-if="activeMenu === 'publish-center'"
         />
 
         <TextGeneratorPage

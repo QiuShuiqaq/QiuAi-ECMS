@@ -27,8 +27,7 @@ const props = defineProps({
     default: () => ({
       walletType: 'image',
       channel: 'alipay',
-      amountCny: '1',
-      couponCode: ''
+      amountCny: '1'
     })
   },
   isCatalogLoading: {

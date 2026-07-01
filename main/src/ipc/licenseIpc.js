@@ -140,9 +140,19 @@ function registerLicenseIpc({
       throw error
     }
 
+    const agreementRecord = createAcceptedAgreementRecord(activationStatus)
+
+    await remoteLicensePlatformClient.acceptUserAgreement({
+      sessionToken: await requireSessionToken(settingsService),
+      agreementTitle: agreementRecord.title,
+      agreementVersion: agreementRecord.version,
+      deviceId: agreementRecord.deviceCode,
+      source: agreementRecord.source
+    })
+
     await settingsService.saveSettings({
       compliance: {
-        userAgreement: createAcceptedAgreementRecord(activationStatus)
+        userAgreement: agreementRecord
       }
     })
 

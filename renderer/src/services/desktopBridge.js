@@ -145,35 +145,6 @@ function normalizeForIpc (value) {
 function normalizeBrowserDashboardCreditState (rawDashboardCreditState = {}) {
   const source = rawDashboardCreditState && typeof rawDashboardCreditState === 'object' ? rawDashboardCreditState : {}
 
-  if (
-    Object.prototype.hasOwnProperty.call(source, 'totalCredits') ||
-    Object.prototype.hasOwnProperty.call(source, 'remainingCredits')
-  ) {
-    return {
-      text: {
-        balanceCny: 0,
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: 0,
-        lastSyncedAt: '',
-        syncStatus: 'idle'
-      },
-      image: {
-        balanceCny: Math.max(0, Number(source.balanceCny) || 0),
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: Math.max(0, Number(source.balanceCny) || 0),
-        lastSyncedAt: '',
-        syncStatus: 'success'
-      },
-      video: {
-        balanceCny: 0,
-        subscriptionBalanceCny: 0,
-        permanentBalanceCny: 0,
-        lastSyncedAt: '',
-        syncStatus: 'idle'
-      }
-    }
-  }
-
   return {
     text: {
       balanceCny: Math.max(0, Number(source.text?.balanceCny) || 0),

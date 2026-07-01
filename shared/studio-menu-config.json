@@ -10,6 +10,7 @@
     { "key": "selection-center", "label": "选品中心", "section": "工作区" },
     { "key": "data-center", "label": "数据中心", "section": "工作区" },
     { "key": "template-center", "label": "模板中心", "section": "工作区" },
+    { "key": "publish-center", "label": "发布中心", "section": "工作区" },
     { "key": "title-generate", "label": "标题生成", "section": "生成区" },
     { "key": "description-generate", "label": "描述生成", "section": "生成区" },
     { "key": "series-generate", "label": "套图生成", "section": "生成区" },
