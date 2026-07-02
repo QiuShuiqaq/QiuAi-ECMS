@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   activationState: {
     type: Object,
     required: true
@@ -16,6 +18,18 @@ function resolveField(value, fallback = '--') {
   const text = String(value || '').trim()
   return text || fallback
 }
+
+const capabilitySummary = computed(() => {
+  const activePackage = props.activationState?.activePackage || null
+  const capability = activePackage?.capabilityConfig || null
+
+  return {
+    packageName: resolveField(activePackage?.name || activePackage?.code),
+    editionLabel: resolveField(capability?.editionLabel),
+    taskConcurrencyLimit: resolveField(capability?.taskConcurrencyLimit, '1'),
+    authMode: resolveField(props.activationState?.mode, 'server-license')
+  }
+})
 </script>
 
 <template>
@@ -75,7 +89,7 @@ function resolveField(value, fallback = '--') {
           <strong>{{ resolveField(activationState.expiresAt) }}</strong>
         </div>
         <div>
-          <span>远端状态</span>
+          <span>远程状态</span>
           <strong>{{ resolveField(activationState.remoteStatus) }}</strong>
         </div>
       </div>
@@ -87,20 +101,20 @@ function resolveField(value, fallback = '--') {
       </header>
       <div class="account-device-page__detail-list">
         <div>
-          <span>档位</span>
-          <strong>{{ resolveField(remoteServiceCapacity?.serviceTier, 'SHARED') }}</strong>
+          <span>授权套餐</span>
+          <strong>{{ capabilitySummary.packageName }}</strong>
         </div>
         <div>
-          <span>图片并发</span>
-          <strong>{{ resolveField(remoteServiceCapacity?.effectiveImageConcurrency, '1') }}</strong>
+          <span>授权版本</span>
+          <strong>{{ capabilitySummary.editionLabel }}</strong>
         </div>
         <div>
-          <span>视频并发</span>
-          <strong>{{ resolveField(remoteServiceCapacity?.effectiveVideoConcurrency, '0') }}</strong>
+          <span>任务并发上限</span>
+          <strong>{{ capabilitySummary.taskConcurrencyLimit }}</strong>
         </div>
         <div>
-          <span>文本优先级</span>
-          <strong>{{ resolveField(remoteServiceCapacity?.textPriorityClass, 'STANDARD') }}</strong>
+          <span>授权模式</span>
+          <strong>{{ capabilitySummary.authMode }}</strong>
         </div>
       </div>
     </section>

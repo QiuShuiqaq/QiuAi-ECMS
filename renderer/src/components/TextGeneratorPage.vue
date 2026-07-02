@@ -19,10 +19,10 @@ const emit = defineEmits([
 ])
 
 const isTitleMode = computed(() => props.textKind === 'title')
+const isDescriptionMode = computed(() => props.textKind === 'description')
 const quantityField = computed(() => (isTitleMode.value ? 'titleQuantity' : 'descriptionQuantity'))
 const maxCharsField = computed(() => (isTitleMode.value ? 'titleMaxChars' : 'descriptionMaxChars'))
 const promptField = computed(() => (isTitleMode.value ? 'titlePrompt' : 'descriptionPrompt'))
-const selectedField = computed(() => (isTitleMode.value ? 'selectedTitle' : 'selectedDescription'))
 
 const filteredTemplates = computed(() => {
   const category = isTitleMode.value ? '标题' : '描述'
@@ -32,14 +32,13 @@ const filteredTemplates = computed(() => {
 const currentPromptValue = computed(() => String(props.draft[promptField.value] || ''))
 const currentQuantity = computed(() => Math.max(1, Number(props.draft[quantityField.value]) || 1))
 const currentMaxChars = computed(() => Math.max(1, Number(props.draft[maxCharsField.value]) || 1))
-const selectedText = computed(() => String(props.draft[selectedField.value] || '').trim())
 
 const resultCards = computed(() => {
   return (props.resultItems || []).map((item, index) => ({
     id: item.id || `text-result-${index + 1}`,
     title: item.title || `${props.title} ${index + 1}`,
     content: String(item.content || '').trim(),
-    isSelected: String(item.content || '').trim() === selectedText.value
+    isSelected: Boolean(item.isSelected)
   }))
 })
 
@@ -125,7 +124,7 @@ function handleExportAll() {
         </div>
 
         <div class="generator-form__card">
-          <textarea :value="currentPromptValue" rows="12" placeholder="输入标题或描述生成要求" @input="updateField(promptField, $event.target.value)"></textarea>
+          <textarea :value="currentPromptValue" rows="12" :placeholder="isTitleMode ? '输入标题生成要求' : '输入描述生成要求'" @input="updateField(promptField, $event.target.value)"></textarea>
         </div>
 
         <button class="primary-action" type="button" @click="emit('submit-task')">生成</button>
@@ -138,39 +137,29 @@ function handleExportAll() {
         <h2>{{ resultCards.length }} 条</h2>
       </header>
 
-      <div class="text-preview-layout">
-        <section v-if="selectedText" class="latest-task-progress text-preview__selected">
-          <header class="latest-task-progress__header">
-            <div>
-              <h3>当前采用内容</h3>
-            </div>
-            <button class="secondary-action" type="button" @click="emit('copy-text', selectedText)">复制</button>
-          </header>
-          <div class="generator-preview__text">{{ selectedText }}</div>
-        </section>
-
-        <section class="latest-task-progress generator-preview-panel">
-          <header class="latest-task-progress__header">
-            <div>
-              <h3>候选结果</h3>
-            </div>
-          </header>
-
-          <div class="text-preview-list">
-            <article v-for="item in resultCards" :key="item.id" class="text-preview-card" :class="{ 'text-preview-card--selected': item.isSelected }">
-              <div class="text-preview-card__copy">
-                <strong>{{ item.title }}</strong>
-                <p>{{ item.content || '暂无内容' }}</p>
-              </div>
-              <button class="secondary-action" type="button" @click="emit('copy-text', item.content)">复制</button>
-            </article>
-
-            <div v-if="!resultCards.length" class="product-result-empty">
-              <span>暂无结果</span>
-            </div>
+      <section class="latest-task-progress generator-preview-panel text-preview-panel">
+        <header class="latest-task-progress__header">
+          <div>
+            <h3>结果</h3>
           </div>
-        </section>
-      </div>
+        </header>
+
+        <div class="text-preview-list text-preview-list--scrollable">
+          <article v-for="item in resultCards" :key="item.id" class="text-preview-card" :class="{ 'text-preview-card--selected': item.isSelected }">
+            <div class="text-preview-card__copy">
+              <div class="text-preview-card__topline">
+                <strong>{{ item.title }}</strong>
+                <button class="secondary-action text-preview-card__copy-button" type="button" @click="emit('copy-text', item.content)">复制</button>
+              </div>
+              <p :class="{ 'text-preview-card__content--description': isDescriptionMode }">{{ item.content || '暂无内容' }}</p>
+            </div>
+          </article>
+
+          <div v-if="!resultCards.length" class="product-result-empty">
+            <span>暂无结果</span>
+          </div>
+        </div>
+      </section>
     </article>
 
     <article class="generator-column generator-column--export">
@@ -208,25 +197,35 @@ function handleExportAll() {
   min-width: 0;
 }
 
-.text-preview-layout {
+.text-preview-panel {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-}
-
-.text-preview__selected {
-  gap: 14px;
+  height: 100%;
+  min-height: 0;
 }
 
 .text-preview-list {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
+}
+
+.text-preview-list--scrollable {
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.text-preview-list--scrollable::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .text-preview-card {
   display: flex;
-  justify-content: space-between;
   gap: 14px;
   padding: 16px 18px;
   border-radius: 18px;
@@ -247,8 +246,20 @@ function handleExportAll() {
   min-width: 0;
 }
 
+.text-preview-card__topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .text-preview-card__copy strong {
   color: rgba(246, 248, 252, 0.98);
+  min-width: 0;
+}
+
+.text-preview-card__copy-button {
+  flex: 0 0 auto;
 }
 
 .text-preview-card__copy p {
@@ -259,14 +270,14 @@ function handleExportAll() {
   line-height: 1.7;
 }
 
-.product-result-empty--compact {
-  min-height: 120px;
+.text-preview-card__content--description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-@media (max-width: 1320px) {
-  .text-preview-card {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.product-result-empty--compact {
+  min-height: 120px;
 }
 </style>
