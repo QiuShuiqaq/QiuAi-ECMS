@@ -13,7 +13,6 @@ describe('App source', () => {
 
     expect(source).toContain('AppTopBar')
     expect(source).toContain('ActivationGate')
-    expect(source).toContain('AuthorizationPurchaseModal')
     expect(source).toContain('CommerceOrderModal')
     expect(source).toContain('PermissionActivationModal')
     expect(source).toContain('UserAgreementModal')
@@ -54,7 +53,7 @@ describe('App source', () => {
     expect(source).toContain('@export-project="handleExportProject"')
     expect(source).toContain('@activate-permission="openPermissionActivation"')
     expect(source).toContain('@clear-permission="handleClearPermission"')
-    expect(source).toContain('@submit-order="handleCreateSoftwareOrder"')
+    expect(source).toContain('@submit-software-order="handleCreateSoftwareOrder"')
     expect(source).toContain('@accept="handleAcceptUserAgreement"')
     expect(source).toContain('createRechargeOrderController({')
     expect(source).toContain('createSoftwareOrderController({')

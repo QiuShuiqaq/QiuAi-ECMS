@@ -74,6 +74,8 @@ const storageSortMode = ref('updated-desc')
 const storageRefreshToken = ref(0)
 const queuePage = ref(1)
 const queuePageSize = 5
+const flowDurationTick = ref(Date.now())
+let flowDurationTimer = null
 const storageContextMenu = ref({
   visible: false,
   x: 0,
@@ -542,21 +544,57 @@ const isCurrentProjectRunning = computed(() => {
   return ['running', 'processing', 'submitting', 'pending', 'queued'].includes(status)
 })
 
+function formatFlowStepDuration(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return ''
+
+  const totalSeconds = Math.max(1, Math.round(durationMs / 1000))
+  if (totalSeconds < 60) return `${totalSeconds}秒`
+
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}小时${minutes}分` : `${hours}小时`
+  }
+
+  return seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`
+}
+
+function resolveWorkspaceStepDuration(run, stepKey) {
+  flowDurationTick.value
+
+  const stepState = run?.stepStates?.[stepKey]
+  const startedAt = stepState?.startedAt ? new Date(stepState.startedAt).getTime() : 0
+  if (!startedAt) return ''
+
+  const completedAt = stepState?.completedAt ? new Date(stepState.completedAt).getTime() : 0
+  const endedAt = completedAt || Date.now()
+  if (!Number.isFinite(endedAt) || endedAt <= startedAt) return ''
+
+  return formatFlowStepDuration(endedAt - startedAt)
+}
+
 const currentProjectFlowSteps = computed(() => {
   const runningStage = currentProjectStageLabel.value
   const running = isCurrentProjectRunning.value
+  const latestRun = activeProjectEntry.value?.latestRun || null
 
   return currentProjectSteps.value.map((step, index) => {
     const isDone = step.status === '已完成'
     const isRunning = running && step.status === '生成中' && step.label === runningStage
+    const durationLabel = resolveWorkspaceStepDuration(latestRun, step.key)
+    const statusLabel = isDone ? '已完成' : isRunning ? '生成中' : step.status
 
     return {
       ...step,
-      error: resolveWorkspaceStepError(activeProjectEntry.value?.latestRun || null, step.key),
+      error: resolveWorkspaceStepError(latestRun, step.key),
       index: index + 1,
       tone: isDone ? 'done' : isRunning ? 'running' : (step.status === '失败' ? 'failed' : 'pending'),
       isDone,
-      isRunning
+      isRunning,
+      durationLabel,
+      statusLine: durationLabel ? `${statusLabel} · ${durationLabel}` : statusLabel
     }
   })
 })
@@ -926,11 +964,18 @@ function handleFocusQueueProject(project) {
 onMounted(() => {
   window.addEventListener('pointerdown', closeStorageContextMenu)
   window.addEventListener('blur', closeStorageContextMenu)
+  flowDurationTimer = window.setInterval(() => {
+    flowDurationTick.value = Date.now()
+  }, 1000)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', closeStorageContextMenu)
   window.removeEventListener('blur', closeStorageContextMenu)
+  if (flowDurationTimer) {
+    window.clearInterval(flowDurationTimer)
+    flowDurationTimer = null
+  }
 })
 
 function resolveStageMenuKey(stage = '') {
@@ -1345,7 +1390,7 @@ function resolveStageMenuKey(stage = '') {
               </div>
               <div class="work-center-studio__flow-copy">
                 <strong>{{ step.index }}.{{ step.label }}</strong>
-                <span>{{ step.isDone ? '已完成' : step.isRunning ? '生成中' : step.status }}</span>
+                <span>{{ step.statusLine }}</span>
               </div>
               <div v-if="step.error" class="work-center-studio__flow-error">
                 {{ step.error }}
