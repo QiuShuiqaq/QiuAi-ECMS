@@ -7,6 +7,7 @@ import {
   imageTemplateTypeMap,
   languageOptions,
   seriesImageTemplateOptions,
+  videoAspectRatioOptions,
   videoDurationOptions,
   videoModelOptions,
   videoMotionOptions,
@@ -55,6 +56,7 @@ const emit = defineEmits([
   'open-resource',
   'export-project',
   'open-generator',
+  'open-project-settings',
   'sync-publish-draft',
   'publish-platform-change',
   'publish-channel-account-change',
@@ -172,11 +174,19 @@ function resolveProjectLanguage(project = {}) {
 }
 
 const normalizedDraft = computed(() => props.draft || {})
+const activeProjectGenerationConfig = computed(() => {
+  const generationConfig = activeProjectEntry.value?.project?.generationConfig
+  return generationConfig && typeof generationConfig === 'object' ? generationConfig : {}
+})
 
 function resolveDraftValue(field, fallback = '') {
   const value = normalizedDraft.value?.[field]
   if (value === undefined || value === null || value === '') {
-    return fallback
+    const projectValue = activeProjectGenerationConfig.value?.[field]
+    if (projectValue === undefined || projectValue === null || projectValue === '') {
+      return fallback
+    }
+    return projectValue
   }
   return value
 }
@@ -848,6 +858,12 @@ function handleOpenStorageFolder(project) {
   closeStorageContextMenu()
 }
 
+function handleOpenProjectSettings(project) {
+  if (!project?.id) return
+  emit('open-project-settings', project)
+  closeStorageContextMenu()
+}
+
 function handleOpenStorageContextMenu(event, item) {
   if (!item?.id) return
   const viewportWidth = window.innerWidth || 0
@@ -870,6 +886,8 @@ function handleStorageContextAction(action) {
 
   if (action === 'save-template') {
     handleSaveTemplate(item.project)
+  } else if (action === 'open-project-settings') {
+    handleOpenProjectSettings(item.project)
   } else if (action === 'export-project') {
     emit('export-project', item.id)
   } else if (action === 'delete-project') {
@@ -1243,6 +1261,17 @@ function resolveStageMenuKey(stage = '') {
               </select>
             </div>
             <div class="generator-form__row">
+              <span class="generator-form__label">画面比例</span>
+              <select
+                :value="resolveDraftSelectValue('aspectRatio', videoAspectRatioOptions[0]?.value)"
+                @change="updateProjectGenerationConfig({ aspectRatio: $event.target.value })"
+              >
+                <option v-for="option in videoAspectRatioOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div class="generator-form__row">
               <span class="generator-form__label">运动强度</span>
               <select
                 :value="resolveDraftSelectValue('motionStrength', videoMotionOptions[0]?.value)"
@@ -1385,6 +1414,9 @@ function resolveStageMenuKey(stage = '') {
             :style="{ left: `${storageContextMenu.x}px`, top: `${storageContextMenu.y}px` }"
             @pointerdown.stop
           >
+            <button type="button" class="work-center-studio__context-action" @click="handleStorageContextAction('open-project-settings')">
+              参数设置
+            </button>
             <button type="button" class="work-center-studio__context-action" @click="handleStorageContextAction('save-template')">
               保存模板
             </button>

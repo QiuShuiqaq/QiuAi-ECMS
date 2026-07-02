@@ -53,6 +53,12 @@ export const videoDurationOptions = [
   { label: '10s', value: '10s' }
 ]
 
+export const videoAspectRatioOptions = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '1:1', value: '1:1' }
+]
+
 export const videoResolutionOptions = [
   { label: '768P', value: '768P' },
   { label: '1080P', value: '1080P' }

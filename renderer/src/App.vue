@@ -1104,6 +1104,17 @@ async function handleOpenProjectGenerator({ project, menuKey }) {
   activeGeneratorMenu.value = menuKey
 }
 
+async function handleOpenProjectSettings(project) {
+  if (!project?.id) {
+    return
+  }
+
+  activeProductProjectId.value = project.id
+  await persistDraft('workspace', buildWorkspaceRunDraft(project, {}))
+  activeMenu.value = 'work-center'
+  activeGeneratorMenu.value = ''
+}
+
 async function persistDraft(menuKey, patch) {
   const nextDraft = {
     ...(formDrafts.value[menuKey] || {}),
@@ -1149,6 +1160,8 @@ async function handleCreateProject() {
     await loadStudioSnapshot()
     if (createdProject?.id) {
       activeProductProjectId.value = createdProject.id
+      const currentProject = (productProjects.value || []).find((item) => item?.id === createdProject.id) || createdProject
+      await persistDraft('workspace', buildWorkspaceRunDraft(currentProject, {}))
     }
     showActionFeedback({
       type: 'success',
@@ -3154,6 +3167,7 @@ onUnmounted(() => {
           @open-resource="handleOpenResource"
           @export-project="handleExportProject"
           @open-generator="handleOpenProjectGenerator"
+          @open-project-settings="handleOpenProjectSettings"
           @sync-publish-draft="handleSyncPublishDraftFlow"
           @publish-platform-change="handlePublishPlatformChange"
           @publish-channel-account-change="handlePublishChannelAccountChange"
