@@ -120,6 +120,49 @@ const publishConfigState = ref({
   isLoading: false,
   error: ''
 })
+
+function normalizeSeriesSourceItems(sourceItems = [], fallbackAssignments = []) {
+  const items = Array.isArray(sourceItems) ? sourceItems : []
+  const assignments = Array.isArray(fallbackAssignments) ? fallbackAssignments : []
+
+  return items
+    .map((item, index) => {
+      const sourceImage = item?.sourceImage || item?.image || null
+      if (!sourceImage || typeof sourceImage !== 'object') {
+        return null
+      }
+
+      const assignment = assignments[index] || {}
+      return {
+        id: String(item.id || sourceImage.id || `series-source-${index + 1}`),
+        sourceImage,
+        templateId: String(item.templateId || assignment.templateId || ''),
+        prompt: String(item.prompt || assignment.prompt || ''),
+        size: String(item.size || '').trim() || '1:1',
+        imageType: String(item.imageType || assignment.imageType || '').trim(),
+        differenceLevel: String(item.differenceLevel || assignment.differenceLevel || 'off').trim() || 'off'
+      }
+    })
+    .filter(Boolean)
+}
+
+function buildSeriesSourceItemsFromFiles(files = [], fallbackAssignments = []) {
+  return normalizeSeriesSourceItems(
+    files.map((file, index) => {
+      const assignment = fallbackAssignments[index] || {}
+      return {
+        id: String(file.id || `series-source-${index + 1}`),
+        sourceImage: file,
+        templateId: assignment.templateId || '',
+        prompt: assignment.prompt || '',
+        size: '1:1',
+        imageType: assignment.imageType || '',
+        differenceLevel: assignment.differenceLevel || 'off'
+      }
+    }),
+    fallbackAssignments
+  )
+}
 const studioTasks = ref([])
 const studioAgentReadiness = ref({
   queue: {
@@ -437,6 +480,8 @@ function getWalletBalanceSummary() {
 
 function assertClientSideBalanceForTask({ menuKey, draft, textKind = '' } = {}) {
   const balance = getWalletBalanceSummary()
+  const seriesSourceItems = normalizeSeriesSourceItems(draft?.seriesSourceItems, draft?.promptAssignments)
+  const hasSeriesInput = Boolean(seriesSourceItems.length || draft?.sourceImage)
 
   if (menuKey === 'workspace' && textKind) {
     if (balance.text <= 0) {
@@ -460,7 +505,7 @@ function assertClientSideBalanceForTask({ menuKey, draft, textKind = '' } = {}) 
     if ((enabledSteps.title || enabledSteps.description) && balance.text <= 0) {
       return '文本余额不足，无法发起当前项目任务'
     }
-    if (enabledSteps.image && draft?.sourceImage && balance.image <= 0) {
+    if (enabledSteps.image && hasSeriesInput && balance.image <= 0) {
       return '图片余额不足，无法发起当前项目任务'
     }
     if (enabledSteps.video && balance.video <= 0) {
@@ -1076,7 +1121,7 @@ async function loadPurchaseCenterCatalog() {
 }
 
 function handleMenuSelect(menuKey) {
-  activeGeneratorMenu.value = ''
+  activeGeneratorMenu.value = resolveGeneratorView(menuKey)?.mode ? menuKey : ''
   if (menuKey === 'work-center' && formDrafts.value.workspace?.projectId) {
     activeProductProjectId.value = formDrafts.value.workspace.projectId
   }
@@ -2355,12 +2400,34 @@ async function handlePickGeneratorImage() {
   }
 
   try {
+    const currentDraft = formDrafts.value[activeGeneratorMenuKey.value] || {}
+    const fallbackAssignments = Array.isArray(currentDraft.promptAssignments) ? currentDraft.promptAssignments : []
+    const allowMultiple = activeGeneratorMenuKey.value === 'series-generate'
     const result = await workspaceClient.pickInputAssets({
       menuKey: activeGeneratorMenuKey.value,
-      allowMultiple: false
+      allowMultiple
     })
 
-    if (result.canceled || !result.files?.[0]) {
+    if (result.canceled || !result.files?.length) {
+      return
+    }
+
+    if (activeGeneratorMenuKey.value === 'series-generate') {
+      const seriesSourceItems = buildSeriesSourceItemsFromFiles(result.files, fallbackAssignments)
+      await persistDraft(activeGeneratorMenuKey.value, {
+        sourceImage: result.files[0],
+        generateCount: Math.max(1, seriesSourceItems.length),
+        promptAssignments: seriesSourceItems.map((item, index) => ({
+          ...(fallbackAssignments[index] || {}),
+          id: (fallbackAssignments[index] || {}).id || `series-generate-${index + 1}`,
+          index: index + 1,
+          prompt: item.prompt || '',
+          templateId: item.templateId || '',
+          imageType: item.imageType || '',
+          differenceLevel: item.differenceLevel || 'off'
+        })),
+        seriesSourceItems
+      })
       return
     }
 

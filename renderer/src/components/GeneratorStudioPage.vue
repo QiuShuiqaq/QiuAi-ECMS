@@ -40,6 +40,25 @@ const videoModelOptions = [
   { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
 ]
 
+const videoAspectRatioOptions = [
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '1:1', value: '1:1' },
+  { label: '4:5', value: '4:5' },
+  { label: '3:4', value: '3:4' }
+]
+
+const videoDurationOptions = [
+  { label: '6s', value: '6s' },
+  { label: '10s', value: '10s' }
+]
+
+const videoMotionOptions = [
+  { label: '自动', value: 'auto' },
+  { label: '稳定', value: 'stable' },
+  { label: '柔和', value: 'soft' }
+]
+
 const templateTypeMap = {
   'image-main': '商品主图',
   'image-white-bg': '白底图',
@@ -70,37 +89,11 @@ const imageTemplateDefaultOrder = [
   'image-replace-all'
 ]
 
-const videoAspectRatioOptions = [
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
-  { label: '1:1', value: '1:1' },
-  { label: '4:5', value: '4:5' },
-  { label: '3:4', value: '3:4' }
-]
-
-const videoDurationOptions = [
-  { label: '6s', value: '6s' },
-  { label: '10s', value: '10s' }
-]
-
-const videoMotionOptions = [
-  { label: '自动', value: 'auto' },
-  { label: '稳定', value: 'stable' },
-  { label: '柔和', value: 'soft' }
-]
-
 const filteredTemplates = computed(() => {
   const category = props.mode === 'image' ? '图片' : '视频'
   return (props.promptTemplates || []).filter((item) => item.category === category)
 })
 
-const modelOptions = computed(() => {
-  return props.mode === 'video' ? videoModelOptions : imageModelOptions
-})
-
-const currentModelValue = computed(() => props.draft.model || modelOptions.value[0]?.value || '')
-const currentVideoTemplateValue = computed(() => props.draft.videoTemplateId || '')
-const currentVideoPromptValue = computed(() => props.draft.prompt || '')
 const sourceImagePreview = computed(() => props.draft.sourceImage?.preview || '')
 
 const videoResolutionOptions = computed(() => {
@@ -114,69 +107,25 @@ const videoResolutionOptions = computed(() => {
   ]
 })
 
-const seriesPromptAssignments = computed(() => {
-  if (props.mode !== 'image') {
-    return []
-  }
+const seriesSourceItems = computed(() => {
+  if (props.mode !== 'image') return []
 
-  return Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments : []
+  const items = Array.isArray(props.draft.seriesSourceItems) ? props.draft.seriesSourceItems : []
+  if (items.length) return items
+
+  if (!props.draft.sourceImage) return []
+
+  const assignment = Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments[0] || {} : {}
+  return [{
+    id: 'series-source-1',
+    sourceImage: props.draft.sourceImage,
+    templateId: assignment.templateId || props.draft.imageTemplateId || '',
+    prompt: assignment.prompt || props.draft.prompt || '',
+    size: props.draft.size || '1:1',
+    imageType: assignment.imageType || props.draft.imageType || '',
+    differenceLevel: assignment.differenceLevel || 'off'
+  }]
 })
-
-const seriesResultGroups = computed(() => {
-  if (props.mode !== 'image') {
-    return []
-  }
-
-  return (props.resultPayload.groupedResults || []).map((group, groupIndex) => ({
-    id: group.id || `series-group-${groupIndex + 1}`,
-    title: group.groupTitle || `第 ${groupIndex + 1} 组`,
-    status: group.status || 'waiting',
-    completedCount: Number(group.completedCount || 0),
-    failedCount: Number(group.failedCount || 0),
-    outputs: Array.isArray(group.outputs) ? group.outputs : []
-  }))
-})
-
-const videoResultItems = computed(() => {
-  if (props.mode !== 'video') {
-    return []
-  }
-
-  return (props.resultPayload.groupedResults || [])
-    .flatMap((group) => group.outputs || [])
-    .filter((item) => {
-      const savedPath = String(item.savedPath || item.path || item.preview || '').trim()
-      return Boolean(savedPath) && /\.mp4$/i.test(savedPath)
-    })
-    .map((item, index) => ({
-      id: item.id || `video-result-${index + 1}`,
-      title: item.title || `视频结果 ${index + 1}`,
-      path: item.savedPath || item.path || item.preview || ''
-    }))
-})
-
-const resultOutputCards = computed(() => {
-  return (props.exportItems || []).map((item, index) => ({
-    id: item.id || `export-item-${index + 1}`,
-    name: item.name || item.groupTitle || `结果 ${index + 1}`,
-    status: item.status || '已保存',
-    itemCount: Number(item.itemCount || 0),
-    directoryPath: item.directoryPath || '',
-    outputDirectory: item.outputDirectory || '',
-    savedPath: item.savedPath || ''
-  }))
-})
-
-const hasAnyResults = computed(() => {
-  return Boolean(
-    seriesResultGroups.value.length ||
-    videoResultItems.value.length ||
-    resultOutputCards.value.length ||
-    props.resultPayload.summary?.description
-  )
-})
-
-const summaryDescription = computed(() => props.resultPayload.summary?.description || '')
 
 const normalizedTasks = computed(() => {
   return (props.tasks || [])
@@ -203,9 +152,7 @@ const activeTask = computed(() => {
     null
 })
 
-const queueTasks = computed(() => {
-  return normalizedTasks.value.filter((task) => task.id !== activeTask.value?.id).slice(0, 12)
-})
+const queueTasks = computed(() => normalizedTasks.value.filter((task) => task.id !== activeTask.value?.id).slice(0, 12))
 
 const queueSummary = computed(() => {
   const queue = props.agentReadiness?.queue || {}
@@ -216,19 +163,55 @@ const queueSummary = computed(() => {
   }
 })
 
+const seriesResultGroups = computed(() => {
+  if (props.mode !== 'image') return []
+
+  return (props.resultPayload.groupedResults || []).map((group, groupIndex) => ({
+    id: group.id || `series-group-${groupIndex + 1}`,
+    title: group.groupTitle || `第 ${groupIndex + 1} 组`,
+    status: group.status || 'waiting',
+    completedCount: Number(group.completedCount || 0),
+    failedCount: Number(group.failedCount || 0),
+    outputs: Array.isArray(group.outputs) ? group.outputs : []
+  }))
+})
+
+const videoResultItems = computed(() => {
+  if (props.mode !== 'video') return []
+
+  return (props.resultPayload.groupedResults || [])
+    .flatMap((group) => group.outputs || [])
+    .filter((item) => Boolean(String(item.savedPath || item.path || item.preview || '').trim()))
+    .map((item, index) => ({
+      id: item.id || `video-result-${index + 1}`,
+      title: item.title || `视频结果 ${index + 1}`,
+      path: item.savedPath || item.path || item.preview || ''
+    }))
+})
+
+const resultOutputCards = computed(() => {
+  return (props.exportItems || []).map((item, index) => ({
+    id: item.id || `export-item-${index + 1}`,
+    name: item.name || item.groupTitle || `结果 ${index + 1}`,
+    status: item.status || '已保存',
+    itemCount: Number(item.itemCount || 0),
+    raw: item
+  }))
+})
+
+const hasAnyResults = computed(() => {
+  return Boolean(
+    seriesResultGroups.value.length ||
+    videoResultItems.value.length ||
+    resultOutputCards.value.length ||
+    props.resultPayload.summary?.description
+  )
+})
+
+const summaryDescription = computed(() => props.resultPayload.summary?.description || '')
+
 function updateField(field, value) {
   emit('update-draft', { field, value })
-}
-
-function handleModelChange(event) {
-  updateField('model', event.target.value)
-}
-
-function handleVideoTemplateChange(event) {
-  const templateId = event.target.value
-  const template = filteredTemplates.value.find((item) => item.id === templateId)
-  updateField('videoTemplateId', templateId)
-  updateField('prompt', template?.prompt || '')
 }
 
 function handleVideoDurationChange(value) {
@@ -238,69 +221,46 @@ function handleVideoDurationChange(value) {
   }
 }
 
-function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
-  if (templateTypeMap[templateId]) {
-    return templateTypeMap[templateId]
-  }
+function handleVideoTemplateChange(templateId) {
+  const template = filteredTemplates.value.find((item) => item.id === templateId)
+  updateField('videoTemplateId', templateId)
+  updateField('prompt', template?.prompt || '')
+}
 
+function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
+  if (templateTypeMap[templateId]) return templateTypeMap[templateId]
   return templateTypeMap[imageTemplateDefaultOrder[fallbackIndex]] || '详情图'
 }
 
-function resolveSeriesTemplateId(templateId = '', index = 0) {
-  if (templateId) {
-    return templateId
-  }
-
-  return imageTemplateDefaultOrder[index] || 'image-detail'
+function buildPromptAssignments(items = []) {
+  return items.map((item, index) => ({
+    id: item.id || `series-generate-${index + 1}`,
+    index: index + 1,
+    prompt: item.prompt || '',
+    templateId: item.templateId || imageTemplateDefaultOrder[index] || 'image-detail',
+    imageType: item.imageType || resolveSeriesImageTypeByTemplate(item.templateId, index),
+    differenceLevel: item.differenceLevel || 'off'
+  }))
 }
 
-function handleSeriesGenerateCountInput(value) {
-  const nextCount = Math.max(1, Number(value) || 1)
-  const currentAssignments = Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments : []
-  const nextAssignments = Array.from({ length: nextCount }, (_unused, index) => {
-    const currentAssignment = currentAssignments[index] || {}
-    const nextTemplateId = resolveSeriesTemplateId(currentAssignment.templateId, index)
-    return {
-      id: currentAssignment.id || `series-generate-${index + 1}`,
-      index: index + 1,
-      prompt: currentAssignment.prompt || '',
-      templateId: nextTemplateId,
-      imageType: currentAssignment.imageType || resolveSeriesImageTypeByTemplate(nextTemplateId, index),
-      differenceLevel: currentAssignment.differenceLevel || 'off'
-    }
+function updateSeriesItem(index, patch = {}) {
+  const nextItems = seriesSourceItems.value.map((item, itemIndex) => {
+    if (itemIndex !== index) return item
+    return { ...item, ...patch }
   })
 
-  updateField('generateCount', nextCount)
-  updateField('promptAssignments', nextAssignments)
+  updateField('seriesSourceItems', nextItems)
+  updateField('sourceImage', nextItems[0]?.sourceImage || null)
+  updateField('generateCount', Math.max(1, nextItems.length))
+  updateField('promptAssignments', buildPromptAssignments(nextItems))
 }
 
-function updateSeriesAssignment(index, patch = {}) {
-  const nextAssignments = seriesPromptAssignments.value.map((item, itemIndex) => {
-    if (itemIndex !== index) {
-      return item
-    }
-
-    return {
-      ...item,
-      ...patch
-    }
-  })
-
-  updateField('promptAssignments', nextAssignments)
-}
-
-function handleSeriesAssignmentTemplateChange(index, templateId) {
+function handleSeriesTemplateChange(index, templateId) {
   const template = filteredTemplates.value.find((item) => item.id === templateId)
-  updateSeriesAssignment(index, {
+  updateSeriesItem(index, {
     templateId,
-    imageType: resolveSeriesImageTypeByTemplate(templateId, index),
-    prompt: template?.prompt || ''
-  })
-}
-
-function handleSeriesDifferenceToggle(index, checked) {
-  updateSeriesAssignment(index, {
-    differenceLevel: checked ? 'medium' : 'off'
+    prompt: template?.prompt || '',
+    imageType: resolveSeriesImageTypeByTemplate(templateId, index)
   })
 }
 
@@ -319,14 +279,14 @@ function getStatusClass(status = '') {
 
 function formatTaskLabel(task) {
   const parts = []
-  if (task.taskNumber) parts.push(task.taskNumber)
-  if (task.title) parts.push(task.title)
+  if (task?.taskNumber) parts.push(task.taskNumber)
+  if (task?.title) parts.push(task.title)
   return parts.join(' / ') || '当前任务'
 }
 </script>
 
 <template>
-  <section class="generator-studio-page">
+  <section class="generator-studio-page media-studio-page">
     <article class="generator-column generator-column--settings">
       <header class="generator-column__header">
         <strong>参数设置</strong>
@@ -345,46 +305,91 @@ function formatTaskLabel(task) {
           </div>
         </div>
 
-        <div class="generator-form__row">
+        <div v-if="mode === 'video'" class="generator-form__row">
           <span class="generator-form__label">上传样图</span>
           <div class="generator-form__asset">
             <button class="secondary-action generator-form__asset-button" type="button" @click="emit('pick-image')">上传</button>
             <div class="generator-form__asset-preview">
               <img v-if="sourceImagePreview" class="generator-preview__image generator-preview__image--inline" :src="sourceImagePreview" alt="">
-              <div v-else class="generator-form__asset-empty">样图</div>
+              <div v-else class="generator-form__asset-empty">暂无样图</div>
             </div>
           </div>
         </div>
 
-        <div class="generator-form__row">
-          <span class="generator-form__label">模型</span>
-          <select :value="currentModelValue" @change="handleModelChange">
-            <option v-for="option in modelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
+        <div v-else class="generator-form__row">
+          <span class="generator-form__label">上传样图</span>
+          <button class="secondary-action generator-form__asset-button" type="button" @click="emit('pick-image')">上传一组图片</button>
         </div>
 
-        <div v-if="mode === 'image'" class="generator-form__group">
+        <div class="generator-form__group">
           <div class="generator-form__row">
-            <span class="generator-form__label">数量</span>
-            <input :value="draft.generateCount || 4" type="number" min="1" max="500" placeholder="数量" @input="handleSeriesGenerateCountInput($event.target.value)">
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">批次</span>
-            <input :value="draft.batchCount || 1" type="number" min="1" placeholder="批次" @input="updateField('batchCount', $event.target.value)">
-          </div>
-          <div class="generator-form__row">
-            <span class="generator-form__label">尺寸</span>
-            <select :value="draft.size || '1:1'" @change="updateField('size', $event.target.value)">
-              <option v-for="option in imageSizeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+            <span class="generator-form__label">模型</span>
+            <select :value="draft.model || (mode === 'video' ? 'MiniMax-Hailuo-2.3-Fast' : 'gpt-image-2')" @change="updateField('model', $event.target.value)">
+              <option v-for="option in mode === 'video' ? videoModelOptions : imageModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
+          </div>
+
+          <div v-if="mode === 'image'" class="generator-form__row">
+            <span class="generator-form__label">批次</span>
+            <input :value="draft.batchCount || 1" type="number" min="1" @input="updateField('batchCount', $event.target.value)">
+          </div>
+
+          <div v-if="mode === 'video'" class="generator-form__row">
+            <span class="generator-form__label">批次</span>
+            <input :value="draft.videoQuantity || 1" type="number" min="1" @input="updateField('videoQuantity', $event.target.value)">
+          </div>
+        </div>
+
+        <div v-if="mode === 'image'" class="generator-form__series">
+          <article v-for="(item, index) in seriesSourceItems" :key="item.id || index" class="generator-form__series-card media-source-card">
+            <div class="generator-form__series-head">
+              <strong>第 {{ index + 1 }} 张</strong>
+              <label class="generator-form__series-toggle">
+                <input
+                  :checked="(item.differenceLevel || 'off') !== 'off'"
+                  type="checkbox"
+                  @change="updateSeriesItem(index, { differenceLevel: $event.target.checked ? 'medium' : 'off' })"
+                >
+                <span>差异化</span>
+              </label>
+            </div>
+
+            <div class="media-source-card__preview">
+              <div class="media-source-card__thumb">
+                <img v-if="item.sourceImage?.preview" :src="item.sourceImage.preview" alt="">
+                <span v-else>样图</span>
+              </div>
+              <strong>{{ item.sourceImage?.name || '未命名图片' }}</strong>
+            </div>
+
+            <div class="generator-form__group">
+              <div class="generator-form__row">
+                <span class="generator-form__label">提示词模板</span>
+                <select :value="item.templateId || ''" @change="handleSeriesTemplateChange(index, $event.target.value)">
+                  <option value="">选择模板</option>
+                  <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
+                </select>
+              </div>
+
+              <div class="generator-form__row">
+                <span class="generator-form__label">尺寸</span>
+                <select :value="item.size || '1:1'" @change="updateSeriesItem(index, { size: $event.target.value })">
+                  <option v-for="option in imageSizeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="generator-form__card generator-form__card--full">
+              <textarea :value="item.prompt || ''" rows="5" placeholder="提示词" @input="updateSeriesItem(index, { prompt: $event.target.value })"></textarea>
+            </div>
+          </article>
+
+          <div v-if="!seriesSourceItems.length" class="product-result-empty media-empty">
+            <span>请先上传一组图片</span>
           </div>
         </div>
 
         <div v-if="mode === 'video'" class="generator-form__group">
-          <div class="generator-form__row">
-            <span class="generator-form__label">批次</span>
-            <input :value="draft.videoQuantity || 1" type="number" min="1" placeholder="批次" @input="updateField('videoQuantity', $event.target.value)">
-          </div>
           <div class="generator-form__row">
             <span class="generator-form__label">时长</span>
             <select :value="draft.duration || '6s'" @change="handleVideoDurationChange($event.target.value)">
@@ -392,7 +397,7 @@ function formatTaskLabel(task) {
             </select>
           </div>
           <div class="generator-form__row">
-            <span class="generator-form__label">比例</span>
+            <span class="generator-form__label">画面比例</span>
             <select :value="draft.aspectRatio || '16:9'" @change="updateField('aspectRatio', $event.target.value)">
               <option v-for="option in videoAspectRatioOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
@@ -411,42 +416,14 @@ function formatTaskLabel(task) {
           </div>
           <div class="generator-form__row">
             <span class="generator-form__label">模板</span>
-            <select :value="currentVideoTemplateValue" @change="handleVideoTemplateChange">
+            <select :value="draft.videoTemplateId || ''" @change="handleVideoTemplateChange($event.target.value)">
               <option value="">选择模板</option>
               <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
             </select>
           </div>
           <div class="generator-form__card generator-form__card--full">
-            <textarea :value="currentVideoPromptValue" rows="10" placeholder="视频提示词" @input="updateField('prompt', $event.target.value)"></textarea>
+            <textarea :value="draft.prompt || ''" rows="10" placeholder="视频提示词" @input="updateField('prompt', $event.target.value)"></textarea>
           </div>
-        </div>
-
-        <div v-if="mode === 'image'" class="generator-form__series">
-          <article v-for="(assignment, index) in seriesPromptAssignments" :key="assignment.id || index" class="generator-form__series-card">
-            <div class="generator-form__series-head">
-              <strong>第 {{ index + 1 }} 张</strong>
-              <label class="generator-form__series-toggle">
-                <input
-                  :checked="(assignment.differenceLevel || 'off') !== 'off'"
-                  type="checkbox"
-                  @change="handleSeriesDifferenceToggle(index, $event.target.checked)"
-                >
-                <span>差异化</span>
-              </label>
-            </div>
-
-            <div class="generator-form__row">
-              <span class="generator-form__label">模板</span>
-              <select :value="assignment.templateId || ''" @change="handleSeriesAssignmentTemplateChange(index, $event.target.value)">
-                <option value="">选择模板</option>
-                <option v-for="template in filteredTemplates" :key="template.id" :value="template.id">{{ template.name }}</option>
-              </select>
-            </div>
-
-            <div class="generator-form__card">
-              <textarea :value="assignment.prompt || ''" rows="5" placeholder="提示词" @input="updateSeriesAssignment(index, { prompt: $event.target.value })"></textarea>
-            </div>
-          </article>
         </div>
 
         <button class="primary-action" type="button" @click="emit('submit-task')">生成</button>
@@ -546,11 +523,7 @@ function formatTaskLabel(task) {
             <div v-if="summaryDescription" class="generator-preview__text">{{ summaryDescription }}</div>
 
             <template v-if="mode === 'image'">
-              <article
-                v-for="group in seriesResultGroups"
-                :key="group.id"
-                class="generator-preview__series-group"
-              >
+              <article v-for="group in seriesResultGroups" :key="group.id" class="generator-preview__series-group">
                 <div class="generator-preview__series-head">
                   <div class="generator-preview__series-copy">
                     <strong>{{ group.title }}</strong>
@@ -560,27 +533,15 @@ function formatTaskLabel(task) {
                 </div>
 
                 <div class="generator-preview__series-grid">
-                  <article
-                    v-for="item in group.outputs"
-                    :key="item.id"
-                    class="generator-preview__series-card"
-                  >
-                    <img
-                      class="generator-preview__image generator-preview__image--series"
-                      :src="item.preview || item.savedPath || item.path"
-                      alt=""
-                    >
+                  <article v-for="item in group.outputs" :key="item.id" class="generator-preview__series-card">
+                    <img class="generator-preview__image generator-preview__image--series" :src="item.preview || item.savedPath || item.path" alt="">
                   </article>
                 </div>
               </article>
             </template>
 
             <template v-else>
-              <article
-                v-for="item in videoResultItems"
-                :key="item.id"
-                class="generator-preview__video-card"
-              >
+              <article v-for="item in videoResultItems" :key="item.id" class="generator-preview__video-card">
                 <strong>{{ item.title }}</strong>
                 <video class="generator-preview__video" :src="item.path" controls preload="metadata"></video>
               </article>
@@ -608,8 +569,12 @@ function formatTaskLabel(task) {
               <span>{{ item.status }}{{ item.itemCount ? ` / ${item.itemCount}` : '' }}</span>
             </div>
 
-            <button class="secondary-action" type="button" @click="emit('open-export-item', item)">打开</button>
+            <button class="secondary-action" type="button" @click="emit('open-export-item', item.raw)">打开</button>
           </article>
+        </div>
+
+        <div v-else class="product-result-empty product-result-empty--compact">
+          <span>暂无导出结果</span>
         </div>
 
         <div class="generator-export__actions">
@@ -621,28 +586,59 @@ function formatTaskLabel(task) {
 </template>
 
 <style scoped>
-.generator-column--export {
-  display: flex;
-  flex-direction: column;
-}
-
-.generator-export {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
+.media-studio-page {
+  height: 100%;
   min-height: 0;
 }
 
-.generator-export__list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
+.media-source-card {
+  display: grid;
   gap: 12px;
-  min-height: 0;
 }
 
-.generator-export__actions {
-  margin-top: auto;
-  padding-top: 16px;
+.media-source-card__preview {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.media-source-card__preview strong {
+  color: #f7f2ff;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-source-card__thumb {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  display: flex;
+  height: 72px;
+  justify-content: center;
+  overflow: hidden;
+  width: 72px;
+}
+
+.media-source-card__thumb img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.media-source-card__thumb span {
+  color: #8f8aa3;
+  font-size: 12px;
+}
+
+.media-empty {
+  min-height: 96px;
+}
+
+.product-result-empty--compact {
+  min-height: 120px;
 }
 </style>

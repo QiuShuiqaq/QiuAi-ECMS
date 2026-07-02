@@ -60,6 +60,17 @@ async function createTempOutputRoot() {
   return tempDirectory
 }
 
+async function waitForCondition(predicate, { timeoutMs = 2000, intervalMs = 20 } = {}) {
+  const startedAt = Date.now()
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('Timed out while waiting for condition.')
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 afterEach(async () => {
   await Promise.all(tempDirectories.splice(0).map((targetPath) => {
     return fs.rm(targetPath, { recursive: true, force: true })
@@ -235,6 +246,118 @@ describe('studioWorkspaceService', () => {
       status: '失败'
     })
     expect(failedTask.error).toContain('image generation dependency is required')
+  })
+
+  it('runs queued projects up to the authorized project concurrency limit', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { image: 100 })
+
+    let activeExecutions = 0
+    let maxConcurrentExecutions = 0
+    const releaseResolvers = []
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      authorizationService: {
+        getActivationStatus: async () => ({
+          canUseApp: true,
+          status: 'activated',
+          activePackage: {
+            capabilityConfig: {
+              taskConcurrencyLimit: 2,
+              batchTaskEnabled: true,
+              seriesImageLimitPerTask: 5
+            }
+          }
+        })
+      },
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      createId: (() => {
+        let sequence = 0
+        return () => `concurrency-${++sequence}`
+      })(),
+      createTaskNumber: (() => {
+        let sequence = 0
+        return () => `QAI-20260702-${String(++sequence).padStart(4, '0')}`
+      })(),
+      getNow: () => '2026-07-02T20:00:00.000Z',
+      generateImageResults: async ({ taskId }) => {
+        activeExecutions += 1
+        maxConcurrentExecutions = Math.max(maxConcurrentExecutions, activeExecutions)
+
+        await new Promise((resolve) => {
+          releaseResolvers.push(resolve)
+        })
+
+        activeExecutions -= 1
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: `${taskId}-group-1`,
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'succeeded',
+              completedCount: 1,
+              failedCount: 0,
+              outputs: []
+            }
+          ],
+          summary: {
+            title: 'ok',
+            description: 'ok'
+          }
+        }
+      }
+    })
+
+    const draft = {
+      taskName: '并发测试',
+      sourceImage: {
+        name: 'lamp.jpg',
+        path: 'C:/images/lamp.jpg',
+        preview: 'preview-lamp'
+      },
+      model: 'gpt-image-2',
+      generateCount: 1,
+      batchCount: 1,
+      promptAssignments: [
+        {
+          id: 'series-1',
+          imageType: '商品主图',
+          templateId: 'image-main',
+          prompt: '生成商品主图'
+        }
+      ]
+    }
+
+    await service.createTask({ menuKey: 'series-generate', draft })
+    await service.createTask({ menuKey: 'series-generate', draft })
+    await service.createTask({ menuKey: 'series-generate', draft })
+
+    await waitForCondition(() => releaseResolvers.length === 2)
+    expect(maxConcurrentExecutions).toBe(2)
+
+    releaseResolvers.shift()?.()
+    releaseResolvers.shift()?.()
+    await waitForCondition(() => releaseResolvers.length === 1)
+    releaseResolvers.shift()?.()
+
+    await service.waitForIdle()
+    expect(maxConcurrentExecutions).toBe(2)
   })
 
   it('normalizes legacy stored projects with the new generation config and run record fields', async () => {

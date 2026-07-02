@@ -152,6 +152,36 @@ function createAuthorizationService({
     throw new Error('remoteLicensePlatformClient is required.')
   }
 
+  let cachedActivationStatus = null
+  let cachedActivationStatusAt = 0
+  let inflightActivationStatusPromise = null
+  const activationStatusCacheTtlMs = 5000
+
+  function getCachedActivationStatus() {
+    if (!cachedActivationStatus) {
+      return null
+    }
+
+    if (Date.now() - cachedActivationStatusAt > activationStatusCacheTtlMs) {
+      cachedActivationStatus = null
+      cachedActivationStatusAt = 0
+      return null
+    }
+
+    return cachedActivationStatus
+  }
+
+  function setCachedActivationStatus(status = null) {
+    cachedActivationStatus = status
+    cachedActivationStatusAt = status ? Date.now() : 0
+  }
+
+  function clearActivationStatusCache() {
+    cachedActivationStatus = null
+    cachedActivationStatusAt = 0
+    inflightActivationStatusPromise = null
+  }
+
   async function getDevBypassActivationStatus() {
     const devConfig = buildDevBypassConfig()
     if (!devConfig.enabled) {
@@ -228,18 +258,30 @@ function createAuthorizationService({
   }
 
   async function getRemoteActivationStatus() {
+    const cachedStatus = getCachedActivationStatus()
+    if (cachedStatus) {
+      return cachedStatus
+    }
+
+    if (inflightActivationStatusPromise) {
+      return inflightActivationStatusPromise
+    }
+
     const remoteConfig = getRemoteConfig() || {}
     const enabled = remoteConfig.enabled !== false
     const sessionToken = trimString(remoteConfig.sessionToken || '')
     const deviceCode = await getDeviceCode()
 
     if (!enabled || !sessionToken) {
-      return createAuthorizationState({
+      const state = createAuthorizationState({
         deviceCode
       })
+      setCachedActivationStatus(state)
+      return state
     }
 
-    try {
+    inflightActivationStatusPromise = (async () => {
+      try {
       const remoteStatus = await remoteLicensePlatformClient.getAuthorizationStatus({
         sessionToken,
         deviceFingerprint: deviceCode
@@ -272,11 +314,13 @@ function createAuthorizationService({
         }
       }
 
-      return {
+      const state = {
         ...mapRemoteActivationState(remoteStatus),
         remoteServiceCapacity
       }
-    } catch (error) {
+      setCachedActivationStatus(state)
+      return state
+      } catch (error) {
       const statusCode = Number(error?.details?.statusCode || 0)
       const shouldRetryActivate = statusCode === 401
       const shouldClearPersistedSession = statusCode === 401 || statusCode === 404
@@ -294,7 +338,7 @@ function createAuthorizationService({
         }).catch(() => {})
       }
 
-      return createAuthorizationState({
+      const state = createAuthorizationState({
         status: 'not_logged_in',
         mode: 'server-license',
         authType: 'session-token',
@@ -305,9 +349,14 @@ function createAuthorizationService({
         remoteStatus: 'request_failed',
         remoteServiceCapacity: getRemoteConfig()?.remoteServiceCapacity || null
       })
-    } finally {
-      // no-op
-    }
+      setCachedActivationStatus(state)
+      return state
+      } finally {
+        inflightActivationStatusPromise = null
+      }
+    })()
+
+    return inflightActivationStatusPromise
   }
 
   async function getActivationStatus() {
@@ -327,6 +376,7 @@ function createAuthorizationService({
 
   return {
     getActivationStatus,
+    clearActivationStatusCache,
     getDeviceCodePayload
   }
 }

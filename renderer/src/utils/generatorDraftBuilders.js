@@ -39,6 +39,22 @@ export function buildSeriesPromptAssignments({
   })
 }
 
+function buildSeriesSourceItems(sourceImages = [], assignments = []) {
+  const images = Array.isArray(sourceImages) ? sourceImages : []
+  return images.map((sourceImage, index) => {
+    const assignment = assignments[index] || {}
+    return {
+      id: sourceImage?.id || `series-source-${index + 1}`,
+      sourceImage,
+      templateId: assignment.templateId || '',
+      prompt: assignment.prompt || '',
+      size: '1:1',
+      imageType: assignment.imageType || '',
+      differenceLevel: assignment.differenceLevel || 'off'
+    }
+  })
+}
+
 export function buildProjectGeneratorDraft(project, menuKey) {
   const generationConfig = project?.generationConfig || {}
   const selectionSource = project?.metadata?.selectionSource && typeof project.metadata.selectionSource === 'object'
@@ -55,7 +71,8 @@ export function buildProjectGeneratorDraft(project, menuKey) {
     sourceImage: project?.assets?.sourceImages?.[0] || null,
     selectionSource,
     selectedTitle: project?.content?.selectedTitle || '',
-    selectedDescription: project?.content?.selectedDescription || ''
+    selectedDescription: project?.content?.selectedDescription || '',
+    seriesSourceItems: []
   }
 
   const modePatchMap = {
@@ -70,7 +87,14 @@ export function buildProjectGeneratorDraft(project, menuKey) {
       promptAssignments: buildSeriesPromptAssignments({
         count: 4,
         sharedPrompt: generationConfig.imagePrompt || ''
-      })
+      }),
+      seriesSourceItems: buildSeriesSourceItems(
+        project?.assets?.sourceImages || [],
+        buildSeriesPromptAssignments({
+          count: Math.max(1, (project?.assets?.sourceImages || []).length || 1),
+          sharedPrompt: generationConfig.imagePrompt || ''
+        })
+      )
     },
     'video-generate': {
       duration: generationConfig.duration || generationConfig.videoDuration || '6s',
@@ -136,6 +160,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
       count: workspaceDraft?.generateCount || generationConfig.generateCount || 4,
       sharedPrompt: workspaceDraft?.imagePrompt || generationConfig.imagePrompt || ''
     }),
+    seriesSourceItems: workspaceDraft?.seriesSourceItems || [],
     notes: workspaceDraft?.notes || generationConfig.notes || '',
     model: workspaceDraft?.model || generationConfig.model || 'deepseek-chat'
   }

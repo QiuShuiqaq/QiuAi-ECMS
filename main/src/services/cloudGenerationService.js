@@ -118,6 +118,38 @@ function buildSeriesOutputDescriptors(promptAssignments = [], fallbackPrompt = '
   })
 }
 
+function buildSeriesSourceDescriptors(draft = {}) {
+  const sourceItems = Array.isArray(draft.seriesSourceItems) ? draft.seriesSourceItems : []
+  if (sourceItems.length) {
+    return sourceItems
+      .map((item, index) => {
+        const sourceImagePath = item?.sourceImage?.storedPath || item?.sourceImage?.path || ''
+        if (!trimString(sourceImagePath)) {
+          return null
+        }
+
+        return {
+          slotIndex: index + 1,
+          sourceImagePath,
+          prompt: trimString(item.prompt || draft.prompt || ''),
+          aspectRatio: trimString(item.size || draft.size || '1:1'),
+          outputTitle: trimString(item.imageType || item.sourceImage?.name || `Image ${index + 1}`)
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, draft.generateCount)
+  const outputDescriptors = buildSeriesOutputDescriptors(normalizedAssignments, draft.prompt)
+  const sourceImagePath = draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
+
+  return outputDescriptors.map((descriptor) => ({
+    ...descriptor,
+    sourceImagePath,
+    aspectRatio: trimString(draft.size || '1:1')
+  }))
+}
+
 function ensureRemoteReady(settingsService) {
   const settings = settingsService.getSettings()
   const authPlatform = settings.authPlatform && typeof settings.authPlatform === 'object'
@@ -158,6 +190,14 @@ function extensionFromMimeType(mimeType = '', assetType = '') {
   return assetType === 'VIDEO' ? '.mp4' : '.png'
 }
 
+function buildArtifactFileName(artifact = {}, extension = '') {
+  const groupIndex = Math.max(1, Number(artifact.groupIndex) || 1)
+  const slotIndex = Math.max(1, Number(artifact.slotIndex) || 1)
+  const assetType = trimString(artifact.assetType || '').toLowerCase() || 'asset'
+
+  return `batch-${String(groupIndex).padStart(2, '0')}-slot-${String(slotIndex).padStart(2, '0')}-${assetType}${extension}`
+}
+
 async function saveArtifactToDirectory({
   artifact,
   artifactBuffer,
@@ -167,7 +207,7 @@ async function saveArtifactToDirectory({
     ? artifact.metadata
     : {}
   const extension = extensionFromMimeType(metadata.mimeType, artifact.assetType)
-  const fileName = `${String(artifact.slotIndex).padStart(2, '0')}-${String(artifact.assetType || '').toLowerCase()}${extension}`
+  const fileName = buildArtifactFileName(artifact, extension)
   const savedPath = path.resolve(outputDirectory, fileName)
 
   await fs.mkdir(path.dirname(savedPath), { recursive: true })
@@ -269,18 +309,20 @@ function mapGroupStatus(status = '') {
 
 function buildSeriesGeneratePayload({ draft, sessionToken }) {
   const batchCount = Math.max(1, Number(draft.batchCount) || 1)
-  const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, draft.generateCount)
-  const outputDescriptors = buildSeriesOutputDescriptors(normalizedAssignments, draft.prompt)
-  const sourceImagePath = draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
+  const outputDescriptors = buildSeriesSourceDescriptors(draft)
+  const sourceImagePath = outputDescriptors[0]?.sourceImagePath || draft.sourceImage?.storedPath || draft.sourceImage?.path || ''
 
   return {
     sessionToken,
     sourceImagePath,
     buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
-      const sourceImageDataUrl = await fileToDataUrl(sourceImagePath, {
-        readFile,
-        getMimeTypeFromPath
-      })
+      const descriptorsWithDataUrl = await Promise.all(outputDescriptors.map(async (descriptor) => ({
+        ...descriptor,
+        sourceImageDataUrl: await fileToDataUrl(descriptor.sourceImagePath, {
+          readFile,
+          getMimeTypeFromPath
+        })
+      })))
 
       return {
         sessionToken,
@@ -290,7 +332,7 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           model: trimString(draft.model || 'gpt-image-2'),
           size: trimString(draft.size || '1:1'),
           batchCount,
-          generateCount: outputDescriptors.length
+          generateCount: descriptorsWithDataUrl.length
         },
         requestedConcurrency: resolveRequestedConcurrency({
           assetType: 'IMAGE',
@@ -298,7 +340,7 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           serviceCapacityProfile
         }),
         items: Array.from({ length: batchCount }).flatMap((_unused, batchIndex) => {
-          return outputDescriptors.map((descriptor) => ({
+          return descriptorsWithDataUrl.map((descriptor) => ({
             groupIndex: batchIndex + 1,
             slotIndex: descriptor.slotIndex,
             assetType: 'IMAGE',
@@ -306,9 +348,9 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
             providerModel: trimString(draft.model || 'gpt-image-2'),
             inputSnapshot: {
               prompt: descriptor.prompt,
-              aspectRatio: trimString(draft.size || '1:1'),
+              aspectRatio: descriptor.aspectRatio,
               imageSize: '',
-              urls: [sourceImageDataUrl],
+              urls: [descriptor.sourceImageDataUrl],
               title: descriptor.outputTitle
             }
           }))

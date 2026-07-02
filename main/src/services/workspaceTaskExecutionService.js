@@ -52,10 +52,21 @@ function createWorkspaceTaskExecutionService({
     }
 
     if (menuKey === 'series-generate') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
-      if (sourcePath) {
-        sourcePathAssignments.push({ type: 'series-generate-source' })
-        sourcePaths.push(sourcePath)
+      const seriesSourceItems = Array.isArray(draft.seriesSourceItems) ? draft.seriesSourceItems : []
+      if (seriesSourceItems.length) {
+        seriesSourceItems.forEach((item, index) => {
+          const sourcePath = item?.sourceImage?.path || item?.sourceImage?.storedPath || ''
+          if (sourcePath) {
+            sourcePathAssignments.push({ type: 'series-generate-source-item', index })
+            sourcePaths.push(sourcePath)
+          }
+        })
+      } else {
+        const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+        if (sourcePath) {
+          sourcePathAssignments.push({ type: 'series-generate-source' })
+          sourcePaths.push(sourcePath)
+        }
       }
     }
 
@@ -83,6 +94,16 @@ function createWorkspaceTaskExecutionService({
 
       if (assignment.type === 'series-generate-source' && preparedDraft.sourceImage) {
         preparedDraft.sourceImage.storedPath = storedPath
+      }
+
+      if (assignment.type === 'series-generate-source-item' && Array.isArray(preparedDraft.seriesSourceItems)) {
+        const currentItem = preparedDraft.seriesSourceItems[assignment.index]
+        if (currentItem?.sourceImage) {
+          currentItem.sourceImage.storedPath = storedPath
+          if (assignment.index === 0 && preparedDraft.sourceImage) {
+            preparedDraft.sourceImage.storedPath = storedPath
+          }
+        }
       }
 
       if (assignment.type === 'workspace-source' && preparedDraft.sourceImage) {

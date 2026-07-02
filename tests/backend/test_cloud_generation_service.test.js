@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createCloudGenerationService,
@@ -376,6 +379,120 @@ describe('cloudGenerationService', () => {
       sessionToken: 'session-1',
       downloadUrl: 'https://cdn.qiuaihub.com/generated/artifact-cdn-1.png'
     }))
+  })
+
+  it('preserves all series batches by saving artifacts with batch-specific filenames', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-batch-1',
+      status: 'SUCCEEDED'
+    })
+    remoteClient.getGenerationJob.mockResolvedValue({
+      id: 'job-image-batch-1',
+      status: 'SUCCEEDED',
+      groups: [
+        {
+          groupIndex: 1,
+          status: 'SUCCEEDED',
+          completedItemCount: 1,
+          failedItemCount: 0
+        },
+        {
+          groupIndex: 2,
+          status: 'SUCCEEDED',
+          completedItemCount: 1,
+          failedItemCount: 0
+        }
+      ],
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'SUCCEEDED',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Batch 1'
+        },
+        {
+          groupIndex: 2,
+          slotIndex: 1,
+          status: 'SUCCEEDED',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Batch 2'
+        }
+      ],
+      artifacts: [
+        {
+          id: 'artifact-batch-1',
+          groupIndex: 1,
+          slotIndex: 1,
+          assetType: 'IMAGE',
+          metadata: {
+            mimeType: 'image/png',
+            title: 'Batch 1',
+            providerModel: 'gpt-image-2'
+          }
+        },
+        {
+          id: 'artifact-batch-2',
+          groupIndex: 2,
+          slotIndex: 1,
+          assetType: 'IMAGE',
+          metadata: {
+            mimeType: 'image/png',
+            title: 'Batch 2',
+            providerModel: 'gpt-image-2'
+          }
+        }
+      ]
+    })
+    remoteClient.downloadGenerationArtifact
+      .mockResolvedValueOnce(Buffer.from('image-batch-1'))
+      .mockResolvedValueOnce(Buffer.from('image-batch-2'))
+
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+      getMimeTypeFromPath: () => 'image/png'
+    })
+    const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qiuai-cloud-batch-'))
+
+    try {
+      const result = await service.generateImageResults({
+        menuKey: 'series-generate',
+        draft: {
+          batchCount: 2,
+          generateCount: 1,
+          model: 'gpt-image-2',
+          size: '1:1',
+          prompt: 'test prompt',
+          sourceImage: {
+            storedPath: 'F:/tmp/source.png'
+          },
+          promptAssignments: [
+            {
+              imageType: '主图',
+              prompt: 'test prompt'
+            }
+          ]
+        },
+        taskId: 'task-remote-image-batch-1',
+        outputDirectory
+      })
+
+      const savedPaths = result.groupedResults.flatMap((group) => group.outputs.map((item) => item.savedPath))
+
+      expect(savedPaths).toHaveLength(2)
+      expect(new Set(savedPaths).size).toBe(2)
+      expect(savedPaths[0]).toContain('batch-01-slot-01-image.png')
+      expect(savedPaths[1]).toContain('batch-02-slot-01-image.png')
+      await expect(fs.readFile(savedPaths[0], 'utf8')).resolves.toBe('image-batch-1')
+      await expect(fs.readFile(savedPaths[1], 'utf8')).resolves.toBe('image-batch-2')
+    } finally {
+      await fs.rm(outputDirectory, { recursive: true, force: true })
+    }
   })
 
   it('fails closed for remote-managed image generation when the remote session is not ready', async () => {

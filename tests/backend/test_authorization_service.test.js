@@ -422,4 +422,41 @@ describe('authorization service', () => {
       })
     }))
   })
+
+  it('reuses a short-lived activation status cache to avoid repeated remote checks', async () => {
+    const remoteClient = {
+      getAuthorizationStatus: vi.fn().mockResolvedValue({
+        status: 'activated',
+        mode: 'server-license',
+        authType: 'session-token',
+        canUseApp: true,
+        customerName: 'Remote Alice',
+        userId: 'user-1',
+        licenseId: 'license-1',
+        inviteCode: 'QAI123456',
+        deviceCode: 'QAI-REMOTE-DEVICE',
+        activatedAt: '2026-06-15T10:00:00.000Z',
+        expiresAt: '2026-07-15T10:00:00.000Z',
+        sessionToken: 'session-1',
+        nextAction: 'enter-app'
+      })
+    }
+
+    const service = createAuthorizationService({
+      remoteLicensePlatformClient: remoteClient,
+      getRemoteConfig: () => ({
+        enabled: true,
+        baseUrl: 'https://api.qiuaihub.com',
+        sessionToken: 'session-1'
+      }),
+      getDeviceCode: vi.fn().mockResolvedValue('QAI-REMOTE-DEVICE')
+    })
+
+    const first = await service.getActivationStatus()
+    const second = await service.getActivationStatus()
+
+    expect(remoteClient.getAuthorizationStatus).toHaveBeenCalledTimes(1)
+    expect(first).toMatchObject({ status: 'activated', sessionToken: 'session-1' })
+    expect(second).toMatchObject({ status: 'activated', sessionToken: 'session-1' })
+  })
 })

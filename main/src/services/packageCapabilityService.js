@@ -41,16 +41,6 @@ function getActiveCapabilityConfig(activationStatus = {}) {
 
 function ensureDraftWithinCapability({ menuKey = '', draft = {}, activationStatus = {}, runtimeSnapshot = null } = {}) {
   const capability = getActiveCapabilityConfig(activationStatus)
-  const queue = runtimeSnapshot?.agentReadiness?.queue || {}
-  const runningCount = Number(queue.runningCount || 0)
-  const queuedCount = Number(queue.queuedCount || 0)
-  const activeCount = runningCount + queuedCount
-
-  if (activeCount >= capability.taskConcurrencyLimit) {
-    const error = new Error(`当前授权最多允许 ${capability.taskConcurrencyLimit} 个任务同时排队或执行`)
-    error.code = 'LICENSE_TASK_CONCURRENCY_LIMIT'
-    throw error
-  }
 
   if (menuKey === 'series-generate') {
     const batchCount = Math.max(1, Number(draft.batchCount) || 1)

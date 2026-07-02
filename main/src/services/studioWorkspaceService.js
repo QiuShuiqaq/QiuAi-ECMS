@@ -23,7 +23,7 @@ const {
   getFeatureDirectoryKey
 } = require('./dataPathsService')
 const { persistSourceFiles } = require('./inputAssetStorageService')
-const { ensureDraftWithinCapability } = require('./packageCapabilityService')
+const { ensureDraftWithinCapability, getActiveCapabilityConfig } = require('./packageCapabilityService')
 const { createLocalMediaPreviewUrl } = require('./localMediaPreviewService')
 
 const STUDIO_WORKSPACE_KEY = 'studioWorkspace'
@@ -222,6 +222,33 @@ function normalizePromptAssignments(promptAssignments = [], count = 1) {
   })
 }
 
+function normalizeSeriesSourceItems(seriesSourceItems = [], promptAssignments = [], fallbackSize = '1:1') {
+  const sourceItems = Array.isArray(seriesSourceItems) ? seriesSourceItems : []
+  const assignments = Array.isArray(promptAssignments) ? promptAssignments : []
+
+  return sourceItems
+    .map((item, index) => {
+      const sourceImage = normalizeImageAsset(item?.sourceImage || item?.image || item)
+      if (!sourceImage) {
+        return null
+      }
+
+      const assignment = assignments[index] || {}
+      return {
+        id: String(item?.id || sourceImage.id || `series-source-${index + 1}`),
+        sourceImage,
+        templateId: String(item?.templateId || assignment.templateId || '').trim() || DEFAULT_EMPTY_PROMPT_TEMPLATE_ID,
+        prompt: String(item?.prompt || assignment.prompt || '').trim(),
+        size: String(item?.size || fallbackSize || '1:1').trim() || '1:1',
+        imageType: String(item?.imageType || assignment.imageType || '').trim(),
+        differenceLevel: ['off', 'low', 'medium', 'high'].includes(item?.differenceLevel)
+          ? item.differenceLevel
+          : (['off', 'low', 'medium', 'high'].includes(assignment?.differenceLevel) ? assignment.differenceLevel : 'off')
+      }
+    })
+    .filter(Boolean)
+}
+
 function normalizeDraftForMenu(menuKey, draft = {}) {
   const defaultDraft = createDefaultDrafts()[menuKey] || {}
   if (!runtimeStateMenuKeySet.has(menuKey)) {
@@ -285,6 +312,12 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
     const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, generateCount)
     const migratedPrompt = String(draft.prompt || defaultDraft.prompt || '')
     const migratedImageType = String(draft.imageType || normalizedAssignments[0]?.imageType || defaultDraft.imageType || '')
+    const normalizedSourceItems = normalizeSeriesSourceItems(
+      draft.seriesSourceItems,
+      normalizedAssignments,
+      draft.size || defaultDraft.size
+    )
+    const fallbackSourceImage = normalizeImageAsset(draft.sourceImage) || normalizedSourceItems[0]?.sourceImage || defaultDraft.sourceImage
 
     return {
       ...defaultDraft,
@@ -292,14 +325,15 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       model: nextModel,
       taskName: String(draft.taskName || defaultDraft.taskName || ''),
       productName: String(draft.productName || defaultDraft.productName || ''),
-      sourceImage: normalizeImageAsset(draft.sourceImage) || defaultDraft.sourceImage,
+      sourceImage: fallbackSourceImage,
       prompt: migratedPrompt,
       imageTemplateId: String(draft.imageTemplateId || defaultDraft.imageTemplateId || ''),
       imageType: migratedImageType,
-      generateCount,
+      generateCount: Math.max(1, normalizedSourceItems.length || generateCount),
       batchCount: Math.max(1, Number(draft.batchCount) || defaultDraft.batchCount || 1),
       size: draft.size || defaultDraft.size,
-      promptAssignments: normalizedAssignments
+      promptAssignments: normalizedAssignments.slice(0, Math.max(1, normalizedSourceItems.length || generateCount)),
+      seriesSourceItems: normalizedSourceItems
     }
   }
 
@@ -539,7 +573,8 @@ function createDefaultDrafts() {
       imageType: '商品主图',
       batchCount: 1,
       size: '1:1',
-      promptAssignments: normalizePromptAssignments([], 4)
+      promptAssignments: normalizePromptAssignments([], 4),
+      seriesSourceItems: []
     },
     'video-generate': {
       projectId: '',
@@ -2187,9 +2222,15 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   }
 
   if (menuKey === 'series-generate') {
-    const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, Math.max(1, Number(draft.generateCount) || 1))
+    const normalizedAssignments = normalizePromptAssignments(
+      draft.promptAssignments,
+      Math.max(1, Array.isArray(draft.seriesSourceItems) && draft.seriesSourceItems.length ? draft.seriesSourceItems.length : (Number(draft.generateCount) || 1))
+    )
+    const normalizedSourceItems = normalizeSeriesSourceItems(draft.seriesSourceItems, normalizedAssignments, draft.size)
     const normalizedDraft = {
       ...draft,
+      sourceImage: normalizeImageAsset(draft.sourceImage) || normalizedSourceItems[0]?.sourceImage || null,
+      seriesSourceItems: normalizedSourceItems,
       promptAssignments: normalizedAssignments.map((assignment) => ({
         ...assignment,
         prompt: String(assignment.prompt || draft.prompt || '').trim()
@@ -2467,7 +2508,9 @@ function resolveInputCount(menuKey, draft) {
   }
 
   if (menuKey === 'series-generate') {
-    return draft.sourceImage ? 1 : 0
+    return Array.isArray(draft.seriesSourceItems) && draft.seriesSourceItems.length
+      ? draft.seriesSourceItems.length
+      : (draft.sourceImage ? 1 : 0)
   }
 
   if (menuKey === 'video-generate') {
@@ -2524,7 +2567,9 @@ function resolveEstimatedInputCount(menuKey, draft = {}) {
   }
 
   if (menuKey === 'series-generate') {
-    return draft.sourceImage ? 1 : 0
+    return Array.isArray(draft.seriesSourceItems) && draft.seriesSourceItems.length
+      ? draft.seriesSourceItems.length
+      : (draft.sourceImage ? 1 : 0)
   }
 
   if (menuKey === 'video-generate') {
@@ -2570,7 +2615,15 @@ function resolveTaskModelSummary(menuKey, draft = {}) {
 
 function resolveGroupImageCount(menuKey, draft = {}) {
   if (menuKey === 'series-generate') {
-    return Math.max(1, Math.min(MAX_SERIES_GENERATE_GROUP_SIZE, Number(draft.generateCount) || 1))
+    return Math.max(
+      1,
+      Math.min(
+        MAX_SERIES_GENERATE_GROUP_SIZE,
+        Array.isArray(draft.seriesSourceItems) && draft.seriesSourceItems.length
+          ? draft.seriesSourceItems.length
+          : (Number(draft.generateCount) || 1)
+      )
+    )
   }
 
   return 0
@@ -2918,7 +2971,9 @@ function createStudioWorkspaceService({
   const queuedTaskExecutions = []
   const activeTaskControllers = new Map()
   let isTaskQueueRunning = false
+  let isLaunchingQueuedTasks = false
   let taskQueuePromise = Promise.resolve()
+  let resolveTaskQueuePromise = null
 
   function buildAgentReadinessSnapshot(tasks = getStoredTasks()) {
     const queuedTaskIds = queuedTaskExecutions
@@ -3226,20 +3281,58 @@ function createStudioWorkspaceService({
     })
   }
 
-  async function processQueuedTasks() {
-    if (isTaskQueueRunning) {
-      return taskQueuePromise
+  async function resolveAllowedProjectConcurrency() {
+    try {
+      const activationStatus = authorizationService && typeof authorizationService.getActivationStatus === 'function'
+        ? await authorizationService.getActivationStatus()
+        : {}
+      const capability = getActiveCapabilityConfig(activationStatus)
+      return Math.max(1, Number(capability.taskConcurrencyLimit) || 1)
+    } catch {
+      return 1
+    }
+  }
+
+  function finalizeTaskQueueIfIdle() {
+    if (queuedTaskExecutions.length > 0 || activeTaskControllers.size > 0 || !isTaskQueueRunning || isLaunchingQueuedTasks) {
+      return
     }
 
-    isTaskQueueRunning = true
+    isTaskQueueRunning = false
+    const resolve = resolveTaskQueuePromise
+    resolveTaskQueuePromise = null
+    resolve?.()
+  }
 
+  async function launchQueuedTasksUpToLimit() {
+    if (isLaunchingQueuedTasks || !isTaskQueueRunning) {
+      return
+    }
+
+    isLaunchingQueuedTasks = true
     try {
-      while (queuedTaskExecutions.length) {
+      const projectConcurrencyLimit = await resolveAllowedProjectConcurrency()
+
+      while (queuedTaskExecutions.length && activeTaskControllers.size < projectConcurrencyLimit) {
         const nextExecution = queuedTaskExecutions.shift()
-        await runQueuedTaskExecution(nextExecution)
+        Promise.resolve(runQueuedTaskExecution(nextExecution))
+          .catch(async (error) => {
+            await safeRuntimeLog(runtimeLogger, {
+              level: 'error',
+              event: 'studio-task-queue-launch-failed',
+              taskId: nextExecution?.taskId || '',
+              menuKey: nextExecution?.menuKey || '',
+              error: String(error?.message || error || 'Unknown queue execution error')
+            })
+          })
+          .finally(() => {
+            launchQueuedTasksUpToLimit().catch(() => undefined)
+            finalizeTaskQueueIfIdle()
+          })
       }
     } finally {
-      isTaskQueueRunning = false
+      isLaunchingQueuedTasks = false
+      finalizeTaskQueueIfIdle()
     }
   }
 
@@ -3247,8 +3340,13 @@ function createStudioWorkspaceService({
     queuedTaskExecutions.push(executionPayload)
 
     if (!isTaskQueueRunning) {
-      taskQueuePromise = processQueuedTasks()
+      isTaskQueueRunning = true
+      taskQueuePromise = new Promise((resolve) => {
+        resolveTaskQueuePromise = resolve
+      })
     }
+
+    launchQueuedTasksUpToLimit().catch(() => undefined)
   }
 
   function getStoredState() {
