@@ -11,4 +11,9 @@ describe('createMainWindow source', () => {
     expect(source).toContain('nodeIntegration: false')
     expect(source).toContain('sandbox: false')
   })
+
+  it('uses the synced runtime icon asset path', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'main/src/bootstrap/createMainWindow.js'), 'utf8')
+    expect(source).toContain('../../assets/app-icon.png')
+  })
 })

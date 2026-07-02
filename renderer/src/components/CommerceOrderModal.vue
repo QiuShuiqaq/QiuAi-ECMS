@@ -53,6 +53,7 @@ const emit = defineEmits([
   'submit-software-order',
   'submit-compute-order',
   'submit-recharge-order',
+  'update-activation-form',
   'update-recharge-form'
 ])
 
@@ -199,6 +200,10 @@ function updateRechargeField(field, value) {
   emit('update-recharge-form', { field, value })
 }
 
+function updateActivationField(field, value) {
+  emit('update-activation-form', { field, value })
+}
+
 function submitOrder() {
   if (isSoftwareMode.value) {
     emit('submit-software-order', selectionState.softwarePackageId)
@@ -247,19 +252,37 @@ function submitOrder() {
         <div class="commerce-order-modal__grid commerce-order-modal__grid--triple">
           <label class="commerce-order-modal__field">
             <span>用户名</span>
-            <input v-model="activationForm.customerName" type="text" placeholder="请输入用户名">
+            <input
+              :value="activationForm.customerName || ''"
+              type="text"
+              placeholder="请输入用户名"
+              @input="updateActivationField('customerName', $event.target.value)"
+            >
           </label>
 
           <label class="commerce-order-modal__field">
             <span>手机号</span>
-            <input v-model="activationForm.contact" type="text" placeholder="请输入手机号">
+            <input
+              :value="activationForm.contact || ''"
+              type="text"
+              placeholder="请输入手机号"
+              @input="updateActivationField('contact', $event.target.value)"
+            >
           </label>
 
           <label class="commerce-order-modal__field">
             <span>邀请码</span>
-            <input v-model="activationForm.inviteCode" type="text" placeholder="选填">
+            <input
+              :value="activationForm.inviteCode || ''"
+              type="text"
+              placeholder="选填"
+              @input="updateActivationField('inviteCode', $event.target.value)"
+            >
           </label>
 
+        </div>
+        <div class="commerce-order-modal__notice">
+          <span>用户名和手机号均不可重复，手机号购买成功后不可再次重复购买。</span>
         </div>
       </section>
 
@@ -469,6 +492,16 @@ function submitOrder() {
 .commerce-order-modal__section {
   display: grid;
   gap: 12px;
+}
+
+.commerce-order-modal__notice {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(205, 214, 238, 0.8);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .commerce-order-modal__section--recharge {

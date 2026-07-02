@@ -18,6 +18,7 @@ async function openExternalResource ({ target = '' } = {}) {
     throw new Error('Resource target is required.')
   }
 
+  console.log('[studioIpc] openExternalResource target =', normalizedTarget)
   if (/^https?:\/\//i.test(normalizedTarget)) {
     return shell.openExternal(normalizedTarget)
   }
@@ -135,7 +136,11 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   })
 
   ipcMain.handle(ipcChannels.STUDIO_OPEN_EXTERNAL_RESOURCE, async (_event, payload = {}) => {
-    await requireActivated()
+    const normalizedTarget = String(payload?.target || '').trim()
+    const isHttpTarget = /^https?:\/\//i.test(normalizedTarget)
+    if (!isHttpTarget) {
+      await requireActivated()
+    }
     return openExternalResource(payload)
   })
 

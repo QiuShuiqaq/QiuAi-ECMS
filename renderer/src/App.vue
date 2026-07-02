@@ -1,8 +1,7 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppTopBar from './components/AppTopBar.vue'
 import ActivationGate from './components/ActivationGate.vue'
-import AuthorizationPurchaseModal from './components/AuthorizationPurchaseModal.vue'
 import CommerceOrderModal from './components/CommerceOrderModal.vue'
 import ModelPricingModal from './components/ModelPricingModal.vue'
 import PermissionActivationModal from './components/PermissionActivationModal.vue'
@@ -85,7 +84,6 @@ const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   ? studioMenuConfig.primaryMenuItems
   : fallbackMenuItems
 const activeMenu = ref('work-center')
-const authorizationPurchaseModalVisible = ref(false)
 const commerceOrderModalVisible = ref(false)
 const commerceOrderModalMode = ref('software')
 const modelPricingModalVisible = ref(false)
@@ -488,7 +486,7 @@ function ensureActivatedOrPromptPurchase(message = '请先购买授权并激活�
     return true
   }
 
-  authorizationPurchaseModalVisible.value = true
+  openLicensePurchase()
   showActionFeedback({
     type: 'error',
     title: '当前未授权',
@@ -498,6 +496,23 @@ function ensureActivatedOrPromptPurchase(message = '请先购买授权并激活�
 }
 
 function buildErrorMessage(error, fallback = '请求失败') {
+  const errorCode = String(error?.code || '').trim()
+  if (errorCode === 'CONTACT_NAME_MISMATCH') {
+    return '该手机号已经购买过产品，如有疑问请联系管理员'
+  }
+
+  if (errorCode === 'USERNAME_ALREADY_USED') {
+    return '该用户名已被使用，请更换其他用户名'
+  }
+
+  if (errorCode === 'CONTACT_REQUIRED') {
+    return '请输入手机号'
+  }
+
+  if (errorCode === 'CUSTOMER_NAME_REQUIRED') {
+    return '请输入用户名'
+  }
+
   return String(error?.message || fallback)
 }
 
@@ -2741,10 +2756,6 @@ function openModelPricingModal() {
   modelPricingModalVisible.value = true
 }
 
-function closeAuthorizationPurchaseModal() {
-  authorizationPurchaseModalVisible.value = false
-}
-
 function closeCommerceOrderModal() {
   commerceOrderModalVisible.value = false
 }
@@ -2827,10 +2838,9 @@ async function handleCreateSoftwareOrder(productPackageId) {
     return
   }
 
-  const previousOrderId = currentSoftwareOrder.value?.id || ''
-  await softwareOrderController?.create(productPackageId)
+  const nextOrder = await softwareOrderController?.create(productPackageId)
 
-  if (currentSoftwareOrder.value?.id && currentSoftwareOrder.value.id !== previousOrderId) {
+  if (nextOrder?.id) {
     await handleOpenSoftwareOrderLink()
     if (!isActivated.value) {
       commerceOrderModalVisible.value = false
@@ -2850,11 +2860,18 @@ function handleRechargeFormUpdate({ field, value }) {
   rechargeForm[field] = value
 }
 
-async function handleCreateRecharge() {
-  const previousOrderId = currentRechargeOrder.value?.id || ''
-  await rechargeOrderController?.create()
+function handleActivationFormUpdate({ field, value }) {
+  if (!field) {
+    return
+  }
 
-  if (currentRechargeOrder.value?.id && currentRechargeOrder.value.id !== previousOrderId) {
+  activationForm.value[field] = value
+}
+
+async function handleCreateRecharge() {
+  const nextOrder = await rechargeOrderController?.create()
+
+  if (nextOrder?.id) {
     await handleOpenRechargeLink()
   }
 }
@@ -2872,10 +2889,9 @@ async function handleCreateComputePackageOrder(computePackageId) {
     return
   }
 
-  const previousOrderId = currentComputePackageOrder.value?.id || ''
-  await computePackageOrderController?.create(computePackageId)
+  const nextOrder = await computePackageOrderController?.create(computePackageId)
 
-  if (currentComputePackageOrder.value?.id && currentComputePackageOrder.value.id !== previousOrderId) {
+  if (nextOrder?.id) {
     await handleOpenComputePackageOrderLink()
   }
 }
@@ -2993,7 +3009,7 @@ watch(
   isActivated,
   (activated) => {
     if (activated) {
-      authorizationPurchaseModalVisible.value = false
+      commerceOrderModalVisible.value = false
     }
   }
 )
@@ -3054,16 +3070,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <AuthorizationPurchaseModal
-      :visible="authorizationPurchaseModalVisible"
-      :form-state="activationForm"
-      :software-packages="softwarePackages"
-      :is-catalog-loading="isCatalogLoading"
-      :is-submitting="isSoftwareOrderSubmitting"
-      @close="closeAuthorizationPurchaseModal"
-      @submit-order="handleCreateSoftwareOrder"
-    />
-
     <CommerceOrderModal
       :visible="commerceOrderModalVisible"
       :mode="commerceOrderModalMode"
@@ -3079,6 +3085,7 @@ onUnmounted(() => {
       @submit-software-order="handleCreateSoftwareOrder"
       @submit-compute-order="handleCreateComputePackageOrder"
       @submit-recharge-order="handleCreateRecharge"
+      @update-activation-form="handleActivationFormUpdate"
       @update-recharge-form="handleRechargeFormUpdate"
     />
 

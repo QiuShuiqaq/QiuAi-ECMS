@@ -107,7 +107,7 @@ function updateRechargeField(field, value) {
         <span>订单 {{ currentSoftwareOrder.merchantOrderNo }}</span>
         <span>{{ resolveOrderStatusLabel(currentSoftwareOrder.status) }}</span>
         <button class="secondary-action" type="button" :disabled="isSoftwareOrderRefreshing" @click="emit('refresh-software-order')">刷新</button>
-        <button class="secondary-action" type="button" :disabled="!currentSoftwareOrder.paymentPayload?.mockPayUrl" @click="emit('open-software-order')">打开支付</button>
+        <button class="secondary-action" type="button" @click="emit('open-software-order')">打开支付</button>
       </div>
     </section>
 
@@ -140,7 +140,7 @@ function updateRechargeField(field, value) {
         <div class="purchase-center__order-actions">
           <button class="primary-action" type="button" :disabled="isRechargeSubmitting" @click="emit('create-recharge')">创建订单</button>
           <button class="secondary-action" type="button" :disabled="!currentRechargeOrder || isRechargeRefreshing" @click="emit('refresh-recharge-order')">刷新</button>
-          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder?.paymentPayload?.mockPayUrl" @click="emit('open-recharge-order')">打开支付</button>
+          <button class="secondary-action" type="button" :disabled="!currentRechargeOrder" @click="emit('open-recharge-order')">打开支付</button>
         </div>
       </div>
     </section>
@@ -168,7 +168,7 @@ function updateRechargeField(field, value) {
         <span>订单 {{ currentComputePackageOrder.merchantOrderNo }}</span>
         <span>{{ resolveOrderStatusLabel(currentComputePackageOrder.status) }}</span>
         <button class="secondary-action" type="button" :disabled="isComputePackageOrderRefreshing" @click="emit('refresh-compute-package-order')">刷新</button>
-        <button class="secondary-action" type="button" :disabled="!currentComputePackageOrder.paymentPayload?.mockPayUrl" @click="emit('open-compute-package-order')">打开支付</button>
+        <button class="secondary-action" type="button" @click="emit('open-compute-package-order')">打开支付</button>
       </div>
     </section>
   </section>

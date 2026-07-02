@@ -17,6 +17,12 @@ export function createPurchaseOrderController({
 }) {
   let poller = null
 
+  function isOrderNotFoundError(error) {
+    const code = String(error?.code || '').trim()
+    const message = String(error?.message || '').trim().toLowerCase()
+    return code.includes('NOT_FOUND') || message.includes('was not found')
+  }
+
   function buildFetchPayload(currentOrder) {
     if (typeof createConfig?.buildRefreshPayload === 'function') {
       return createConfig.buildRefreshPayload(currentOrder) || {}
@@ -38,6 +44,7 @@ export function createPurchaseOrderController({
     setSubmitting(true)
     try {
       const nextOrder = await createOrder(createConfig.buildPayload(input))
+      console.log('[purchaseOrderController] created order =', nextOrder)
       setOrder(nextOrder)
       startPolling()
 
@@ -83,6 +90,12 @@ export function createPurchaseOrderController({
         })
       }
     } catch (error) {
+      if (isOrderNotFoundError(error)) {
+        stopPolling()
+        setOrder(null)
+        return
+      }
+
       showActionFeedback({
         type: 'error',
         title: '查询失败',
