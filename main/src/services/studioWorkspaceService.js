@@ -1,4 +1,4 @@
-﻿const fs = require('node:fs/promises')
+const fs = require('node:fs/promises')
 const fsSync = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -1612,6 +1612,19 @@ function mergeExportItemsByMenu({
       return resolvedCandidatePath === menuRootDirectory || resolvedCandidatePath.startsWith(`${menuRootDirectory}${path.sep}`)
     }
 
+    const exportItemExists = (item) => {
+      const candidatePath = String(item?.directoryPath || item?.outputDirectory || item?.savedPath || '').trim()
+      if (!candidatePath) {
+        return false
+      }
+
+      try {
+        return fsSync.existsSync(path.resolve(candidatePath))
+      } catch {
+        return false
+      }
+    }
+
     for (const item of scannedExportItemsByMenu[menuKey] || []) {
       const identity = resolveExportItemIdentity(item)
       if (!identity || seenIdentities.has(identity)) {
@@ -1624,7 +1637,7 @@ function mergeExportItemsByMenu({
 
     for (const item of storedExportItemsByMenu[menuKey] || []) {
       const identity = resolveExportItemIdentity(item)
-      if (!identity || seenIdentities.has(identity) || !belongsToMenuRoot(item)) {
+      if (!identity || seenIdentities.has(identity) || !belongsToMenuRoot(item) || !exportItemExists(item)) {
         continue
       }
 
@@ -3896,4 +3909,3 @@ module.exports = {
   imageModelOptions,
   createStudioWorkspaceService
 }
-

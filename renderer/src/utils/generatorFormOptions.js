@@ -56,7 +56,9 @@ export const videoDurationOptions = [
 export const videoAspectRatioOptions = [
   { label: '16:9', value: '16:9' },
   { label: '9:16', value: '9:16' },
-  { label: '1:1', value: '1:1' }
+  { label: '1:1', value: '1:1' },
+  { label: '4:5', value: '4:5' },
+  { label: '3:4', value: '3:4' }
 ]
 
 export const videoResolutionOptions = [
@@ -89,7 +91,7 @@ export const seriesImageTemplateOptions = [
   { imageType: '换角度', templateId: 'image-angle' },
   { imageType: '换场景', templateId: 'image-change-scene' },
   { imageType: '换模特', templateId: 'image-change-model' },
-  { imageType: '全量替换', templateId: 'image-replace-all' }
+  { imageType: '全替换', templateId: 'image-replace-all' }
 ]
 
 export const imageTemplateTypeMap = Object.fromEntries(

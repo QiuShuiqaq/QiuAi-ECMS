@@ -1,5 +1,17 @@
 <script setup>
 import { computed } from 'vue'
+import openFolderIcon from '../../../icon/wenjianjia.png'
+import deleteIcon from '../../../icon/shanchu.png'
+import {
+  imageModelOptions,
+  imageSizeOptions,
+  imageTemplateDefaultOrder,
+  imageTemplateTypeMap,
+  videoAspectRatioOptions,
+  videoDurationOptions,
+  videoModelOptions,
+  videoMotionOptions
+} from '../utils/generatorFormOptions'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -18,83 +30,29 @@ const emit = defineEmits([
   'pick-image',
   'copy-text',
   'open-export-item',
+  'delete-export-item',
   'export-results'
 ])
 
-const imageSizeOptions = [
-  { label: '1:1', value: '1:1' },
-  { label: '4:5', value: '4:5' },
-  { label: '3:4', value: '3:4' },
-  { label: '4:3', value: '4:3' },
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' }
-]
-
-const imageModelOptions = [
-  { label: 'gpt-image-2', value: 'gpt-image-2' },
-  { label: 'nano-banana-fast', value: 'nano-banana-fast' },
-  { label: 'nano-banana-2', value: 'nano-banana-2' }
-]
-
-const videoModelOptions = [
-  { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
-]
-
-const videoAspectRatioOptions = [
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
-  { label: '1:1', value: '1:1' },
-  { label: '4:5', value: '4:5' },
-  { label: '3:4', value: '3:4' }
-]
-
-const videoDurationOptions = [
-  { label: '6s', value: '6s' },
-  { label: '10s', value: '10s' }
-]
-
-const videoMotionOptions = [
-  { label: '自动', value: 'auto' },
-  { label: '稳定', value: 'stable' },
-  { label: '柔和', value: 'soft' }
-]
-
-const templateTypeMap = {
-  'image-main': '商品主图',
-  'image-white-bg': '白底图',
-  'image-detail': '详情图',
-  'image-closeup': '细节图',
-  'image-size': '尺寸图',
-  'image-color': '颜色图',
-  'image-scene': '场景图',
-  'image-model': '模特图',
-  'image-angle': '换角度',
-  'image-change-scene': '换场景',
-  'image-change-model': '换模特',
-  'image-replace-all': '全替换'
+const promptCategoryAliases = {
+  image: '图片',
+  video: '视频',
+  '图片': '图片',
+  '视频': '视频'
 }
 
-const imageTemplateDefaultOrder = [
-  'image-main',
-  'image-white-bg',
-  'image-detail',
-  'image-closeup',
-  'image-size',
-  'image-color',
-  'image-scene',
-  'image-model',
-  'image-angle',
-  'image-change-scene',
-  'image-change-model',
-  'image-replace-all'
-]
+function normalizePromptCategory(category = '') {
+  const normalized = String(category || '').trim()
+  return promptCategoryAliases[normalized] || normalized
+}
 
 const filteredTemplates = computed(() => {
   const category = props.mode === 'image' ? '图片' : '视频'
-  return (props.promptTemplates || []).filter((item) => item.category === category)
+  return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === category)
 })
 
 const sourceImagePreview = computed(() => props.draft.sourceImage?.preview || '')
+const seriesGenerationMode = computed(() => (props.draft.seriesGenerationMode === 'single' ? 'single' : 'group'))
 
 const videoResolutionOptions = computed(() => {
   if ((props.draft.duration || '6s') === '10s') {
@@ -107,23 +65,71 @@ const videoResolutionOptions = computed(() => {
   ]
 })
 
+function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
+  if (imageTemplateTypeMap[templateId]) return imageTemplateTypeMap[templateId]
+  return imageTemplateTypeMap[imageTemplateDefaultOrder[fallbackIndex]] || '详情图'
+}
+
+function updateField(field, value) {
+  emit('update-draft', { field, value })
+}
+
+function emitSeriesDraftPatch(patch = {}) {
+  Object.entries(patch).forEach(([field, value]) => {
+    updateField(field, value)
+  })
+}
+
+function buildPromptAssignments(items = []) {
+  return items.map((item, index) => ({
+    id: item.id || `series-generate-${index + 1}`,
+    index: index + 1,
+    prompt: item.prompt || '',
+    templateId: item.templateId || imageTemplateDefaultOrder[index] || 'image-detail',
+    imageType: item.imageType || resolveSeriesImageTypeByTemplate(item.templateId, index)
+  }))
+}
+
+function buildSingleModeSeriesItems(sourceImage, count, fallbackItems = []) {
+  if (!sourceImage) return []
+
+  const normalizedCount = Math.max(1, Number(count) || 1)
+  return Array.from({ length: normalizedCount }, (_unused, index) => {
+    const fallback = fallbackItems[index] || {}
+    return {
+      id: fallback.id || `series-source-${index + 1}`,
+      sourceImage,
+      templateId: fallback.templateId || imageTemplateDefaultOrder[index] || '',
+      prompt: fallback.prompt || '',
+      size: fallback.size || props.draft.size || '1:1',
+      imageType: fallback.imageType || resolveSeriesImageTypeByTemplate(fallback.templateId, index)
+    }
+  })
+}
+
 const seriesSourceItems = computed(() => {
   if (props.mode !== 'image') return []
 
+  const assignments = Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments : []
   const items = Array.isArray(props.draft.seriesSourceItems) ? props.draft.seriesSourceItems : []
-  if (items.length) return items
 
+  if (seriesGenerationMode.value === 'single') {
+    if (!props.draft.sourceImage) return []
+    const count = Math.max(1, Number(props.draft.generateCount) || assignments.length || items.length || 1)
+    return buildSingleModeSeriesItems(props.draft.sourceImage, count, items.length ? items : assignments)
+  }
+
+  if (items.length) return items
   if (!props.draft.sourceImage) return []
 
-  const assignment = Array.isArray(props.draft.promptAssignments) ? props.draft.promptAssignments[0] || {} : {}
+  const assignment = assignments[0] || {}
   return [{
     id: 'series-source-1',
     sourceImage: props.draft.sourceImage,
     templateId: assignment.templateId || props.draft.imageTemplateId || '',
     prompt: assignment.prompt || props.draft.prompt || '',
     size: props.draft.size || '1:1',
-    imageType: assignment.imageType || props.draft.imageType || '',
-    differenceLevel: assignment.differenceLevel || 'off'
+    imageType: assignment.imageType || props.draft.imageType || ''
   }]
 })
 
@@ -147,9 +153,7 @@ const normalizedTasks = computed(() => {
 })
 
 const activeTask = computed(() => {
-  return normalizedTasks.value.find((task) => ['等待中', '进行中', '处理中', 'pending', 'running', 'submitting'].includes(task.status)) ||
-    normalizedTasks.value[0] ||
-    null
+  return normalizedTasks.value.find((task) => ['等待中', '进行中', '处理中', 'pending', 'running', 'submitting'].includes(task.status)) || normalizedTasks.value[0] || null
 })
 
 const queueTasks = computed(() => normalizedTasks.value.filter((task) => task.id !== activeTask.value?.id).slice(0, 12))
@@ -165,7 +169,6 @@ const queueSummary = computed(() => {
 
 const seriesResultGroups = computed(() => {
   if (props.mode !== 'image') return []
-
   return (props.resultPayload.groupedResults || []).map((group, groupIndex) => ({
     id: group.id || `series-group-${groupIndex + 1}`,
     title: group.groupTitle || `第 ${groupIndex + 1} 组`,
@@ -193,7 +196,7 @@ const resultOutputCards = computed(() => {
   return (props.exportItems || []).map((item, index) => ({
     id: item.id || `export-item-${index + 1}`,
     name: item.name || item.groupTitle || `结果 ${index + 1}`,
-    status: item.status || '已保存',
+    status: item.status || '已存储',
     itemCount: Number(item.itemCount || 0),
     raw: item
   }))
@@ -210,10 +213,6 @@ const hasAnyResults = computed(() => {
 
 const summaryDescription = computed(() => props.resultPayload.summary?.description || '')
 
-function updateField(field, value) {
-  emit('update-draft', { field, value })
-}
-
 function handleVideoDurationChange(value) {
   updateField('duration', value)
   if (value === '10s' && (props.draft.resolution || '768P') === '1080P') {
@@ -227,32 +226,18 @@ function handleVideoTemplateChange(templateId) {
   updateField('prompt', template?.prompt || '')
 }
 
-function resolveSeriesImageTypeByTemplate(templateId = '', fallbackIndex = 0) {
-  if (templateTypeMap[templateId]) return templateTypeMap[templateId]
-  return templateTypeMap[imageTemplateDefaultOrder[fallbackIndex]] || '详情图'
-}
-
-function buildPromptAssignments(items = []) {
-  return items.map((item, index) => ({
-    id: item.id || `series-generate-${index + 1}`,
-    index: index + 1,
-    prompt: item.prompt || '',
-    templateId: item.templateId || imageTemplateDefaultOrder[index] || 'image-detail',
-    imageType: item.imageType || resolveSeriesImageTypeByTemplate(item.templateId, index),
-    differenceLevel: item.differenceLevel || 'off'
-  }))
-}
-
 function updateSeriesItem(index, patch = {}) {
   const nextItems = seriesSourceItems.value.map((item, itemIndex) => {
     if (itemIndex !== index) return item
     return { ...item, ...patch }
   })
 
-  updateField('seriesSourceItems', nextItems)
-  updateField('sourceImage', nextItems[0]?.sourceImage || null)
-  updateField('generateCount', Math.max(1, nextItems.length))
-  updateField('promptAssignments', buildPromptAssignments(nextItems))
+  emitSeriesDraftPatch({
+    seriesSourceItems: nextItems,
+    sourceImage: nextItems[0]?.sourceImage || null,
+    generateCount: Math.max(1, nextItems.length),
+    promptAssignments: buildPromptAssignments(nextItems)
+  })
 }
 
 function handleSeriesTemplateChange(index, templateId) {
@@ -261,6 +246,43 @@ function handleSeriesTemplateChange(index, templateId) {
     templateId,
     prompt: template?.prompt || '',
     imageType: resolveSeriesImageTypeByTemplate(templateId, index)
+  })
+}
+
+function handleSeriesModePick(nextMode) {
+  const normalizedMode = nextMode === 'single' ? 'single' : 'group'
+  const currentItems = seriesSourceItems.value
+  const baseSourceImage = props.draft.sourceImage || currentItems[0]?.sourceImage || null
+
+  if (normalizedMode === 'single') {
+    const nextCount = Math.max(1, Number(props.draft.generateCount) || currentItems.length || 4)
+    const nextItems = buildSingleModeSeriesItems(baseSourceImage, nextCount, currentItems)
+    emitSeriesDraftPatch({
+      seriesGenerationMode: 'single',
+      sourceImage: baseSourceImage,
+      generateCount: nextCount,
+      seriesSourceItems: nextItems,
+      promptAssignments: buildPromptAssignments(nextItems)
+    })
+    return
+  }
+
+  emitSeriesDraftPatch({
+    seriesGenerationMode: 'group',
+    sourceImage: baseSourceImage,
+    generateCount: Math.max(1, currentItems.length || Number(props.draft.generateCount) || 1),
+    seriesSourceItems: currentItems,
+    promptAssignments: buildPromptAssignments(currentItems)
+  })
+}
+
+function handleSingleGenerateCountChange(value) {
+  const nextCount = Math.max(1, Number(value) || 1)
+  const nextItems = buildSingleModeSeriesItems(props.draft.sourceImage, nextCount, seriesSourceItems.value)
+  emitSeriesDraftPatch({
+    generateCount: nextCount,
+    seriesSourceItems: nextItems,
+    promptAssignments: buildPromptAssignments(nextItems)
   })
 }
 
@@ -316,9 +338,26 @@ function formatTaskLabel(task) {
           </div>
         </div>
 
-        <div v-else class="generator-form__row">
+        <div v-else class="generator-form__row generator-form__row--series-mode">
           <span class="generator-form__label">上传样图</span>
-          <button class="secondary-action generator-form__asset-button" type="button" @click="emit('pick-image')">上传一组图片</button>
+          <div class="generator-form__series-mode-actions">
+            <button
+              class="secondary-action generator-form__asset-button"
+              :class="{ 'generator-form__mode-button--active': seriesGenerationMode === 'single' }"
+              type="button"
+              @click="handleSeriesModePick('single'); emit('pick-image', { generationMode: 'single' })"
+            >
+              单图生成
+            </button>
+            <button
+              class="secondary-action generator-form__asset-button"
+              :class="{ 'generator-form__mode-button--active': seriesGenerationMode === 'group' }"
+              type="button"
+              @click="handleSeriesModePick('group'); emit('pick-image', { generationMode: 'group' })"
+            >
+              组图生成
+            </button>
+          </div>
         </div>
 
         <div class="generator-form__group">
@@ -334,6 +373,17 @@ function formatTaskLabel(task) {
             <input :value="draft.batchCount || 1" type="number" min="1" @input="updateField('batchCount', $event.target.value)">
           </div>
 
+          <div v-if="mode === 'image'" class="generator-form__row">
+            <span class="generator-form__label">数量</span>
+            <input
+              :value="seriesGenerationMode === 'single' ? (draft.generateCount || seriesSourceItems.length || 1) : seriesSourceItems.length"
+              type="number"
+              min="1"
+              :disabled="seriesGenerationMode === 'group'"
+              @input="seriesGenerationMode === 'single' && handleSingleGenerateCountChange($event.target.value)"
+            >
+          </div>
+
           <div v-if="mode === 'video'" class="generator-form__row">
             <span class="generator-form__label">批次</span>
             <input :value="draft.videoQuantity || 1" type="number" min="1" @input="updateField('videoQuantity', $event.target.value)">
@@ -344,14 +394,6 @@ function formatTaskLabel(task) {
           <article v-for="(item, index) in seriesSourceItems" :key="item.id || index" class="generator-form__series-card media-source-card">
             <div class="generator-form__series-head">
               <strong>第 {{ index + 1 }} 张</strong>
-              <label class="generator-form__series-toggle">
-                <input
-                  :checked="(item.differenceLevel || 'off') !== 'off'"
-                  type="checkbox"
-                  @change="updateSeriesItem(index, { differenceLevel: $event.target.checked ? 'medium' : 'off' })"
-                >
-                <span>差异化</span>
-              </label>
             </div>
 
             <div class="media-source-card__preview">
@@ -385,7 +427,7 @@ function formatTaskLabel(task) {
           </article>
 
           <div v-if="!seriesSourceItems.length" class="product-result-empty media-empty">
-            <span>请先上传一组图片</span>
+            <span>{{ seriesGenerationMode === 'single' ? '请先上传一张参考图' : '请先上传一组参考图' }}</span>
           </div>
         </div>
 
@@ -568,8 +610,14 @@ function formatTaskLabel(task) {
               <strong>{{ item.name }}</strong>
               <span>{{ item.status }}{{ item.itemCount ? ` / ${item.itemCount}` : '' }}</span>
             </div>
-
-            <button class="secondary-action" type="button" @click="emit('open-export-item', item.raw)">打开</button>
+            <div class="generator-export__item-actions">
+              <button class="icon-action-button" type="button" title="打开" aria-label="打开" @click="emit('open-export-item', item.raw)">
+                <img :src="openFolderIcon" alt="" aria-hidden="true">
+              </button>
+              <button class="icon-action-button icon-action-button--danger" type="button" title="删除" aria-label="删除" @click="emit('delete-export-item', item.raw)">
+                <img :src="deleteIcon" alt="" aria-hidden="true">
+              </button>
+            </div>
           </article>
         </div>
 
@@ -589,6 +637,17 @@ function formatTaskLabel(task) {
 .media-studio-page {
   height: 100%;
   min-height: 0;
+}
+
+.generator-form__series-mode-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.generator-form__mode-button--active {
+  background: rgba(107, 114, 255, 0.16);
+  border-color: rgba(107, 114, 255, 0.32);
 }
 
 .media-source-card {
@@ -640,5 +699,42 @@ function formatTaskLabel(task) {
 
 .product-result-empty--compact {
   min-height: 120px;
+}
+
+.generator-export__item-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.icon-action-button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  width: 38px;
+}
+
+.icon-action-button:hover {
+  background: rgba(107, 114, 255, 0.16);
+  border-color: rgba(107, 114, 255, 0.32);
+  transform: translateY(-1px);
+}
+
+.icon-action-button img {
+  height: 18px;
+  object-fit: contain;
+  width: 18px;
+}
+
+.icon-action-button--danger:hover {
+  background: rgba(255, 107, 107, 0.16);
+  border-color: rgba(255, 107, 107, 0.32);
 }
 </style>

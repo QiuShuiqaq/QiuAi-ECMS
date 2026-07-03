@@ -33,8 +33,7 @@ export function buildSeriesPromptAssignments({
       index: index + 1,
       prompt: sharedPrompt || '',
       templateId: fallback.templateId,
-      imageType: fallback.imageType,
-      differenceLevel: 'off'
+      imageType: fallback.imageType
     }
   })
 }
@@ -49,14 +48,15 @@ function buildSeriesSourceItems(sourceImages = [], assignments = []) {
       templateId: assignment.templateId || '',
       prompt: assignment.prompt || '',
       size: '1:1',
-      imageType: assignment.imageType || '',
-      differenceLevel: assignment.differenceLevel || 'off'
+      imageType: assignment.imageType || ''
     }
   })
 }
 
 export function buildProjectGeneratorDraft(project, menuKey) {
   const generationConfig = project?.generationConfig || {}
+  const sourceImages = project?.assets?.sourceImages || []
+  const isGroupMode = sourceImages.length > 1
   const selectionSource = project?.metadata?.selectionSource && typeof project.metadata.selectionSource === 'object'
     ? project.metadata.selectionSource
     : null
@@ -81,6 +81,7 @@ export function buildProjectGeneratorDraft(project, menuKey) {
       size: generationConfig.size || generationConfig.imageSize || '1:1',
       generateCount: 4,
       batchCount: 1,
+      seriesGenerationMode: isGroupMode ? 'group' : 'single',
       prompt: generationConfig.imagePrompt || '',
       imageTemplateId: generationConfig.imageTemplateId || 'image-default',
       imageType: '商品主图',
@@ -116,6 +117,7 @@ export function buildProjectGeneratorDraft(project, menuKey) {
 
 export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
   const generationConfig = project?.generationConfig || {}
+  const sourceImages = project?.assets?.sourceImages || []
   const selectionSource = project?.metadata?.selectionSource && typeof project.metadata.selectionSource === 'object'
     ? project.metadata.selectionSource
     : null
@@ -156,6 +158,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     titleQuantity: workspaceDraft?.titleQuantity || generationConfig.titleQuantity || 1,
     descriptionQuantity: workspaceDraft?.descriptionQuantity || generationConfig.descriptionQuantity || 1,
     generateCount: workspaceDraft?.generateCount || generationConfig.generateCount || 4,
+    seriesGenerationMode: workspaceDraft?.seriesGenerationMode || (sourceImages.length > 1 ? 'group' : 'single'),
     promptAssignments: workspaceDraft?.promptAssignments || generationConfig.promptAssignments || buildSeriesPromptAssignments({
       count: workspaceDraft?.generateCount || generationConfig.generateCount || 4,
       sharedPrompt: workspaceDraft?.imagePrompt || generationConfig.imagePrompt || ''

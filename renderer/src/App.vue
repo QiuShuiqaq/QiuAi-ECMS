@@ -139,8 +139,7 @@ function normalizeSeriesSourceItems(sourceItems = [], fallbackAssignments = []) 
         templateId: String(item.templateId || assignment.templateId || ''),
         prompt: String(item.prompt || assignment.prompt || ''),
         size: String(item.size || '').trim() || '1:1',
-        imageType: String(item.imageType || assignment.imageType || '').trim(),
-        differenceLevel: String(item.differenceLevel || assignment.differenceLevel || 'off').trim() || 'off'
+        imageType: String(item.imageType || assignment.imageType || '').trim()
       }
     })
     .filter(Boolean)
@@ -156,8 +155,25 @@ function buildSeriesSourceItemsFromFiles(files = [], fallbackAssignments = []) {
         templateId: assignment.templateId || '',
         prompt: assignment.prompt || '',
         size: '1:1',
-        imageType: assignment.imageType || '',
-        differenceLevel: assignment.differenceLevel || 'off'
+        imageType: assignment.imageType || ''
+      }
+    }),
+    fallbackAssignments
+  )
+}
+
+function buildSeriesSourceItemsFromSingleFile(file, count = 1, fallbackAssignments = [], fallbackSize = '1:1') {
+  const normalizedCount = Math.max(1, Number(count) || 1)
+  return normalizeSeriesSourceItems(
+    Array.from({ length: normalizedCount }, (_unused, index) => {
+      const assignment = fallbackAssignments[index] || {}
+      return {
+        id: String(assignment.id || file?.id || `series-source-${index + 1}`),
+        sourceImage: file,
+        templateId: assignment.templateId || '',
+        prompt: assignment.prompt || '',
+        size: String(assignment.size || fallbackSize || '1:1').trim() || '1:1',
+        imageType: assignment.imageType || ''
       }
     }),
     fallbackAssignments
@@ -2395,7 +2411,7 @@ async function handleCancelTask(payload = {}) {
   }
 }
 
-async function handlePickGeneratorImage() {
+async function handlePickGeneratorImage(payload = {}) {
   if (!activeGeneratorMenuKey.value) {
     return
   }
@@ -2403,7 +2419,14 @@ async function handlePickGeneratorImage() {
   try {
     const currentDraft = formDrafts.value[activeGeneratorMenuKey.value] || {}
     const fallbackAssignments = Array.isArray(currentDraft.promptAssignments) ? currentDraft.promptAssignments : []
+    const requestedSeriesMode = String(
+      payload?.generationMode ||
+      currentDraft.seriesGenerationMode ||
+      'group'
+    ).trim() === 'single' ? 'single' : 'group'
     const allowMultiple = activeGeneratorMenuKey.value === 'series-generate'
+      ? requestedSeriesMode === 'group'
+      : false
     const result = await workspaceClient.pickInputAssets({
       menuKey: activeGeneratorMenuKey.value,
       allowMultiple
@@ -2414,8 +2437,34 @@ async function handlePickGeneratorImage() {
     }
 
     if (activeGeneratorMenuKey.value === 'series-generate') {
+      if (requestedSeriesMode === 'single') {
+        const nextCount = Math.max(1, Number(currentDraft.generateCount) || fallbackAssignments.length || 4)
+        const seriesSourceItems = buildSeriesSourceItemsFromSingleFile(
+          result.files[0],
+          nextCount,
+          fallbackAssignments,
+          currentDraft.size || '1:1'
+        )
+        await persistDraft(activeGeneratorMenuKey.value, {
+          seriesGenerationMode: 'single',
+          sourceImage: result.files[0],
+          generateCount: Math.max(1, seriesSourceItems.length),
+          promptAssignments: seriesSourceItems.map((item, index) => ({
+            ...(fallbackAssignments[index] || {}),
+            id: (fallbackAssignments[index] || {}).id || `series-generate-${index + 1}`,
+            index: index + 1,
+            prompt: item.prompt || '',
+            templateId: item.templateId || '',
+            imageType: item.imageType || ''
+          })),
+          seriesSourceItems
+        })
+        return
+      }
+
       const seriesSourceItems = buildSeriesSourceItemsFromFiles(result.files, fallbackAssignments)
       await persistDraft(activeGeneratorMenuKey.value, {
+        seriesGenerationMode: 'group',
         sourceImage: result.files[0],
         generateCount: Math.max(1, seriesSourceItems.length),
         promptAssignments: seriesSourceItems.map((item, index) => ({
@@ -2424,8 +2473,7 @@ async function handlePickGeneratorImage() {
           index: index + 1,
           prompt: item.prompt || '',
           templateId: item.templateId || '',
-          imageType: item.imageType || '',
-          differenceLevel: item.differenceLevel || 'off'
+          imageType: item.imageType || ''
         })),
         seriesSourceItems
       })

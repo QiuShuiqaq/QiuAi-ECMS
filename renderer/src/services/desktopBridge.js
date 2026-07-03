@@ -316,13 +316,12 @@ function saveBrowserProjectTemplateFromProject(payload = {}) {
         generateCount: Number(project.generationConfig?.generateCount || 0) || 0,
         promptAssignments: Array.isArray(project.generationConfig?.promptAssignments)
           ? project.generationConfig.promptAssignments.map((item, index) => ({
-              id: String(item?.id || `template-image-${index + 1}`),
-              index: Number(item?.index || index + 1) || index + 1,
-              templateId: String(item?.templateId || '').trim(),
-              imageType: String(item?.imageType || '').trim(),
-              differenceLevel: String(item?.differenceLevel || 'off').trim() || 'off',
-              prompt: String(item?.prompt || '').trim()
-            }))
+            id: String(item?.id || `template-image-${index + 1}`),
+            index: Number(item?.index || index + 1) || index + 1,
+            templateId: String(item?.templateId || '').trim(),
+            imageType: String(item?.imageType || '').trim(),
+            prompt: String(item?.prompt || '').trim()
+          }))
           : []
       },
       video: {

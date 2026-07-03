@@ -34,7 +34,13 @@ const filteredTemplates = computed(() => {
 
 const currentPromptValue = computed(() => String(props.draft[promptField.value] || ''))
 const currentQuantity = computed(() => Math.max(1, Number(props.draft[quantityField.value]) || 1))
-const currentMaxChars = computed(() => Math.max(1, Number(props.draft[maxCharsField.value]) || 1))
+const currentMaxChars = computed(() => {
+  const value = props.draft[maxCharsField.value]
+  if (value === undefined || value === null) {
+    return ''
+  }
+  return String(value)
+})
 
 const resultCards = computed(() => {
   return (props.resultItems || []).map((item, index) => ({
@@ -57,6 +63,20 @@ const exportCards = computed(() => {
 
 function updateField(field, value) {
   emit('update-draft', { field, value })
+}
+
+function sanitizeNumericInput(value) {
+  return String(value ?? '').replace(/[^\d]/g, '')
+}
+
+function handleMaxCharsInput(value) {
+  updateField(maxCharsField.value, sanitizeNumericInput(value))
+}
+
+function handleMaxCharsBlur(value) {
+  const digits = sanitizeNumericInput(value)
+  const normalized = digits ? Math.max(1, Math.min(500, Number(digits))) : 60
+  updateField(maxCharsField.value, String(normalized))
 }
 
 function handleTemplateChange(templateId) {
@@ -114,7 +134,14 @@ function handleExportAll() {
           </div>
           <div class="generator-form__row">
             <span class="generator-form__label">最大字数</span>
-            <input :value="currentMaxChars" type="number" min="1" max="500" @input="updateField(maxCharsField, $event.target.value)">
+            <input
+              :value="currentMaxChars"
+              type="text"
+              inputmode="numeric"
+              placeholder="60"
+              @input="handleMaxCharsInput($event.target.value)"
+              @blur="handleMaxCharsBlur($event.target.value)"
+            >
           </div>
         </div>
 

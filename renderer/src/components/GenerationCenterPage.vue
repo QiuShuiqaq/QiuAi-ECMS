@@ -137,20 +137,32 @@ function normalizePromptCategory(category = '') {
   return promptCategoryAliases[normalized] || normalized
 }
 
+function hasUsableTemplateId(template = null) {
+  return Boolean(String(template?.id || '').trim())
+}
+
 const titlePromptTemplates = computed(() => {
-  return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === '标题')
+  return (props.promptTemplates || []).filter((item) => {
+    return hasUsableTemplateId(item) && normalizePromptCategory(item?.category) === '标题'
+  })
 })
 
 const descriptionPromptTemplates = computed(() => {
-  return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === '描述')
+  return (props.promptTemplates || []).filter((item) => {
+    return hasUsableTemplateId(item) && normalizePromptCategory(item?.category) === '描述'
+  })
 })
 
 const imagePromptTemplates = computed(() => {
-  return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === '图片')
+  return (props.promptTemplates || []).filter((item) => {
+    return hasUsableTemplateId(item) && normalizePromptCategory(item?.category) === '图片'
+  })
 })
 
 const videoPromptTemplates = computed(() => {
-  return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === '视频')
+  return (props.promptTemplates || []).filter((item) => {
+    return hasUsableTemplateId(item) && normalizePromptCategory(item?.category) === '视频'
+  })
 })
 
 const workspaceStepOptions = [
@@ -191,6 +203,20 @@ function resolveDraftValue(field, fallback = '') {
     return projectValue
   }
   return value
+}
+
+function resolveDraftInputValue(field, fallback = '') {
+  const value = normalizedDraft.value?.[field]
+  if (value !== undefined && value !== null) {
+    return String(value)
+  }
+
+  const projectValue = activeProjectGenerationConfig.value?.[field]
+  if (projectValue !== undefined && projectValue !== null && projectValue !== '') {
+    return String(projectValue)
+  }
+
+  return String(fallback)
 }
 
 function resolveDraftLanguage() {
@@ -252,7 +278,6 @@ function resolveProjectImageAssignments() {
       index: index + 1,
       templateId,
       imageType: String(currentAssignment.imageType || imageTemplateTypeMap[templateId] || '').trim() || `套图 ${index + 1}`,
-      differenceLevel: String(currentAssignment.differenceLevel || 'off').trim() || 'off',
       prompt: String(currentAssignment.prompt || '').trim()
     }
   })
@@ -725,6 +750,28 @@ function updateProjectGenerationConfig(patch = {}) {
   updateDraftPatch(patch)
 }
 
+function sanitizeNumericInput(value) {
+  return String(value ?? '').replace(/[^\d]/g, '')
+}
+
+function normalizeNumericInput(value, { fallback, min, max }) {
+  const digits = sanitizeNumericInput(value)
+  const baseValue = digits ? Number(digits) : fallback
+  return String(Math.max(min, Math.min(max, baseValue)))
+}
+
+function handleProjectMaxCharsInput(field, value) {
+  updateProjectGenerationConfig({
+    [field]: sanitizeNumericInput(value)
+  })
+}
+
+function handleProjectMaxCharsBlur(field, value, options) {
+  updateProjectGenerationConfig({
+    [field]: normalizeNumericInput(value, options)
+  })
+}
+
 function handleProjectGenerateCountChange(value) {
   const nextCount = Math.max(1, Math.min(12, Number(value) || 1))
   const nextAssignments = Array.from({ length: nextCount }, (_unused, index) => {
@@ -737,7 +784,6 @@ function handleProjectGenerateCountChange(value) {
       index: index + 1,
       templateId,
       imageType: String(imageTemplateTypeMap[templateId] || currentAssignment.imageType || '').trim() || `套图 ${index + 1}`,
-      differenceLevel: String(currentAssignment.differenceLevel || 'off').trim() || 'off',
       prompt: String(currentAssignment.prompt || '').trim()
     }
   })
@@ -1081,11 +1127,12 @@ function resolveStageMenuKey(stage = '') {
             <div class="generator-form__row">
               <span class="generator-form__label">字数</span>
               <input
-                :value="resolveDraftValue('titleMaxChars', 60)"
-                type="number"
-                min="1"
-                max="300"
-                @input="updateProjectGenerationConfig({ titleMaxChars: Number($event.target.value) || 60 })"
+                :value="resolveDraftInputValue('titleMaxChars', 60)"
+                type="text"
+                inputmode="numeric"
+                placeholder="60"
+                @input="handleProjectMaxCharsInput('titleMaxChars', $event.target.value)"
+                @blur="handleProjectMaxCharsBlur('titleMaxChars', $event.target.value, { fallback: 60, min: 1, max: 300 })"
               >
             </div>
             <div class="generator-form__row">
@@ -1142,11 +1189,12 @@ function resolveStageMenuKey(stage = '') {
             <div class="generator-form__row">
               <span class="generator-form__label">字数</span>
               <input
-                :value="resolveDraftValue('descriptionMaxChars', 300)"
-                type="number"
-                min="1"
-                max="2000"
-                @input="updateProjectGenerationConfig({ descriptionMaxChars: Number($event.target.value) || 300 })"
+                :value="resolveDraftInputValue('descriptionMaxChars', 300)"
+                type="text"
+                inputmode="numeric"
+                placeholder="300"
+                @input="handleProjectMaxCharsInput('descriptionMaxChars', $event.target.value)"
+                @blur="handleProjectMaxCharsBlur('descriptionMaxChars', $event.target.value, { fallback: 300, min: 1, max: 2000 })"
               >
             </div>
             <div class="generator-form__row">

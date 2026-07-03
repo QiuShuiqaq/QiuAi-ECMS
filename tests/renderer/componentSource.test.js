@@ -69,6 +69,7 @@ describe('component sources', () => {
     const workbenchSource = readSource('renderer/src/components/ProductWorkbench.vue')
     const generatorSource = readSource('renderer/src/components/GeneratorStudioPage.vue')
     const generatorViewSource = readSource('renderer/src/utils/generatorViews.js')
+    const generatorFormOptionsSource = readSource('renderer/src/utils/generatorFormOptions.js')
 
     expect(generationCenterSource).toContain('work-center-studio')
     expect(generationCenterSource).toContain('generator-column--settings')
@@ -91,9 +92,16 @@ describe('component sources', () => {
     expect(generatorSource).toContain('generator-export')
     expect(generatorSource).toContain("emit('pick-image')")
     expect(generatorSource).toContain('videoTemplateId')
+    expect(generatorSource).toContain('normalizePromptCategory')
+    expect(generatorSource).toContain('seriesGenerationMode')
+    expect(generatorSource).not.toContain('differenceLevel')
 
     expect(generatorViewSource).toContain('export const generatorViewMap = studioMenuConfig.generatorViews || {}')
     expect(generatorViewSource).toContain('export const generatorShortcutOptions = Object.entries(generatorViewMap).map')
+
+    expect(generatorFormOptionsSource).toContain("label: '中文'")
+    expect(generatorFormOptionsSource).toContain("label: '自动'")
+    expect(generatorFormOptionsSource).toContain("imageType: '商品主图'")
   })
 
   it('keeps purchase center and prompt library available in the simplified shell', () => {
