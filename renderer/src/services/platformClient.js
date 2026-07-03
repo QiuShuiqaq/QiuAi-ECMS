@@ -9,6 +9,7 @@ import {
   createSoftwareOrder,
   createStudioProject,
   createStudioTask,
+  deleteStudioExportItem,
   deleteStudioProject,
   exportStudioProjectBundle,
   exportStudioResults,
@@ -117,7 +118,8 @@ export const workspaceClient = {
   cancelTask: cancelStudioTask,
   pickInputAssets: pickStudioInputAssets,
   exportResults: exportStudioResults,
-  exportProjectBundle: exportStudioProjectBundle
+  exportProjectBundle: exportStudioProjectBundle,
+  deleteExportItem: deleteStudioExportItem
 }
 
 export const shellClient = {

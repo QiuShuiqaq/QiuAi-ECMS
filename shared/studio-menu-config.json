@@ -1,7 +1,15 @@
 {
-  "runtimeTaskMenuKeys": ["workspace", "series-generate", "video-generate"],
+  "runtimeTaskMenuKeys": [
+    "workspace",
+    "title-generate",
+    "description-generate",
+    "series-generate",
+    "video-generate"
+  ],
   "runtimeTaskMenuItems": [
     { "key": "workspace", "label": "工作中心" },
+    { "key": "title-generate", "label": "标题生成" },
+    { "key": "description-generate", "label": "描述生成" },
     { "key": "series-generate", "label": "套图生成" },
     { "key": "video-generate", "label": "视频生成" }
   ],

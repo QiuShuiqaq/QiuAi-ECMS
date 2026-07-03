@@ -153,16 +153,22 @@ describe('studioWorkspaceService', () => {
     })
     expect(Object.keys(snapshot.resultsByMenu)).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])
     expect(Object.keys(snapshot.exportItemsByMenu)).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])
     expect(Object.keys(snapshot.formDrafts)).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])
@@ -1452,6 +1458,8 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.formDrafts['purchase-center']).toBeUndefined()
     expect(Object.keys(snapshot.formDrafts)).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])

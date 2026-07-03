@@ -378,7 +378,7 @@ const currentTextResultItems = computed(() => {
     return []
   }
 
-  return (workspaceResultPayload.value.textResults || []).filter((item) => item?.kind === textKind)
+  return (currentResultPayload.value.textResults || []).filter((item) => item?.kind === textKind)
 })
 
 const activationSummary = computed(() => {
@@ -483,9 +483,10 @@ function assertClientSideBalanceForTask({ menuKey, draft, textKind = '' } = {}) 
   const seriesSourceItems = normalizeSeriesSourceItems(draft?.seriesSourceItems, draft?.promptAssignments)
   const hasSeriesInput = Boolean(seriesSourceItems.length || draft?.sourceImage)
 
-  if (menuKey === 'workspace' && textKind) {
+  if ((menuKey === 'workspace' && textKind) || menuKey === 'title-generate' || menuKey === 'description-generate') {
     if (balance.text <= 0) {
-      return textKind === 'description'
+      const resolvedTextKind = textKind || (menuKey === 'description-generate' ? 'description' : 'title')
+      return resolvedTextKind === 'description'
         ? '文本余额不足，无法发起描述生成任务'
         : '文本余额不足，无法发起标题生成任务'
     }
@@ -1186,7 +1187,12 @@ async function handleDraftUpdate({ field, value }) {
 }
 
 async function handleTextGeneratorDraftUpdate({ field, value }) {
-  await persistDraft('workspace', {
+  const targetMenuKey = activeTextGeneratorView.value ? activeGeneratorMenuKey.value : 'workspace'
+  if (!targetMenuKey) {
+    return
+  }
+
+  await persistDraft(targetMenuKey, {
     [field]: value
   })
 }
@@ -2269,13 +2275,8 @@ async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
 function buildStandaloneTextDraft(textKind = 'title') {
   const normalizedKind = textKind === 'description' ? 'description' : 'title'
   return {
-    ...workspaceDraft.value,
-    enabledSteps: {
-      title: normalizedKind === 'title',
-      description: normalizedKind === 'description',
-      image: false,
-      video: false
-    }
+    ...currentDraft.value,
+    taskKind: normalizedKind
   }
 }
 
@@ -2288,7 +2289,7 @@ async function handleSubmitTextGenerator(textKind = 'title') {
   try {
     const textDraft = buildStandaloneTextDraft(textKind)
     const balanceError = assertClientSideBalanceForTask({
-      menuKey: 'workspace',
+      menuKey: activeGeneratorMenuKey.value,
       draft: textDraft,
       textKind
     })
@@ -2301,7 +2302,7 @@ async function handleSubmitTextGenerator(textKind = 'title') {
       return
     }
     await workspaceClient.createTask({
-      menuKey: 'workspace',
+      menuKey: activeGeneratorMenuKey.value,
       draft: textDraft
     })
     await loadStudioSnapshot()
@@ -2550,6 +2551,38 @@ async function handleOpenGeneratorExportItem(exportItem) {
   })
 }
 
+async function handleDeleteGeneratorExportItem(exportItem) {
+  const exportItemId = String(exportItem?.id || '').trim()
+  if (!exportItemId) {
+    showActionFeedback({
+      type: 'error',
+      title: '删除失败',
+      message: '当前结果没有可删除标识'
+    })
+    return
+  }
+
+  try {
+    await workspaceClient.deleteExportItem({
+      menuKey: activeGeneratorMenuKey.value,
+      exportItemId,
+      exportItemPath: String(exportItem?.directoryPath || exportItem?.outputDirectory || exportItem?.savedPath || '').trim()
+    })
+    await loadStudioSnapshot()
+    showActionFeedback({
+      type: 'success',
+      title: '已删除',
+      message: '结果导出已移除'
+    })
+  } catch (error) {
+    showActionFeedback({
+      type: 'error',
+      title: '删除失败',
+      message: buildErrorMessage(error, '删除结果导出失败')
+    })
+  }
+}
+
 async function handleExportCurrentResults(payload = {}) {
   if (!activeGeneratorMenuKey.value) {
     return
@@ -2596,14 +2629,14 @@ async function handleExportTextResults() {
     return
   }
 
-  const selectedExportIds = workspaceExportItems.value.map((item) => item.id).filter(Boolean)
+  const selectedExportIds = currentExportItems.value.map((item) => item.id).filter(Boolean)
   if (!selectedExportIds.length) {
     return
   }
 
   try {
     const exportResult = await workspaceClient.exportResults({
-      menuKey: 'workspace',
+      menuKey: activeGeneratorMenuKey.value,
       selectedExportIds
     })
 
@@ -3180,6 +3213,7 @@ onUnmounted(() => {
       :is-submitting="isPermissionActivating"
       @close="closePermissionActivationModal"
       @submit="handlePermissionActivation"
+      @update-form="handleActivationFormUpdate"
     />
 
     <UserAgreementModal
@@ -3266,6 +3300,7 @@ onUnmounted(() => {
           :activation-state="activationState"
           :wallet-summary="effectiveWalletSummary"
           :is-refreshing-balances="isDataCenterRefreshingBalances"
+          :tasks="studioTasks"
           :product-projects="productProjects"
           :project-runs="projectRuns"
           @refresh-balances="handleRefreshDataCenterBalances"
@@ -3287,15 +3322,16 @@ onUnmounted(() => {
           v-else-if="activeTextGeneratorView"
           :title="activeTextGeneratorView.title"
           :text-kind="activeTextGeneratorView.textKind"
-          :draft="workspaceDraft"
+          :draft="currentDraft"
           :result-items="currentTextResultItems"
-          :export-items="workspaceExportItems"
+          :export-items="currentExportItems"
           :prompt-templates="promptTemplates"
           @update-draft="handleTextGeneratorDraftUpdate"
           @submit-task="handleSubmitTextGenerator(activeTextGeneratorView.textKind)"
           @copy-text="handleCopyText"
           @export-results="handleExportTextResults"
           @open-export-item="handleOpenGeneratorExportItem"
+          @delete-export-item="handleDeleteGeneratorExportItem"
         />
 
         <GeneratorStudioPage
@@ -3314,6 +3350,7 @@ onUnmounted(() => {
           @pick-image="handlePickGeneratorImage"
           @copy-text="handleCopyText"
           @open-export-item="handleOpenGeneratorExportItem"
+          @delete-export-item="handleDeleteGeneratorExportItem"
           @export-results="handleExportCurrentResults"
         />
 

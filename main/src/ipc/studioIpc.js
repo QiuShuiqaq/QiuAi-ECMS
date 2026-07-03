@@ -190,6 +190,11 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
       canceled: false
     }
   })
+
+  ipcMain.handle(ipcChannels.STUDIO_DELETE_EXPORT_ITEM, async (_event, payload = {}) => {
+    await requireActivated()
+    return studioWorkspaceService.deleteExportItem(payload)
+  })
 }
 
 module.exports = registerStudioIpc

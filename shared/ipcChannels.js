@@ -47,5 +47,6 @@ module.exports = {
   STUDIO_OPEN_OUTPUT_DIRECTORY: 'studio:open-output-directory',
   STUDIO_OPEN_EXTERNAL_RESOURCE: 'studio:open-external-resource',
   STUDIO_EXPORT_RESULTS: 'studio:export-results',
+  STUDIO_DELETE_EXPORT_ITEM: 'studio:delete-export-item',
   STUDIO_CLEAR_RUNTIME_STATE: 'studio:clear-runtime-state'
 }

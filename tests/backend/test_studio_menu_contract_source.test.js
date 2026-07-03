@@ -17,11 +17,15 @@ describe('studio menu contract source', () => {
 
     expect(config.runtimeTaskMenuKeys).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])
     expect(config.runtimeTaskMenuItems.map((item) => item.key)).toEqual([
       'workspace',
+      'title-generate',
+      'description-generate',
       'series-generate',
       'video-generate'
     ])

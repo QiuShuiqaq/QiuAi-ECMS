@@ -18,6 +18,6 @@ describe('studioIpc source', () => {
     expect(source).not.toContain('globalUploadDirectory')
     expect(source).not.toContain('STUDIO_CREATE_PROJECTS_FROM_ASSETS')
     expect(source).not.toContain('STUDIO_REFRESH_DASHBOARD_CREDITS')
-    expect(source).not.toContain('STUDIO_DELETE_EXPORT_ITEM')
+    expect(source).toContain('STUDIO_DELETE_EXPORT_ITEM')
   })
 })

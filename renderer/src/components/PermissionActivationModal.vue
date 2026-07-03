@@ -14,10 +14,14 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'submit', 'update-form'])
 
 function handleSubmit() {
   emit('submit')
+}
+
+function updateField(field, value) {
+  emit('update-form', { field, value })
 }
 </script>
 
@@ -35,7 +39,7 @@ function handleSubmit() {
         <div>
           <span class="permission-activation-modal__eyebrow">权限激活</span>
           <strong>激活当前设备</strong>
-          <p>输入用户名和手机号，系统会去服务端查询可用授权并绑定当前设备。</p>
+          <p>输入用户名和手机号，系统会到服务端查询可用授权并绑定当前设备。</p>
         </div>
 
         <button type="button" class="secondary-action" @click="emit('close')">
@@ -46,12 +50,22 @@ function handleSubmit() {
       <div class="permission-activation-modal__form">
         <label class="permission-activation-modal__field">
           <span>用户名</span>
-          <input v-model="props.formState.customerName" type="text" placeholder="请输入用户名">
+          <input
+            :value="props.formState.customerName"
+            type="text"
+            placeholder="请输入用户名"
+            @input="updateField('customerName', $event.target.value)"
+          >
         </label>
 
         <label class="permission-activation-modal__field">
           <span>手机号</span>
-          <input v-model="props.formState.contact" type="text" placeholder="请输入手机号">
+          <input
+            :value="props.formState.contact"
+            type="text"
+            placeholder="请输入手机号"
+            @input="updateField('contact', $event.target.value)"
+          >
         </label>
       </div>
 

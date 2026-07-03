@@ -538,6 +538,13 @@ function resolveTextMaxTokens(draft = {}) {
   return 1200
 }
 
+function splitRemoteTextContent(content = '') {
+  return String(content || '')
+    .split(/\r?\n+/)
+    .map((line) => trimString(line))
+    .filter(Boolean)
+}
+
 function buildTextPayload({ draft, sessionToken }) {
   const quantity = clampNumber(draft.quantity, 1, 20, 1)
   const model = trimString(draft.model || 'deepseek-chat')
@@ -589,18 +596,15 @@ function buildTextPayload({ draft, sessionToken }) {
       const textResults = artifacts
         .slice()
         .sort((left, right) => Number(left.slotIndex) - Number(right.slotIndex))
-        .map((artifact, index) => {
-          const content = trimString(artifact.metadata?.content || '')
-          if (!content) {
-            return null
-          }
-
-          return {
-            id: `${job.id}-text-${index + 1}`,
-            title: trimString(artifact.metadata?.title || '') || `Text ${index + 1}`,
+        .flatMap((artifact, index) => {
+          const baseTitle = trimString(artifact.metadata?.title || '') || `Text ${index + 1}`
+          const lines = splitRemoteTextContent(artifact.metadata?.content || '')
+          return lines.map((content, lineIndex) => ({
+            id: `${job.id}-text-${index + 1}-${lineIndex + 1}`,
+            title: lines.length > 1 ? `${baseTitle} ${lineIndex + 1}` : baseTitle,
             format: 'txt',
             content
-          }
+          }))
         })
         .filter(Boolean)
 

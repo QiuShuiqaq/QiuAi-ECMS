@@ -17,7 +17,7 @@ describe('component sources', () => {
       'renderer/src/components/PurchaseCenterPage.vue',
       'renderer/src/components/PromptLibraryPanel.vue',
       'renderer/src/components/ActivationGate.vue',
-      'renderer/src/components/AuthorizationPurchaseModal.vue',
+      'renderer/src/components/PermissionActivationModal.vue',
       'renderer/src/components/UserAgreementModal.vue',
       'renderer/src/components/AppTopBar.vue'
     ]
@@ -31,7 +31,7 @@ describe('component sources', () => {
   it('keeps the top bar and activation gate aligned with the simplified activation flow', () => {
     const topbarSource = readSource('renderer/src/components/AppTopBar.vue')
     const activationSource = readSource('renderer/src/components/ActivationGate.vue')
-    const purchaseModalSource = readSource('renderer/src/components/AuthorizationPurchaseModal.vue')
+    const permissionModalSource = readSource('renderer/src/components/PermissionActivationModal.vue')
     const agreementModalSource = readSource('renderer/src/components/UserAgreementModal.vue')
 
     expect(topbarSource).toContain('cleanup-click')
@@ -54,10 +54,10 @@ describe('component sources', () => {
     expect(activationSource).not.toContain('import-license')
     expect(activationSource).not.toContain('refresh-license')
 
-    expect(purchaseModalSource).toContain("defineEmits(['close', 'submit-order'])")
-    expect(purchaseModalSource).toContain('selectedPackageId')
-    expect(purchaseModalSource).toContain('softwarePackages')
-    expect(purchaseModalSource).toContain('submitOrder')
+    expect(permissionModalSource).toContain("defineEmits(['close', 'submit', 'update-form'])")
+    expect(permissionModalSource).toContain("updateField('customerName'")
+    expect(permissionModalSource).toContain("updateField('contact'")
+    expect(permissionModalSource).toContain('激活当前设备')
     expect(agreementModalSource).toContain("defineEmits(['accept'])")
     expect(agreementModalSource).toContain('agreementState')
     expect(agreementModalSource).toContain('isSubmitting')

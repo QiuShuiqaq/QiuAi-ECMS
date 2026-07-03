@@ -84,6 +84,8 @@ const menuItems = primaryMenuItems
 const menuLabelMap = Object.fromEntries(runtimeStateMenuItems.map((item) => [item.key, item.label]))
 const taskCategoryMap = {
   workspace: '工作台',
+  'title-generate': '标题生成',
+  'description-generate': '描述生成',
   'series-generate': '套图生成',
   'video-generate': '视频生成'
 }
@@ -295,6 +297,38 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       resolution: String(draft.resolution || defaultDraft.resolution || '768P').trim() || '768P',
       aspectRatio: String(draft.aspectRatio || defaultDraft.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
       motionStrength: String(draft.motionStrength || defaultDraft.motionStrength || 'auto').trim() || 'auto',
+      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
+    }
+  }
+
+  if (menuKey === 'title-generate') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
+      language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      titlePrompt: String(draft.titlePrompt || defaultDraft.titlePrompt || ''),
+      titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || defaultDraft.titleMaxChars || 60),
+      titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
+      taskKind: 'title',
+      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
+    }
+  }
+
+  if (menuKey === 'description-generate') {
+    return {
+      ...defaultDraft,
+      ...draft,
+      taskName: String(draft.taskName || defaultDraft.taskName || ''),
+      productName: String(draft.productName || defaultDraft.productName || ''),
+      platformTargetsText: String(draft.platformTargetsText || defaultDraft.platformTargetsText || ''),
+      language: String(draft.language || defaultDraft.language || 'zh-CN'),
+      descriptionPrompt: String(draft.descriptionPrompt || defaultDraft.descriptionPrompt || ''),
+      descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || defaultDraft.descriptionMaxChars || 300),
+      descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
+      taskKind: 'description',
       model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
     }
   }
@@ -560,6 +594,26 @@ function createDefaultDrafts() {
       resolution: '768P',
       aspectRatio: resolveVideoAspectRatioForMenu(),
       motionStrength: 'auto',
+      model: resolveTextModelForMenu('workspace')
+    },
+    'title-generate': {
+      taskName: '',
+      productName: '',
+      platformTargetsText: 'temu, ozon',
+      language: 'zh-CN',
+      titlePrompt: '生成适合跨境电商平台使用的商品标题，突出核心卖点，避免夸张和违规表达',
+      titleMaxChars: 60,
+      titleQuantity: 3,
+      model: resolveTextModelForMenu('workspace')
+    },
+    'description-generate': {
+      taskName: '',
+      productName: '',
+      platformTargetsText: 'temu, ozon',
+      language: 'zh-CN',
+      descriptionPrompt: '生成适合电商详情页或上架页使用的商品描述，语气清晰、利于转化、避免空话',
+      descriptionMaxChars: 300,
+      descriptionQuantity: 2,
       model: resolveTextModelForMenu('workspace')
     },
     'series-generate': {
@@ -1492,7 +1546,7 @@ function scanStoredExportItemsByMenu({
   statSync = fsSync.statSync
 } = {}) {
   const exportItemsByMenu = createDefaultExportItemsByMenu()
-  const supportedMenuKeys = ['workspace', 'series-generate', 'video-generate']
+    const supportedMenuKeys = ['workspace', 'title-generate', 'description-generate', 'series-generate', 'video-generate']
 
   for (const menuKey of supportedMenuKeys) {
     const featureRootDirectory = path.resolve(outputRootDirectory, getFeatureDirectoryKey(menuKey))
@@ -1546,6 +1600,17 @@ function mergeExportItemsByMenu({
   for (const menuKey of Object.keys(mergedExportItemsByMenu)) {
     const mergedItems = []
     const seenIdentities = new Set()
+    const menuRootDirectory = path.resolve(OUTPUT_ROOT_DIRECTORY, getFeatureDirectoryKey(menuKey))
+
+    const belongsToMenuRoot = (item) => {
+      const candidatePath = String(item?.directoryPath || item?.outputDirectory || item?.savedPath || '').trim()
+      if (!candidatePath) {
+        return false
+      }
+
+      const resolvedCandidatePath = path.resolve(candidatePath)
+      return resolvedCandidatePath === menuRootDirectory || resolvedCandidatePath.startsWith(`${menuRootDirectory}${path.sep}`)
+    }
 
     for (const item of scannedExportItemsByMenu[menuKey] || []) {
       const identity = resolveExportItemIdentity(item)
@@ -1559,7 +1624,7 @@ function mergeExportItemsByMenu({
 
     for (const item of storedExportItemsByMenu[menuKey] || []) {
       const identity = resolveExportItemIdentity(item)
-      if (!identity || seenIdentities.has(identity)) {
+      if (!identity || seenIdentities.has(identity) || !belongsToMenuRoot(item)) {
         continue
       }
 
@@ -1745,6 +1810,42 @@ function buildWorkspaceDescriptionTaskDraft(draft = {}, context = {}, titleResul
       `最大字数：${draft.descriptionMaxChars || 300}`,
       '请输出适合商品详情页或上架页的商品描述。',
       '要求信息清晰、卖点明确、语气自然，不要分点编号，不要编造不存在的规格。'
+    ].filter(Boolean).join('\n')
+  }
+}
+
+function buildStandaloneTitleTaskDraft(draft = {}) {
+  return {
+    taskKind: 'title',
+    model: draft.model,
+    quantity: Math.max(1, Number(draft.titleQuantity) || 1),
+    maxChars: Math.max(1, Number(draft.titleMaxChars) || 60),
+    prompt: [
+      `商品名称：${draft.productName || '未提供'}`,
+      `目标平台：${splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'}`,
+      `语言：${draft.language || 'zh-CN'}`,
+      `任务要求：${draft.titlePrompt || ''}`,
+      `最大字数：${draft.titleMaxChars || 60}`,
+      '请输出适合电商商品上架使用的标题。',
+      '不要解释，不要编号，只返回标题结果。'
+    ].filter(Boolean).join('\n')
+  }
+}
+
+function buildStandaloneDescriptionTaskDraft(draft = {}) {
+  return {
+    taskKind: 'description',
+    model: draft.model,
+    quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
+    maxChars: Math.max(1, Number(draft.descriptionMaxChars) || 300),
+    prompt: [
+      `商品名称：${draft.productName || '未提供'}`,
+      `目标平台：${splitWorkspaceTextValues(draft.platformTargetsText).join('、') || '通用电商平台'}`,
+      `语言：${draft.language || 'zh-CN'}`,
+      `任务要求：${draft.descriptionPrompt || ''}`,
+      `最大字数：${draft.descriptionMaxChars || 300}`,
+      '请输出适合电商商品详情页或上架页使用的描述。',
+      '不要解释，不要编号，只返回描述结果。'
     ].filter(Boolean).join('\n')
   }
 }
@@ -2265,6 +2366,52 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     })
   }
 
+  if (menuKey === 'title-generate') {
+    const response = await generateTextResults({
+      draft: buildStandaloneTitleTaskDraft(draft),
+      onProgress
+    })
+    const results = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.textResults) ? response.textResults : [])
+
+    return {
+      textResults: results.map((item, index) => ({
+        ...(item && typeof item === 'object' ? item : {}),
+        id: item?.id || `${taskId}-title-${index + 1}`,
+        kind: 'title',
+        title: item?.title || `标题 ${index + 1}`
+      })),
+      comparisonResults: [],
+      groupedResults: [],
+      usageSummary: response && typeof response === 'object' ? response.usageSummary || null : null,
+      summary: null
+    }
+  }
+
+  if (menuKey === 'description-generate') {
+    const response = await generateTextResults({
+      draft: buildStandaloneDescriptionTaskDraft(draft),
+      onProgress
+    })
+    const results = Array.isArray(response)
+      ? response
+      : (Array.isArray(response?.textResults) ? response.textResults : [])
+
+    return {
+      textResults: results.map((item, index) => ({
+        ...(item && typeof item === 'object' ? item : {}),
+        id: item?.id || `${taskId}-description-${index + 1}`,
+        kind: 'description',
+        title: item?.title || `描述 ${index + 1}`
+      })),
+      comparisonResults: [],
+      groupedResults: [],
+      usageSummary: response && typeof response === 'object' ? response.usageSummary || null : null,
+      summary: null
+    }
+  }
+
   return {
     textResults: [],
     comparisonResults: [],
@@ -2456,7 +2603,7 @@ async function saveStudioResults({
     persistedResultPayload.groupedResults.push(persistedGroup)
 
     exportItems.push(createFolderExportItem({
-      id: `${group.id}-export-folder`,
+      id: `${String(group.id || `${taskId}-group-${groupIndex + 1}`)}-export-folder`,
       name: folderName,
       directoryPath: groupDirectory,
       itemCount: (group.outputs || []).length,
@@ -2586,6 +2733,14 @@ function resolveEstimatedPlannedOutputCount(menuKey, draft = {}) {
       (draft.sourceImage ? (Math.max(1, Number(draft.generateCount) || 4) + 1) : 0)
   }
 
+  if (menuKey === 'title-generate') {
+    return Math.max(1, Number(draft.titleQuantity) || 1)
+  }
+
+  if (menuKey === 'description-generate') {
+    return Math.max(1, Number(draft.descriptionQuantity) || 1)
+  }
+
   if (menuKey === 'series-generate') {
     return Math.max(1, Number(draft.batchCount) || 1) * resolveGroupImageCount(menuKey, draft)
   }
@@ -2596,6 +2751,14 @@ function resolveEstimatedPlannedOutputCount(menuKey, draft = {}) {
 function resolveTaskTitle(menuKey, draft = {}) {
   if (menuKey === 'workspace') {
     return `${resolveWorkspaceProjectDisplayName(draft)} / 全链路生成`
+  }
+
+  if (menuKey === 'title-generate') {
+    return `标题生成 ${Math.max(1, Number(draft.titleQuantity) || 1)} 条`
+  }
+
+  if (menuKey === 'description-generate') {
+    return `描述生成 ${Math.max(1, Number(draft.descriptionQuantity) || 1)} 条`
   }
 
   if (menuKey === 'series-generate') {
@@ -2715,7 +2878,8 @@ function buildTaskRecord({
   failedSubtaskCount = 0,
   currentGroupIndex = 0,
   currentGroupCompletedCount = 0,
-  currentGroupTotalCount = 0
+  currentGroupTotalCount = 0,
+  usage = null
 }) {
   const nextTask = {
     id: taskId,
@@ -2739,6 +2903,24 @@ function buildTaskRecord({
     currentGroupIndex,
     currentGroupCompletedCount,
     currentGroupTotalCount
+  }
+
+  if (usage && typeof usage === 'object') {
+    nextTask.usage = {
+      totalAmountCny: Math.max(0, Number(usage.totalAmountCny) || 0),
+      currency: String(usage.currency || 'CNY').trim() || 'CNY',
+      billedAt: String(usage.billedAt || '').trim(),
+      lines: Array.isArray(usage.lines)
+        ? usage.lines.map((line) => ({
+            kind: String(line?.kind || '').trim(),
+            label: String(line?.label || '').trim(),
+            model: String(line?.model || '').trim(),
+            units: Math.max(0, Number(line?.units) || 0),
+            unitPriceCny: Math.max(0, Number(line?.unitPriceCny) || 0),
+            amountCny: Math.max(0, Number(line?.amountCny) || 0)
+          }))
+        : []
+    }
   }
 
   if (error) {
@@ -2815,6 +2997,9 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
   const hasSuccessfulWorkspaceText = Array.isArray(resultPayload?.textResults) && resultPayload.textResults.length > 0
   const hasSuccessfulOutputs = hasSuccessfulWorkspaceText || successfulGroupedOutputs.length > 0
   const normalizedErrorMessage = Array.from(new Set([...failedMessages, ...workspaceErrors])).join('；')
+  const usageSummary = resultPayload?.usageSummary && typeof resultPayload.usageSummary === 'object'
+    ? resultPayload.usageSummary
+    : null
   const finalStatus = hasPartialFailure
     ? (hasSuccessfulOutputs ? '部分完成' : '失败')
     : '已完成'
@@ -2835,6 +3020,7 @@ function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, input
     status: finalStatus,
     progress: 100,
     error: normalizedErrorMessage,
+    usage: usageSummary,
     ...groupedProgress
   })
 }
@@ -3600,6 +3786,88 @@ function createStudioWorkspaceService({
     })
   }
 
+  async function deleteExportItem({
+    menuKey = 'workspace',
+    exportItemId = '',
+    exportItemPath = ''
+  } = {}) {
+    const normalizedMenuKey = String(menuKey || '').trim()
+    const normalizedExportItemId = String(exportItemId || '').trim()
+    const normalizedExportItemPath = String(exportItemPath || '').trim()
+
+    if (!normalizedMenuKey || (!normalizedExportItemId && !normalizedExportItemPath)) {
+      throw new Error('Export item identity is required')
+    }
+
+    const latestState = getStoredState()
+    const exportItems = workspaceStateMaintenanceService.getResolvedExportItemsByMenu(latestState)[normalizedMenuKey] || []
+    const targetItem = exportItems.find((item) => {
+      const itemPath = String(item?.directoryPath || item?.outputDirectory || item?.savedPath || '').trim()
+      if (normalizedExportItemPath && itemPath && path.resolve(itemPath) === path.resolve(normalizedExportItemPath)) {
+        return true
+      }
+
+      return normalizedExportItemId && String(item.id || '').trim() === normalizedExportItemId
+    })
+
+    if (!targetItem) {
+      const nextStoredExportItems = {
+        ...(latestState.exportItemsByMenu || {}),
+        [normalizedMenuKey]: Array.isArray(latestState.exportItemsByMenu?.[normalizedMenuKey])
+          ? latestState.exportItemsByMenu[normalizedMenuKey].filter((item) => {
+              const itemPath = String(item?.directoryPath || item?.outputDirectory || item?.savedPath || '').trim()
+              if (normalizedExportItemPath && itemPath && path.resolve(itemPath) === path.resolve(normalizedExportItemPath)) {
+                return false
+              }
+
+              return normalizedExportItemId
+                ? String(item?.id || '').trim() !== normalizedExportItemId
+                : true
+            })
+          : []
+      }
+
+      saveState({
+        ...latestState,
+        exportItemsByMenu: nextStoredExportItems
+      })
+      workspaceStateMaintenanceService.invalidateExportItemsCache()
+
+      return {
+        ok: true,
+        menuKey: normalizedMenuKey,
+        exportItemId: normalizedExportItemId,
+        removedStaleRecord: true
+      }
+    }
+
+    const targetDirectory = String(targetItem.directoryPath || targetItem.outputDirectory || '').trim()
+    const targetFilePath = String(targetItem.savedPath || '').trim()
+
+    if (targetDirectory) {
+      await fs.rm(targetDirectory, { recursive: true, force: true })
+    } else if (targetFilePath) {
+      await fs.rm(targetFilePath, { force: true })
+    } else {
+      throw new Error('Export item path is missing')
+    }
+
+    workspaceStateMaintenanceService.invalidateExportItemsCache()
+
+    const refreshedState = getStoredState()
+    const nextResolvedExportItems = workspaceStateMaintenanceService.getResolvedExportItemsByMenu(refreshedState)
+    saveState({
+      ...refreshedState,
+      exportItemsByMenu: nextResolvedExportItems
+    })
+
+    return {
+      ok: true,
+      menuKey: normalizedMenuKey,
+      exportItemId: normalizedExportItemId
+    }
+  }
+
   return {
     getSnapshot,
     getDisplaySnapshot,
@@ -3613,6 +3881,7 @@ function createStudioWorkspaceService({
     clearRuntimeState,
     exportSelectedResults,
     exportProjectBundle,
+    deleteExportItem,
     waitForIdle: async () => {
       await taskQueuePromise
     }

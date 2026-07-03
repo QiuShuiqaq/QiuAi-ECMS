@@ -19,6 +19,8 @@ const LOG_FILE_PATH = path.resolve(DATA_ROOT_DIRECTORY, 'log.txt')
 const TASK_MANAGER_FILE_PATH = path.resolve(DATA_ROOT_DIRECTORY, 'taskmanager.json')
 
 const featureDirectoryMap = {
+  'title-generate': 'title-generate',
+  'description-generate': 'description-generate',
   'series-generate': 'series-generate',
   'video-generate': 'video-generate',
   workspace: 'workspace',

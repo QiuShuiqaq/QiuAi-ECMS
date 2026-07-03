@@ -34,7 +34,7 @@ describe('preload source', () => {
     expect(source).not.toContain('LICENSE_REFRESH')
     expect(source).not.toContain('STUDIO_CREATE_PROJECTS_FROM_ASSETS')
     expect(source).not.toContain('STUDIO_REFRESH_DASHBOARD_CREDITS')
-    expect(source).not.toContain('STUDIO_DELETE_EXPORT_ITEM')
+    expect(source).toContain('STUDIO_DELETE_EXPORT_ITEM')
     expect(source).not.toContain('STUDIO_STOP_TASK')
   })
 })

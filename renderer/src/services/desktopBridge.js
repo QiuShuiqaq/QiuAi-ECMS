@@ -836,6 +836,10 @@ export function exportStudioResults (payload) {
   return invoke(getChannel('STUDIO_EXPORT_RESULTS'), payload)
 }
 
+export function deleteStudioExportItem (payload) {
+  return invoke(getChannel('STUDIO_DELETE_EXPORT_ITEM'), payload)
+}
+
 export function clearStudioRuntimeState () {
   if (!hasBridge()) {
     return Promise.resolve(clearBrowserStudioRuntimeState())

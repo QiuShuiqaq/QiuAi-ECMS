@@ -298,7 +298,7 @@ describe('desktopBridge', () => {
     expect('saveProviderApiKeys' in desktopBridge).toBe(false)
     expect('createProjectsFromAssets' in desktopBridge).toBe(false)
     expect('refreshDashboardCredits' in desktopBridge).toBe(false)
-    expect('deleteStudioExportItem' in desktopBridge).toBe(false)
+    expect(typeof desktopBridge.deleteStudioExportItem).toBe('function')
     expect('importLicenseFile' in desktopBridge).toBe(false)
     expect('reloadActivation' in desktopBridge).toBe(false)
   })

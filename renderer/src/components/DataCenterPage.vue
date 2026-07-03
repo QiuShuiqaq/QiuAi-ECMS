@@ -14,6 +14,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  tasks: {
+    type: Array,
+    default: () => []
+  },
   productProjects: {
     type: Array,
     default: () => []
@@ -116,11 +120,11 @@ const historicalAssets = computed(() => {
 })
 
 const usageRecords = computed(() => {
-  return (props.projectRuns || [])
+  return (props.tasks || [])
     .filter((item) => Number(item?.usage?.totalAmountCny) > 0)
     .map((item) => ({
       id: item.id,
-      name: String(item?.outputs?.selectedTitle || item?.outputs?.title || item?.taskNumber || copy.unnamedProject).trim() || copy.unnamedProject,
+      name: String(item?.title || item?.taskNumber || copy.unnamedProject).trim() || copy.unnamedProject,
       totalAmountCny: Number(item?.usage?.totalAmountCny || 0).toFixed(2),
       billedAt: String(item?.usage?.billedAt || item?.completedAt || '').trim(),
       lines: Array.isArray(item?.usage?.lines) ? item.usage.lines : []

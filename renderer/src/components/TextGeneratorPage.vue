@@ -1,5 +1,7 @@
 <script setup>
 import { computed } from 'vue'
+import openFolderIcon from '../../../icon/wenjianjia.png'
+import deleteIcon from '../../../icon/shanchu.png'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -15,7 +17,8 @@ const emit = defineEmits([
   'submit-task',
   'copy-text',
   'export-results',
-  'open-export-item'
+  'open-export-item',
+  'delete-export-item'
 ])
 
 const isTitleMode = computed(() => props.textKind === 'title')
@@ -176,7 +179,14 @@ function handleExportAll() {
               <span>{{ item.status }}{{ item.itemCount ? ` / ${item.itemCount}` : '' }}</span>
             </div>
 
-            <button class="secondary-action" type="button" @click="emit('open-export-item', item.raw)">打开</button>
+            <div class="generator-export__item-actions">
+              <button class="icon-action-button" type="button" title="打开" aria-label="打开" @click="emit('open-export-item', item.raw)">
+                <img :src="openFolderIcon" alt="" aria-hidden="true">
+              </button>
+              <button class="icon-action-button icon-action-button--danger" type="button" title="删除" aria-label="删除" @click="emit('delete-export-item', item.raw)">
+                <img :src="deleteIcon" alt="" aria-hidden="true">
+              </button>
+            </div>
           </article>
         </div>
 
@@ -279,5 +289,79 @@ function handleExportAll() {
 
 .product-result-empty--compact {
   min-height: 120px;
+}
+
+.generator-export__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.generator-export__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 72px;
+  max-height: 72px;
+  padding: 14px 16px;
+  overflow: hidden;
+}
+
+.generator-export__item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+
+.generator-export__copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.generator-export__copy strong,
+.generator-export__copy span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(14, 20, 36, 0.92);
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.icon-action-button:hover {
+  background: rgba(28, 38, 67, 0.96);
+  border-color: rgba(96, 145, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.icon-action-button img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.icon-action-button--danger:hover {
+  background: rgba(74, 24, 24, 0.96);
+  border-color: rgba(255, 120, 120, 0.4);
 }
 </style>
