@@ -27,7 +27,41 @@ function isTerminalJobStatus(status = '') {
   return TERMINAL_JOB_STATUSES.has(String(status || ''))
 }
 
-function resolveRequestedConcurrency({ assetType = '', draft = {}, serviceCapacityProfile = null }) {
+function resolveImageRequestedConcurrencyTarget(plannedImageCount = 1) {
+  const normalizedCount = Math.max(1, Number(plannedImageCount) || 1)
+
+  if (normalizedCount <= 1) return 1
+  if (normalizedCount <= 4) return 2
+  if (normalizedCount <= 6) return 3
+  return 4
+}
+
+function resolveImagePlannedItemCount(draft = {}, fallbackCount = 1) {
+  const batchCount = Math.max(1, Number(draft.batchCount) || 1)
+  const seriesSourceItems = Array.isArray(draft.seriesSourceItems)
+    ? draft.seriesSourceItems.filter((item) => Boolean(trimString(item?.sourceImage?.storedPath || item?.sourceImage?.path || '')))
+    : []
+  const promptAssignments = Array.isArray(draft.promptAssignments)
+    ? draft.promptAssignments
+    : []
+  const generateCount = Math.max(1, Number(draft.generateCount) || 1)
+
+  const slotCount = Math.max(
+    seriesSourceItems.length,
+    promptAssignments.length,
+    generateCount,
+    Math.max(1, Number(fallbackCount) || 1)
+  )
+
+  return Math.max(1, slotCount * batchCount)
+}
+
+function resolveRequestedConcurrency({
+  assetType = '',
+  draft = {},
+  serviceCapacityProfile = null,
+  plannedImageCount = null
+}) {
   const normalizedAssetType = trimString(assetType).toUpperCase()
   const profile = serviceCapacityProfile && typeof serviceCapacityProfile === 'object'
     ? serviceCapacityProfile
@@ -44,9 +78,16 @@ function resolveRequestedConcurrency({ assetType = '', draft = {}, serviceCapaci
     return Math.max(1, Math.min(serverLimit, maxAllowedConcurrency))
   }
 
-  const batchCount = Math.max(1, Number(draft.batchCount) || 1)
-  const serverLimit = Math.max(1, Number(profile.effectiveImageConcurrency) || 1)
-  return Math.max(1, Math.min(batchCount, serverLimit, maxAllowedConcurrency))
+  const imageCount = resolveImagePlannedItemCount(draft, plannedImageCount)
+  const preferredConcurrency = resolveImageRequestedConcurrencyTarget(imageCount)
+  const serverLimit = Math.max(
+    1,
+    Number(profile.currentImageConcurrencyPerProject) ||
+      Number(profile.effectiveImageConcurrency) ||
+      1
+  )
+
+  return Math.max(1, Math.min(preferredConcurrency, serverLimit, maxAllowedConcurrency))
 }
 
 async function fetchServiceCapacityProfile(remoteLicensePlatformClient, sessionToken = '') {
@@ -118,10 +159,18 @@ function buildSeriesOutputDescriptors(promptAssignments = [], fallbackPrompt = '
   })
 }
 
+function hasRunnableSourceImage(sourceImage = null) {
+  if (!sourceImage || typeof sourceImage !== 'object') {
+    return false
+  }
+
+  return Boolean(trimString(sourceImage.storedPath || sourceImage.path || ''))
+}
+
 function buildSeriesSourceDescriptors(draft = {}) {
   const sourceItems = Array.isArray(draft.seriesSourceItems) ? draft.seriesSourceItems : []
   if (sourceItems.length) {
-    return sourceItems
+    const normalizedSourceItems = sourceItems
       .map((item, index) => {
         const sourceImagePath = item?.sourceImage?.storedPath || item?.sourceImage?.path || ''
         if (!trimString(sourceImagePath)) {
@@ -137,6 +186,10 @@ function buildSeriesSourceDescriptors(draft = {}) {
         }
       })
       .filter(Boolean)
+
+    if (normalizedSourceItems.length > 0) {
+      return normalizedSourceItems
+    }
   }
 
   const normalizedAssignments = normalizePromptAssignments(draft.promptAssignments, draft.generateCount)
@@ -316,6 +369,10 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
     sessionToken,
     sourceImagePath,
     buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
+      if (!outputDescriptors.length || (!hasRunnableSourceImage(draft.sourceImage) && !trimString(sourceImagePath))) {
+        throw new Error('Source image path is required.')
+      }
+
       const descriptorsWithDataUrl = await Promise.all(outputDescriptors.map(async (descriptor) => ({
         ...descriptor,
         sourceImageDataUrl: await fileToDataUrl(descriptor.sourceImagePath, {
@@ -337,7 +394,8 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
         requestedConcurrency: resolveRequestedConcurrency({
           assetType: 'IMAGE',
           draft,
-          serviceCapacityProfile
+          serviceCapacityProfile,
+          plannedImageCount: descriptorsWithDataUrl.length * batchCount
         }),
         items: Array.from({ length: batchCount }).flatMap((_unused, batchIndex) => {
           return descriptorsWithDataUrl.map((descriptor) => ({
@@ -840,5 +898,7 @@ function createCloudGenerationService({
 
 module.exports = {
   createCloudGenerationService,
+  resolveImageRequestedConcurrencyTarget,
+  resolveRequestedConcurrency,
   resolvePollingIntervalMs
 }

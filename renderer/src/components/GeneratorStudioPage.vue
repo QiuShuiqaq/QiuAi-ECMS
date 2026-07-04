@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import openFolderIcon from '../../../icon/wenjianjia.png'
 import deleteIcon from '../../../icon/shanchu.png'
 import {
@@ -49,6 +49,12 @@ function normalizePromptCategory(category = '') {
 const filteredTemplates = computed(() => {
   const category = props.mode === 'image' ? '图片' : '视频'
   return (props.promptTemplates || []).filter((item) => normalizePromptCategory(item?.category) === category)
+})
+
+const previewLightbox = ref({
+  visible: false,
+  images: [],
+  index: 0
 })
 
 const sourceImagePreview = computed(() => props.draft.sourceImage?.preview || '')
@@ -291,6 +297,40 @@ function handleExportAll() {
     selectedExportIds: resultOutputCards.value.map((item) => item.id)
   })
 }
+
+function openPreviewLightbox(images = [], index = 0) {
+  const normalizedImages = (Array.isArray(images) ? images : []).filter((item) => Boolean(String(item?.preview || item?.savedPath || item?.path || '').trim()))
+  if (!normalizedImages.length) return
+
+  previewLightbox.value = {
+    visible: true,
+    images: normalizedImages,
+    index: Math.max(0, Math.min(Number(index) || 0, normalizedImages.length - 1))
+  }
+}
+
+function closePreviewLightbox() {
+  previewLightbox.value = {
+    visible: false,
+    images: [],
+    index: 0
+  }
+}
+
+function shiftPreviewLightbox(direction = 0) {
+  const currentImages = previewLightbox.value.images || []
+  if (!currentImages.length) return
+
+  previewLightbox.value = {
+    ...previewLightbox.value,
+    index: Math.max(0, Math.min(previewLightbox.value.index + direction, currentImages.length - 1))
+  }
+}
+
+const activePreviewImage = computed(() => {
+  const currentImages = previewLightbox.value.images || []
+  return currentImages[previewLightbox.value.index] || null
+})
 
 function getStatusClass(status = '') {
   if (['进行中', '处理中', 'running', 'submitting'].includes(status)) return 'task-status--running'
@@ -575,8 +615,8 @@ function formatTaskLabel(task) {
                 </div>
 
                 <div class="generator-preview__series-grid">
-                  <article v-for="item in group.outputs" :key="item.id" class="generator-preview__series-card">
-                    <img class="generator-preview__image generator-preview__image--series" :src="item.preview || item.savedPath || item.path" alt="">
+                  <article v-for="(item, outputIndex) in group.outputs" :key="item.id" class="generator-preview__series-card">
+                    <img class="generator-preview__image generator-preview__image--series" :src="item.preview || item.savedPath || item.path" alt="" @click="openPreviewLightbox(group.outputs, outputIndex)">
                   </article>
                 </div>
               </article>
@@ -630,6 +670,26 @@ function formatTaskLabel(task) {
         </div>
       </div>
     </article>
+
+    <div
+      v-if="previewLightbox.visible && activePreviewImage"
+      class="preview-lightbox"
+      role="dialog"
+      aria-modal="true"
+      @click.self="closePreviewLightbox"
+    >
+      <div class="preview-lightbox__card">
+        <button class="preview-lightbox__close" type="button" @click="closePreviewLightbox">关闭</button>
+        <div class="preview-lightbox__toolbar">
+          <button class="secondary-action" type="button" :disabled="previewLightbox.index <= 0" @click="shiftPreviewLightbox(-1)">上一张</button>
+          <span>{{ previewLightbox.index + 1 }} / {{ previewLightbox.images.length }}</span>
+          <button class="secondary-action" type="button" :disabled="previewLightbox.index >= previewLightbox.images.length - 1" @click="shiftPreviewLightbox(1)">下一张</button>
+        </div>
+        <div class="preview-lightbox__viewport">
+          <img :src="activePreviewImage.preview || activePreviewImage.savedPath || activePreviewImage.path" alt="">
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
@@ -688,6 +748,10 @@ function formatTaskLabel(task) {
   width: 100%;
 }
 
+.generator-preview__image--series {
+  cursor: zoom-in;
+}
+
 .media-source-card__thumb span {
   color: #8f8aa3;
   font-size: 12px;
@@ -736,5 +800,58 @@ function formatTaskLabel(task) {
 .icon-action-button--danger:hover {
   background: rgba(255, 107, 107, 0.16);
   border-color: rgba(255, 107, 107, 0.32);
+}
+
+.preview-lightbox {
+  align-items: center;
+  background: rgba(7, 10, 18, 0.82);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 1200;
+}
+
+.preview-lightbox__card {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  display: grid;
+  gap: 14px;
+  max-height: 90vh;
+  max-width: min(1080px, 92vw);
+  padding: 18px;
+  width: 100%;
+}
+
+.preview-lightbox__close {
+  background: transparent;
+  border: 0;
+  color: #f9fafb;
+  cursor: pointer;
+  justify-self: end;
+}
+
+.preview-lightbox__toolbar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.preview-lightbox__viewport {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 320px;
+  overflow: auto;
+}
+
+.preview-lightbox__viewport img {
+  display: block;
+  max-height: 72vh;
+  max-width: 100%;
+  object-fit: contain;
 }
 </style>

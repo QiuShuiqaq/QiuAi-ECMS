@@ -132,6 +132,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     highlightsText: workspaceDraft?.highlightsText || (project?.baseInfo?.highlights || []).join(', '),
     platformTargetsText: workspaceDraft?.platformTargetsText || (project?.platformTarget || []).join(', '),
     language: workspaceDraft?.language || project?.baseInfo?.language || 'zh-CN',
+    imageLanguage: workspaceDraft?.imageLanguage || generationConfig.imageLanguage || workspaceDraft?.language || project?.baseInfo?.language || 'zh-CN',
     keywordsText: workspaceDraft?.keywordsText || (project?.baseInfo?.keywords || []).join(', '),
     sourceImage: resolveWorkspaceSourceImage(project, workspaceDraft),
     selectionSource: workspaceDraft?.selectionSource || selectionSource,

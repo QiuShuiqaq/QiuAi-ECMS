@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
+const { resolveCompatibleLocalPath } = require('./pathMigrationService')
 
 async function persistSourceFiles (
   { sourcePaths = [], targetDirectory = '' } = {},
@@ -17,8 +18,9 @@ async function persistSourceFiles (
   const usedNames = new Set()
   const persistedPaths = []
 
-  for (const sourcePath of sourcePaths) {
-    const parsedPath = path.parse(sourcePath)
+  for (const rawSourcePath of sourcePaths) {
+    const sourcePath = resolveCompatibleLocalPath(rawSourcePath)
+    const parsedPath = path.parse(sourcePath || rawSourcePath)
     let nextName = `${parsedPath.name}${parsedPath.ext}`
     let suffix = 1
 

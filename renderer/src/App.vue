@@ -1244,19 +1244,52 @@ async function handleCreateProject() {
   }
 }
 
+async function ensureWorkspaceProject(project = null) {
+  const normalizedProject = project && typeof project === 'object' ? project : null
+  if (normalizedProject?.id) {
+    return normalizedProject
+  }
+
+  const currentProject = (productProjects.value || []).find((item) => item?.id === activeProductProjectId.value) || null
+  if (currentProject?.id) {
+    return currentProject
+  }
+
+  const createdProject = await workspaceClient.createProject({
+    productName: '',
+    platform: 'temu',
+    language: 'zh-CN'
+  })
+
+  await loadStudioSnapshot()
+
+  if (createdProject?.id) {
+    activeProductProjectId.value = createdProject.id
+    const nextProject = (productProjects.value || []).find((item) => item?.id === createdProject.id) || createdProject
+    await persistDraft('workspace', buildWorkspaceRunDraft(nextProject, {
+      ...(formDrafts.value.workspace || {}),
+      projectId: createdProject.id
+    }))
+    return nextProject
+  }
+
+  throw new Error('创建项目失败')
+}
+
 async function handleReplaceProjectImage(project) {
   try {
+    const ensuredProject = await ensureWorkspaceProject(project)
     const result = await workspaceClient.pickInputAssets({
       menuKey: 'workspace',
       allowMultiple: false
     })
 
-    if (result.canceled || !result.files?.[0] || !project?.id) {
+    if (result.canceled || !result.files?.[0] || !ensuredProject?.id) {
       return
     }
 
     await workspaceClient.updateProject({
-      projectId: project.id,
+      projectId: ensuredProject.id,
       patch: {
         assets: {
           sourceImages: [result.files[0]]
@@ -1264,9 +1297,10 @@ async function handleReplaceProjectImage(project) {
       }
     })
     await persistDraft('workspace', {
+      projectId: ensuredProject.id,
       sourceImage: result.files[0]
     })
-    invalidateProjectPublishState(project.id, {
+    invalidateProjectPublishState(ensuredProject.id, {
       markDraftSummaryStale: true
     })
     await loadStudioSnapshot()

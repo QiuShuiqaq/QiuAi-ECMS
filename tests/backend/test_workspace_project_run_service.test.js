@@ -243,7 +243,7 @@ describe('workspaceProjectRunService', () => {
         ],
         groupedResults: [],
         usageSummary: {
-          totalAmountCny: 0.23,
+          totalAmountCny: 0.29,
           currency: 'CNY',
           billedAt: '2026-06-21T10:06:00.000Z',
           lines: [
@@ -260,8 +260,8 @@ describe('workspaceProjectRunService', () => {
               label: '套图',
               model: 'gpt-image-2',
               units: 1,
-              unitPriceCny: 0.12,
-              amountCny: 0.12
+              unitPriceCny: 0.18,
+              amountCny: 0.18
             },
             {
               kind: 'video',
@@ -280,7 +280,7 @@ describe('workspaceProjectRunService', () => {
     })
 
     expect(completed.usage).toMatchObject({
-      totalAmountCny: 0.23,
+      totalAmountCny: 0.29,
       currency: 'CNY',
       billedAt: '2026-06-21T10:06:00.000Z'
     })
@@ -288,7 +288,7 @@ describe('workspaceProjectRunService', () => {
     expect(completed.usage.lines[1]).toMatchObject({
       kind: 'image',
       model: 'gpt-image-2',
-      amountCny: 0.12
+      amountCny: 0.18
     })
   })
 

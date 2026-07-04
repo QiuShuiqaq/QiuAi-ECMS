@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -75,6 +75,8 @@ afterEach(async () => {
   await Promise.all(tempDirectories.splice(0).map((targetPath) => {
     return fs.rm(targetPath, { recursive: true, force: true })
   }))
+  delete process.env.QIUAI_DATA_ROOT
+  vi.resetModules()
 })
 
 describe('studioWorkspaceService', () => {
@@ -436,6 +438,81 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.activeProjectRunId).toBe('')
   })
 
+  it('rewrites legacy DATA paths in stored drafts and projects to the current local data root', async () => {
+    const tempDataRoot = await createTempOutputRoot()
+    process.env.QIUAI_DATA_ROOT = tempDataRoot
+    vi.resetModules()
+
+    const legacyRelativePath = path.join('input', 'workspace', 'project-legacy-1', 'source-images', 'legacy-source.png')
+    const currentSourceImagePath = path.resolve(tempDataRoot, legacyRelativePath)
+    await fs.mkdir(path.dirname(currentSourceImagePath), { recursive: true })
+    await fs.writeFile(currentSourceImagePath, 'legacy-image-content')
+
+    const legacyStoredPath = path.win32.join(
+      'F:\\Workspace_VS\\QiuAi-ECMS\\QiuAi',
+      'DATA',
+      'input',
+      'workspace',
+      'project-legacy-1',
+      'source-images',
+      'legacy-source.png'
+    )
+
+    const store = createMemoryStore()
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService, STUDIO_WORKSPACE_KEY } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    store.set(STUDIO_WORKSPACE_KEY, {
+      formDrafts: {
+        workspace: {
+          sourceImage: {
+            id: 'source-1',
+            name: 'legacy-source.png',
+            path: legacyStoredPath,
+            storedPath: legacyStoredPath
+          }
+        }
+      },
+      productProjects: [
+        {
+          id: 'project-legacy-1',
+          name: 'Legacy Project',
+          assets: {
+            sourceImages: [
+              {
+                id: 'source-1',
+                name: 'legacy-source.png',
+                path: legacyStoredPath,
+                storedPath: legacyStoredPath
+              }
+            ]
+          }
+        }
+      ],
+      activeProductProjectId: 'project-legacy-1'
+    })
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const snapshot = service.getSnapshot()
+
+    expect(snapshot.formDrafts.workspace.sourceImage).toMatchObject({
+      path: currentSourceImagePath,
+      storedPath: currentSourceImagePath
+    })
+    expect(snapshot.productProjects[0].assets.sourceImages[0]).toMatchObject({
+      path: currentSourceImagePath,
+      storedPath: currentSourceImagePath
+    })
+  })
+
   it('creates a workspace project and writes generated title and description back into the card', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
@@ -784,7 +861,7 @@ describe('studioWorkspaceService', () => {
 
     expect(observedPrompts.length).toBeGreaterThan(0)
     expect(observedPrompts.every((prompt) => String(prompt || '').trim().length > 0)).toBe(true)
-    expect(observedPrompts[0]).toBe('生成手工玫瑰商品图')
+    expect(observedPrompts[0]).toBe('语言：zh-CN\n生成手工玫瑰商品图')
   })
 
   it('keeps per-slot image template prompts when building workspace image tasks', async () => {
@@ -885,9 +962,9 @@ describe('studioWorkspaceService', () => {
     await service.waitForIdle()
 
     expect(observedPrompts).toHaveLength(3)
-    expect(observedPrompts[0]).toBe('主图重点突出灯体质感与发光氛围')
-    expect(observedPrompts[1]).toBe('白底图只保留商品主体不要任何道具')
-    expect(observedPrompts[2]).toBe('场景图突出露营首饰桌面使用氛围')
+    expect(observedPrompts[0]).toBe('语言：zh-CN\n主图重点突出灯体质感与发光氛围')
+    expect(observedPrompts[1]).toBe('语言：zh-CN\n白底图只保留商品主体不要任何道具')
+    expect(observedPrompts[2]).toBe('语言：zh-CN\n场景图突出露营首饰桌面使用氛围')
   })
 
   it('keeps workspace run in partial status when later steps fail after title succeeds', async () => {
@@ -1083,6 +1160,119 @@ describe('studioWorkspaceService', () => {
     expect(latestRun.stepStates.video.status).toBe('success')
   })
 
+  it('runs workspace image and video steps in parallel after text generation completes', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { text: 100, image: 100, video: 100 })
+
+    const executionOrder = []
+    const pendingResolvers = {}
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      generateTextResults: async ({ taskId }) => {
+        executionOrder.push(String(taskId).includes('-title') ? 'title' : 'description')
+        return [{ id: `${taskId}-1`, content: `${taskId}-result` }]
+      },
+      generateImageResults: async ({ taskId }) => {
+        executionOrder.push('image:start')
+        await new Promise((resolve) => {
+          pendingResolvers.image = resolve
+        })
+        executionOrder.push('image:end')
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: `${taskId}-group-1`,
+              outputs: []
+            }
+          ],
+          summary: { title: 'image' }
+        }
+      },
+      generateVideoResults: async ({ taskId }) => {
+        executionOrder.push('video:start')
+        await new Promise((resolve) => {
+          pendingResolvers.video = resolve
+        })
+        executionOrder.push('video:end')
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: `${taskId}-group-1`,
+              outputs: []
+            }
+          ],
+          summary: { title: 'video' }
+        }
+      },
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-parallel-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260704-0001',
+      getNow: () => '2026-07-04T10:00:00.000Z'
+    })
+
+    const project = await service.createProject({
+      productName: 'parallel-test-product',
+      platform: 'temu',
+      language: 'zh-CN'
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        projectId: project.id,
+        productName: 'parallel-test-product',
+        titleQuantity: 1,
+        descriptionQuantity: 1,
+        generateCount: 2,
+        enabledSteps: {
+          title: true,
+          description: true,
+          image: true,
+          video: true
+        },
+        sourceImage: {
+          name: 'workspace.png',
+          path: path.resolve(process.cwd(), 'tests', '1.png'),
+          storedPath: path.resolve(process.cwd(), 'tests', '1.png')
+        }
+      }
+    })
+
+    await service.createTask({ menuKey: 'workspace' })
+    await waitForCondition(() => Boolean(pendingResolvers.image) && Boolean(pendingResolvers.video))
+
+    expect(executionOrder.slice(0, 4)).toEqual(['title', 'description', 'image:start', 'video:start'])
+    expect(executionOrder).not.toContain('image:end')
+    expect(executionOrder).not.toContain('video:end')
+
+    pendingResolvers.image()
+    pendingResolvers.video()
+    await service.waitForIdle()
+
+    expect(executionOrder.indexOf('image:start')).toBeLessThan(executionOrder.indexOf('video:end'))
+    expect(executionOrder.indexOf('video:start')).toBeLessThan(executionOrder.indexOf('image:end'))
+  })
+
   it('injects selection snapshot context into workspace text and media generation prompts', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
@@ -1202,7 +1392,7 @@ describe('studioWorkspaceService', () => {
     expect(observedTextPrompts.some((prompt) => prompt.includes('选品标题：爆款露营灯'))).toBe(true)
     expect(observedTextPrompts.some((prompt) => prompt.includes('选品关键词：露营灯、户外、便携'))).toBe(true)
     expect(observedImagePrompts).toHaveLength(1)
-    expect(observedImagePrompts[0]).toBe('围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感')
+    expect(observedImagePrompts[0]).toBe('语言：zh-CN\n围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感')
     expect(observedVideoPrompts.some((prompt) => prompt.includes('选品价格：¥89'))).toBe(true)
   })
 

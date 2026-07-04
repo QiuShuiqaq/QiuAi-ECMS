@@ -14,15 +14,15 @@ const textPricingItems = [
 ]
 
 const imagePricingItems = [
-  { model: 'gpt-image-2', price: '0.12 元 / 次' },
-  { model: 'nano-banana-fast', price: '0.10 元 / 次' },
-  { model: 'nano-banana-2', price: '0.18 元 / 次' }
+  { model: 'gpt-image-2', price: '0.18 元 / 次' },
+  { model: 'nano-banana-fast', price: '0.15 元 / 次' },
+  { model: 'nano-banana-2', price: '0.27 元 / 次' }
 ]
 
 const videoPricingItems = [
-  { model: 'MiniMax-Hailuo-2.3-Fast', spec: '图生视频 / 768P / 6s', price: '2.70 元 / 条' },
-  { model: 'MiniMax-Hailuo-2.3-Fast', spec: '图生视频 / 768P / 10s', price: '4.50 元 / 条' },
-  { model: 'MiniMax-Hailuo-2.3-Fast', spec: '图生视频 / 1080P / 6s', price: '4.62 元 / 条' }
+  { spec: '图生视频 / 768P / 6s', price: '2.70 元 / 条' },
+  { spec: '图生视频 / 768P / 10s', price: '4.50 元 / 条' },
+  { spec: '图生视频 / 1080P / 6s', price: '4.62 元 / 条' }
 ]
 </script>
 
@@ -81,17 +81,11 @@ const videoPricingItems = [
           <strong>视频生成</strong>
         </div>
         <div class="model-pricing-modal__table">
-          <div class="model-pricing-modal__row model-pricing-modal__row--head model-pricing-modal__row--triple">
-            <span>模型</span>
+          <div class="model-pricing-modal__row model-pricing-modal__row--head">
             <span>规格</span>
             <span>价格</span>
           </div>
-          <div
-            v-for="item in videoPricingItems"
-            :key="`${item.model}-${item.spec}`"
-            class="model-pricing-modal__row model-pricing-modal__row--triple"
-          >
-            <span>{{ item.model }}</span>
+          <div v-for="item in videoPricingItems" :key="item.spec" class="model-pricing-modal__row">
             <span>{{ item.spec }}</span>
             <strong>{{ item.price }}</strong>
           </div>
@@ -209,10 +203,6 @@ const videoPricingItems = [
   background: rgba(24, 32, 51, 0.9);
 }
 
-.model-pricing-modal__row--triple {
-  grid-template-columns: minmax(220px, 1.2fr) minmax(0, 1fr) auto;
-}
-
 @media (max-width: 720px) {
   .model-pricing-modal {
     padding: 12px;
@@ -223,8 +213,7 @@ const videoPricingItems = [
   }
 
   .model-pricing-modal__simple-grid,
-  .model-pricing-modal__row,
-  .model-pricing-modal__row--triple {
+  .model-pricing-modal__row {
     grid-template-columns: 1fr;
   }
 }

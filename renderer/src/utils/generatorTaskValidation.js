@@ -1,6 +1,17 @@
+function hasRunnableSourceImage(sourceImage = null) {
+  if (!sourceImage || typeof sourceImage !== 'object') {
+    return false
+  }
+
+  return Boolean(
+    String(sourceImage.storedPath || '').trim() ||
+    String(sourceImage.path || '').trim()
+  )
+}
+
 function getSeriesSourceItems(draft = {}) {
   return Array.isArray(draft?.seriesSourceItems)
-    ? draft.seriesSourceItems.filter((item) => item?.sourceImage)
+    ? draft.seriesSourceItems.filter((item) => hasRunnableSourceImage(item?.sourceImage))
     : []
 }
 
@@ -12,14 +23,14 @@ export function validateGeneratorTaskDraft({
 }) {
   const seriesSourceItems = getSeriesSourceItems(draft)
 
-  if (menuKey === 'series-generate' && !seriesSourceItems.length && !draft?.sourceImage) {
+  if (menuKey === 'series-generate' && !seriesSourceItems.length && !hasRunnableSourceImage(draft?.sourceImage)) {
     return {
       title: '请先上传样图',
       message: '套图生成需要先上传至少一张样图'
     }
   }
 
-  if (menuKey === 'video-generate' && !draft?.sourceImage) {
+  if (menuKey === 'video-generate' && !hasRunnableSourceImage(draft?.sourceImage)) {
     return {
       title: '请先上传样图',
       message: '视频生成需要先上传一张样图'

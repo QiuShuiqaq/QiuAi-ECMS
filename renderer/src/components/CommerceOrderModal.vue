@@ -453,7 +453,7 @@ function submitOrder() {
 
 .commerce-order-modal__card--software,
 .commerce-order-modal__card--compute {
-  width: min(1080px, 100%);
+  width: min(1020px, 100%);
 }
 
 .commerce-order-modal__card--recharge {
@@ -619,6 +619,7 @@ function submitOrder() {
   max-height: none;
   overflow: visible;
   padding-right: 0;
+  gap: 10px;
 }
 
 .commerce-order-modal__option {
@@ -649,9 +650,9 @@ function submitOrder() {
 .commerce-order-modal__option--compute {
   grid-template-columns: 1fr;
   align-content: start;
-  gap: 14px;
-  min-height: 178px;
-  padding: 16px;
+  gap: 10px;
+  min-height: 152px;
+  padding: 13px 14px;
 }
 
 .commerce-order-modal__option:hover,
@@ -679,51 +680,52 @@ function submitOrder() {
 }
 
 .commerce-order-modal__compute-head {
-  gap: 8px;
+  gap: 6px;
 }
 
 .commerce-order-modal__compute-head strong {
   max-width: 100%;
   overflow: hidden;
   color: rgba(241, 246, 255, 0.96);
-  font-size: 15px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .commerce-order-modal__compute-head span {
   color: rgba(118, 173, 255, 0.96);
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1;
 }
 
 .commerce-order-modal__compute-balances {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .commerce-order-modal__compute-balances span {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 10px;
-  border-radius: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.035);
 }
 
 .commerce-order-modal__compute-balances em {
   color: rgba(205, 214, 238, 0.68);
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
 }
 
 .commerce-order-modal__compute-balances strong {
   min-width: 0;
   color: rgba(241, 246, 255, 0.92);
-  font-size: 15px;
+  font-size: 13px;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -814,7 +816,7 @@ function submitOrder() {
   }
 
   .commerce-order-modal__list--compute {
-    grid-template-columns: repeat(4, minmax(180px, 1fr));
+    grid-template-columns: repeat(4, minmax(164px, 1fr));
     overflow-x: auto;
     overflow-y: visible;
     padding-bottom: 4px;

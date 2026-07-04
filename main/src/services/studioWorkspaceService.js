@@ -25,6 +25,7 @@ const {
 const { persistSourceFiles } = require('./inputAssetStorageService')
 const { ensureDraftWithinCapability, getActiveCapabilityConfig } = require('./packageCapabilityService')
 const { createLocalMediaPreviewUrl } = require('./localMediaPreviewService')
+const { resolveCompatibleLocalPath } = require('./pathMigrationService')
 
 const STUDIO_WORKSPACE_KEY = 'studioWorkspace'
 
@@ -180,6 +181,11 @@ async function safeRuntimeLog (runtimeLogger, payload) {
   }
 }
 
+function normalizeLocalRuntimePath(value = '') {
+  const normalizedValue = typeof value === 'string' ? value.trim() : ''
+  return normalizedValue ? resolveCompatibleLocalPath(normalizedValue) : ''
+}
+
 function normalizeImageAsset(item = {}) {
   if (!item || !item.name) {
     return null
@@ -188,10 +194,10 @@ function normalizeImageAsset(item = {}) {
   return {
     id: item.id || '',
     name: item.name,
-    path: item.path || '',
+    path: normalizeLocalRuntimePath(item.path || item.storedPath || ''),
     preview: item.preview || '',
     sizeLabel: item.sizeLabel || '',
-    storedPath: item.storedPath || ''
+    storedPath: normalizeLocalRuntimePath(item.storedPath || item.path || '')
   }
 }
 
@@ -796,17 +802,17 @@ function normalizeProjectRun(projectRun = {}) {
       descriptionCandidates: normalizeStringList(outputs.descriptionCandidates),
       selectedTitle: String(outputs.selectedTitle || '').trim(),
       selectedDescription: String(outputs.selectedDescription || '').trim(),
-      images: Array.isArray(outputs.images) ? outputs.images.slice() : [],
+      images: Array.isArray(outputs.images) ? outputs.images.map((item) => normalizeGeneratedMediaOutput(item)) : [],
       video: outputs.video && typeof outputs.video === 'object'
-        ? { ...outputs.video }
+        ? normalizeGeneratedMediaOutput(outputs.video)
         : null
     },
     storage: {
-      runDirectory: String(storage.runDirectory || '').trim(),
-      titleFile: String(storage.titleFile || '').trim(),
-      descriptionFile: String(storage.descriptionFile || '').trim(),
-      imageDirectory: String(storage.imageDirectory || '').trim(),
-      videoDirectory: String(storage.videoDirectory || '').trim()
+      runDirectory: normalizeLocalRuntimePath(storage.runDirectory || ''),
+      titleFile: normalizeLocalRuntimePath(storage.titleFile || ''),
+      descriptionFile: normalizeLocalRuntimePath(storage.descriptionFile || ''),
+      imageDirectory: normalizeLocalRuntimePath(storage.imageDirectory || ''),
+      videoDirectory: normalizeLocalRuntimePath(storage.videoDirectory || '')
     },
     usage: {
       totalAmountCny: Math.max(0, Number(usage.totalAmountCny) || 0),
@@ -861,10 +867,14 @@ function normalizeProductProject(project = {}) {
     },
     generationConfig: normalizeProjectGenerationConfig(generationConfig),
     assets: {
-      sourceImages: Array.isArray(assets.sourceImages) ? assets.sourceImages.slice() : [],
-      generatedImages: Array.isArray(assets.generatedImages) ? assets.generatedImages.slice() : [],
+      sourceImages: Array.isArray(assets.sourceImages)
+        ? assets.sourceImages.map((item) => normalizeImageAsset(item)).filter(Boolean)
+        : [],
+      generatedImages: Array.isArray(assets.generatedImages)
+        ? assets.generatedImages.map((item) => normalizeGeneratedMediaOutput(item))
+        : [],
       generatedVideo: assets.generatedVideo && typeof assets.generatedVideo === 'object'
-        ? { ...assets.generatedVideo }
+        ? normalizeGeneratedMediaOutput(assets.generatedVideo)
         : null
     },
     content: {
@@ -1110,6 +1120,7 @@ function buildWorkspaceProjectDraft({
       enabledSteps: normalizeProjectEnabledSteps(draft.enabledSteps || currentGenerationConfig.enabledSteps),
       titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || currentGenerationConfig.titleMaxChars || 60),
       descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || currentGenerationConfig.descriptionMaxChars || 300),
+      imageLanguage: String(draft.imageLanguage || currentGenerationConfig.imageLanguage || draft.language || currentProject?.baseInfo?.language || 'zh-CN').trim() || 'zh-CN',
       imageModel: String(draft.imageModel || currentGenerationConfig.imageModel || resolveDefaultModelForMenu()).trim() || resolveDefaultModelForMenu(),
       size: String(draft.size || currentGenerationConfig.size || '1:1').trim() || '1:1',
       generateCount: workspaceGenerateCount,
@@ -1178,10 +1189,64 @@ function applyWorkspaceTextResultsToProject(project = {}, resultPayload = {}, up
 function normalizeGeneratedMediaOutput(item = {}) {
   return {
     ...item,
-    path: item.savedPath || item.path || '',
-    savedPath: item.savedPath || item.path || '',
+    path: normalizeLocalRuntimePath(item.savedPath || item.path || ''),
+    savedPath: normalizeLocalRuntimePath(item.savedPath || item.path || ''),
     sourceUrl: item.sourceUrl || item.downloadUrl || '',
     publishReadyUrl: item.publishReadyUrl || item.downloadUrl || ''
+  }
+}
+
+function normalizeResultPayloadForStorage(resultPayload = {}) {
+  const workspaceResult = resultPayload.workspaceResult && typeof resultPayload.workspaceResult === 'object'
+    ? resultPayload.workspaceResult
+    : {}
+
+  return {
+    ...resultPayload,
+    comparisonResults: Array.isArray(resultPayload.comparisonResults)
+      ? resultPayload.comparisonResults.map((item) => normalizeGeneratedMediaOutput(item))
+      : [],
+    groupedResults: Array.isArray(resultPayload.groupedResults)
+      ? resultPayload.groupedResults.map((group) => ({
+          ...group,
+          outputs: Array.isArray(group.outputs)
+            ? group.outputs.map((item) => normalizeGeneratedMediaOutput(item))
+            : []
+        }))
+      : [],
+    workspaceResult: {
+      ...workspaceResult,
+      images: Array.isArray(workspaceResult.images)
+        ? workspaceResult.images.map((item) => normalizeGeneratedMediaOutput(item))
+        : [],
+      video: workspaceResult.video && typeof workspaceResult.video === 'object'
+        ? normalizeGeneratedMediaOutput(workspaceResult.video)
+        : null
+    }
+  }
+}
+
+function normalizeExportItem(item = {}) {
+  const source = item && typeof item === 'object' ? item : {}
+  const normalizedDirectoryPath = normalizeLocalRuntimePath(source.directoryPath || source.outputDirectory || '')
+  const normalizedSavedPath = normalizeLocalRuntimePath(source.savedPath || source.path || '')
+
+  return {
+    ...source,
+    directoryPath: normalizedDirectoryPath,
+    outputDirectory: normalizedDirectoryPath || normalizeLocalRuntimePath(source.outputDirectory || ''),
+    savedPath: normalizedSavedPath,
+    path: normalizedSavedPath || normalizeLocalRuntimePath(source.path || '')
+  }
+}
+
+function normalizeTaskRecord(task = {}) {
+  const source = task && typeof task === 'object' ? task : {}
+
+  return {
+    ...source,
+    inputDirectory: normalizeLocalRuntimePath(source.inputDirectory || ''),
+    outputDirectory: normalizeLocalRuntimePath(source.outputDirectory || '')
   }
 }
 
@@ -1671,17 +1736,17 @@ function mergeStudioState(savedState = {}) {
     resultsByMenu: Object.fromEntries(runtimeStateMenuItems.map((item) => {
       return [
         item.key,
-        {
+        normalizeResultPayloadForStorage({
           ...(defaultState.resultsByMenu[item.key] || {}),
           ...((savedState.resultsByMenu || {})[item.key] || {})
-        }
+        })
       ]
     })),
     exportItemsByMenu: Object.fromEntries(runtimeStateMenuItems.map((item) => {
       return [
         item.key,
         Array.isArray((savedState.exportItemsByMenu || {})[item.key])
-          ? (savedState.exportItemsByMenu || {})[item.key]
+          ? (savedState.exportItemsByMenu || {})[item.key].map((entry) => normalizeExportItem(entry))
           : (defaultState.exportItemsByMenu[item.key] || [])
       ]
     })),
@@ -1695,7 +1760,7 @@ function mergeStudioState(savedState = {}) {
       normalizedProjectRuns,
       savedState.activeProjectRunId
     ),
-    tasks: Array.isArray(savedState.tasks) ? savedState.tasks : defaultState.tasks,
+    tasks: Array.isArray(savedState.tasks) ? savedState.tasks.map((task) => normalizeTaskRecord(task)) : defaultState.tasks,
     requestMetrics: normalizeRequestMetrics(savedState.requestMetrics)
   }
 }
@@ -1870,9 +1935,11 @@ function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [
   ).trim()
   const workspaceGenerateCount = Math.max(1, Number(draft.generateCount) || 4)
   const workspacePromptAssignments = normalizePromptAssignments(draft.promptAssignments, workspaceGenerateCount)
+  const imageLanguage = String(draft.imageLanguage || draft.language || 'zh-CN').trim() || 'zh-CN'
 
   return {
     ...draft,
+    imageLanguage,
     sourceImage: draft.sourceImage || null,
     model: draft.imageModel || 'gpt-image-2',
     generateCount: workspaceGenerateCount,
@@ -1899,7 +1966,9 @@ function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [
         differenceLevel: ['off', 'low', 'medium', 'high'].includes(assignment.differenceLevel)
           ? assignment.differenceLevel
           : 'off',
-        prompt: String(assignment.prompt || '').trim() || workspaceImagePromptBase
+        prompt: [`语言：${imageLanguage}`, String(assignment.prompt || '').trim() || workspaceImagePromptBase]
+          .filter(Boolean)
+          .join('\n')
       }
     })
   }
@@ -2210,8 +2279,9 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     const nowIso = () => new Date().toISOString()
     const workspaceStepStates = createWorkspaceStepStates(enabledSteps, nowIso)
     const workspaceErrors = []
+    let lastProgress = 0
     const emitProgress = async ({ progress, status, error = '' } = {}) => emitWorkspaceProgress(onProgress, workspaceStepStates, {
-      progress: 12,
+      progress: (lastProgress = Math.max(lastProgress, Math.max(0, Number(progress) || 0))),
       status,
       error
     })
@@ -2276,24 +2346,6 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
         description: '未提供样图，跳过套图生成'
       }
     }
-    if (enabledSteps.image) {
-      imageResults = await runWorkspaceImageStep({
-        taskId: `${taskId}-series`,
-        draft: imageDraft,
-        outputDirectory,
-        workspaceStepStates,
-        workspaceErrors,
-        nowIso,
-        emitProgress,
-        generateImageResults
-      })
-    }
-
-    await emitProgress({
-      progress: 91,
-      status: 'running'
-    })
-
     const videoDraft = buildWorkspaceVideoTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults)
     let videoResults = {
       textResults: [],
@@ -2304,17 +2356,39 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
         description: '未提供样图，跳过视频生成'
       }
     }
-    if (enabledSteps.video) {
-      videoResults = await runWorkspaceVideoStep({
-        taskId: `${taskId}-video`,
-        draft: videoDraft,
-        outputDirectory,
-        workspaceStepStates,
-        workspaceErrors,
-        nowIso,
-        emitProgress,
-        generateVideoResults
-      })
+    const [imageOutcome, videoOutcome] = await Promise.allSettled([
+      enabledSteps.image
+        ? runWorkspaceImageStep({
+            taskId: `${taskId}-series`,
+            draft: imageDraft,
+            outputDirectory,
+            workspaceStepStates,
+            workspaceErrors,
+            nowIso,
+            emitProgress,
+            generateImageResults
+          })
+        : Promise.resolve(imageResults),
+      enabledSteps.video
+        ? runWorkspaceVideoStep({
+            taskId: `${taskId}-video`,
+            draft: videoDraft,
+            outputDirectory,
+            workspaceStepStates,
+            workspaceErrors,
+            nowIso,
+            emitProgress,
+            generateVideoResults
+          })
+        : Promise.resolve(videoResults)
+    ])
+
+    if (imageOutcome.status === 'fulfilled') {
+      imageResults = imageOutcome.value
+    }
+
+    if (videoOutcome.status === 'fulfilled') {
+      videoResults = videoOutcome.value
     }
 
     await emitProgress({
@@ -3554,7 +3628,7 @@ function createStudioWorkspaceService({
 
   function getStoredTasks(state = getStoredState()) {
     if (taskManagerService && typeof taskManagerService.listTasks === 'function') {
-      return sortTasks(taskManagerService.listTasks())
+      return sortTasks((taskManagerService.listTasks() || []).map((task) => normalizeTaskRecord(task)))
     }
 
     return sortTasks(state.tasks)

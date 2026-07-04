@@ -223,6 +223,10 @@ function resolveDraftLanguage() {
   return String(resolveDraftValue('language', activeProjectEntry.value?.project?.baseInfo?.language || 'zh-CN')).trim() || 'zh-CN'
 }
 
+function resolveDraftImageLanguage() {
+  return String(resolveDraftValue('imageLanguage', resolveDraftLanguage())).trim() || resolveDraftLanguage()
+}
+
 function resolveDraftProductName() {
   return String(resolveDraftValue('productName', activeProjectEntry.value?.project?.baseInfo?.productName || '')).trim()
 }
@@ -1237,6 +1241,17 @@ function resolveStageMenuKey(stage = '') {
             <strong>套图</strong>
           </div>
           <div class="generator-form__group">
+            <div class="generator-form__row">
+              <span class="generator-form__label">语言</span>
+              <select
+                :value="resolveDraftImageLanguage()"
+                @change="updateProjectGenerationConfig({ imageLanguage: $event.target.value })"
+              >
+                <option v-for="option in languageOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
             <div class="generator-form__row">
               <span class="generator-form__label">数量</span>
               <input

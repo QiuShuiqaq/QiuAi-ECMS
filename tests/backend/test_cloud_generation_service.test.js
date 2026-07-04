@@ -4,6 +4,8 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createCloudGenerationService,
+  resolveImageRequestedConcurrencyTarget,
+  resolveRequestedConcurrency,
   resolvePollingIntervalMs
 } from '../../main/src/services/cloudGenerationService'
 
@@ -65,6 +67,54 @@ describe('cloudGenerationService', () => {
         { assetType: 'VIDEO' }
       ]
     })).toBe(15000)
+  })
+
+  it('maps planned image counts from 1 to 12 into the expected requested concurrency targets', () => {
+    expect([
+      resolveImageRequestedConcurrencyTarget(1),
+      resolveImageRequestedConcurrencyTarget(2),
+      resolveImageRequestedConcurrencyTarget(3),
+      resolveImageRequestedConcurrencyTarget(4),
+      resolveImageRequestedConcurrencyTarget(5),
+      resolveImageRequestedConcurrencyTarget(6),
+      resolveImageRequestedConcurrencyTarget(7),
+      resolveImageRequestedConcurrencyTarget(8),
+      resolveImageRequestedConcurrencyTarget(9),
+      resolveImageRequestedConcurrencyTarget(10),
+      resolveImageRequestedConcurrencyTarget(11),
+      resolveImageRequestedConcurrencyTarget(12)
+    ]).toEqual([1, 2, 2, 2, 3, 3, 4, 4, 4, 4, 4, 4])
+  })
+
+  it('clamps image requested concurrency to the runtime per-project image limit returned by the server', () => {
+    expect(resolveRequestedConcurrency({
+      assetType: 'IMAGE',
+      draft: {
+        batchCount: 1,
+        generateCount: 12,
+        promptAssignments: Array.from({ length: 12 }, (_, index) => ({
+          index: index + 1,
+          prompt: `image-${index + 1}`
+        }))
+      },
+      serviceCapacityProfile: {
+        currentImageConcurrencyPerProject: 3,
+        effectiveImageConcurrency: 16
+      }
+    })).toBe(3)
+  })
+
+  it('falls back to the legacy image concurrency field when runtime profile fields are absent', () => {
+    expect(resolveRequestedConcurrency({
+      assetType: 'IMAGE',
+      draft: {
+        batchCount: 1,
+        generateCount: 8
+      },
+      serviceCapacityProfile: {
+        effectiveImageConcurrency: 2
+      }
+    })).toBe(2)
   })
 
   it('reports non-stalled progress for running image jobs before any artifact is completed', async () => {
@@ -222,9 +272,10 @@ describe('cloudGenerationService', () => {
     expect(progressEvents.at(-1)).toMatchObject({ progress: 100, status: 'succeeded' })
   })
 
-  it('caps remote requested concurrency to the platform maximum contract', async () => {
+  it('requests image concurrency from total planned outputs instead of raw batch count inflation', async () => {
     const remoteClient = createRemoteClient()
     remoteClient.getServiceCapacityProfile.mockResolvedValue({
+      currentImageConcurrencyPerProject: 4,
       effectiveImageConcurrency: 200
     })
     remoteClient.createGenerationJob.mockResolvedValue({
@@ -298,7 +349,7 @@ describe('cloudGenerationService', () => {
 
     expect(remoteClient.createGenerationJob).toHaveBeenCalledTimes(1)
     expect(remoteClient.createGenerationJob.mock.calls[0][0]).toMatchObject({
-      requestedConcurrency: 64
+      requestedConcurrency: 4
     })
   })
 
@@ -510,6 +561,129 @@ describe('cloudGenerationService', () => {
     })).rejects.toMatchObject({
       code: 'REMOTE_GENERATION_NOT_READY'
     })
+  })
+
+  it('falls back to the primary source image when series source items lose their local paths', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-fallback-1',
+      status: 'SUCCEEDED'
+    })
+    remoteClient.getGenerationJob.mockResolvedValue({
+      id: 'job-image-fallback-1',
+      status: 'SUCCEEDED',
+      groups: [
+        {
+          groupIndex: 1,
+          status: 'SUCCEEDED',
+          completedItemCount: 1,
+          failedItemCount: 0
+        }
+      ],
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'SUCCEEDED',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Result 1'
+        }
+      ],
+      artifacts: [
+        {
+          id: 'artifact-fallback-1',
+          groupIndex: 1,
+          slotIndex: 1,
+          assetType: 'IMAGE',
+          metadata: {
+            mimeType: 'image/png',
+            title: 'Result 1',
+            providerModel: 'gpt-image-2'
+          }
+        }
+      ]
+    })
+    remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('image-binary'))
+
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+      getMimeTypeFromPath: () => 'image/png'
+    })
+
+    await service.generateImageResults({
+      menuKey: 'series-generate',
+      draft: {
+        batchCount: 1,
+        generateCount: 1,
+        model: 'gpt-image-2',
+        size: '1:1',
+        prompt: 'fallback prompt',
+        sourceImage: {
+          storedPath: 'F:/tmp/source.png'
+        },
+        seriesSourceItems: [
+          {
+            id: 'broken-series-source-1',
+            sourceImage: {
+              name: 'broken.png',
+              storedPath: '',
+              path: ''
+            },
+            prompt: 'broken prompt',
+            size: '1:1',
+            imageType: 'main'
+          }
+        ],
+        promptAssignments: [
+          {
+            imageType: 'main',
+            prompt: 'fallback prompt'
+          }
+        ]
+      },
+      taskId: 'task-remote-image-fallback-1',
+      outputDirectory: 'F:/tmp/qiuai-cloud-generation'
+    })
+
+    expect(remoteClient.createGenerationJob).toHaveBeenCalledTimes(1)
+    expect(remoteClient.createGenerationJob.mock.calls[0][0].items).toHaveLength(1)
+  })
+
+  it('fails before remote submission when no runnable image source exists', async () => {
+    const remoteClient = createRemoteClient()
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn(),
+      getMimeTypeFromPath: () => 'image/png'
+    })
+
+    await expect(service.generateImageResults({
+      menuKey: 'series-generate',
+      draft: {
+        batchCount: 1,
+        generateCount: 1,
+        seriesSourceItems: [
+          {
+            id: 'broken-series-source-1',
+            sourceImage: {
+              name: 'broken.png',
+              storedPath: '',
+              path: ''
+            },
+            prompt: 'broken prompt',
+            size: '1:1'
+          }
+        ]
+      },
+      taskId: 'task-remote-image-missing-source-1',
+      outputDirectory: 'F:/tmp/qiuai-cloud-generation'
+    })).rejects.toThrow('Source image path is required.')
+
+    expect(remoteClient.createGenerationJob).not.toHaveBeenCalled()
   })
 
   it('rejects unsupported non-live image task entry points instead of preserving a hidden local fallback', async () => {
