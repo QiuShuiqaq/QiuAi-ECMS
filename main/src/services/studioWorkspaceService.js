@@ -2004,8 +2004,8 @@ async function runWorkspaceTextStep({
   generateTextResults
 } = {}) {
   const progressConfig = stepKey === 'title'
-    ? { baseProgress: 12, maxProgress: 58, idleProgress: 58 }
-    : { baseProgress: 58, maxProgress: 72, idleProgress: 72 }
+    ? { baseProgress: 12, maxProgress: 42, idleProgress: 42 }
+    : { baseProgress: 44, maxProgress: 62, idleProgress: 62 }
 
   markWorkspaceStepRunning(workspaceStepStates, stepKey, nowIso)
   await emitProgress({
@@ -2086,9 +2086,9 @@ async function runWorkspaceImageStep({
       taskId,
       outputDirectory,
       onProgress: async ({ progress, status } = {}) => {
-        const mappedProgress = 72 + Math.round((Math.max(0, Number(progress) || 0) * 0.18))
+        const mappedProgress = 18 + Math.round((Math.max(0, Number(progress) || 0) * 0.6))
         await emitProgress({
-          progress: Math.min(90, mappedProgress),
+          progress: Math.min(78, mappedProgress),
           status
         })
       }
@@ -2140,9 +2140,9 @@ async function runWorkspaceVideoStep({
       taskId,
       outputDirectory,
       onProgress: async ({ progress, status } = {}) => {
-        const mappedProgress = 91 + Math.round((Math.max(0, Number(progress) || 0) * 0.09))
+        const mappedProgress = 80 + Math.round((Math.max(0, Number(progress) || 0) * 0.18))
         await emitProgress({
-          progress: Math.min(100, mappedProgress),
+          progress: Math.min(98, mappedProgress),
           status
         })
       }
@@ -2286,115 +2286,89 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       error
     })
     await emitProgress({
-      progress: 12,
+      progress: 8,
       status: 'running'
     })
 
     const context = buildWorkspaceExecutionContext(draft)
-
-    let titleResults = {
+    const emptyTextResults = {
       textResults: [],
       usageSummary: null
     }
-    if (enabledSteps.title) {
-      titleResults = await runWorkspaceTextStep({
-        stepKey: 'title',
-        taskId: `${taskId}-title`,
-        draft: buildWorkspaceTitleTaskDraft(draft, context),
-        workspaceStepStates,
-        workspaceErrors,
-        nowIso,
-        emitProgress,
-        generateTextResults
-      })
-    }
-
-    await emitProgress({
-      progress: 58,
-      status: 'running'
-    })
-
-    let descriptionResults = {
-      textResults: [],
-      usageSummary: null
-    }
-    if (enabledSteps.description) {
-      descriptionResults = await runWorkspaceTextStep({
-        stepKey: 'description',
-        taskId: `${taskId}-description`,
-        draft: buildWorkspaceDescriptionTaskDraft(draft, context, titleResults.textResults),
-        workspaceStepStates,
-        workspaceErrors,
-        nowIso,
-        emitProgress,
-        generateTextResults
-      })
-    }
-
-    await emitProgress({
-      progress: 72,
-      status: 'running'
-    })
-
-    const imageDraft = buildWorkspaceImageTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults)
-    let imageResults = {
+    const emptyImageResults = {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
       summary: {
-        title: '套图结果',
-        description: '未提供样图，跳过套图生成'
+        title: '\u5957\u56fe\u7ed3\u679c',
+        description: '\u672a\u63d0\u4f9b\u6837\u56fe\uff0c\u8df3\u8fc7\u5957\u56fe\u751f\u6210'
       }
     }
-    const videoDraft = buildWorkspaceVideoTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults)
-    let videoResults = {
+    const emptyVideoResults = {
       textResults: [],
       comparisonResults: [],
       groupedResults: [],
       summary: {
-        title: '视频结果',
-        description: '未提供样图，跳过视频生成'
+        title: '\u89c6\u9891\u7ed3\u679c',
+        description: '\u672a\u63d0\u4f9b\u6837\u56fe\uff0c\u8df3\u8fc7\u89c6\u9891\u751f\u6210'
       }
     }
-    const [imageOutcome, videoOutcome] = await Promise.allSettled([
-      enabledSteps.image
-        ? runWorkspaceImageStep({
-            taskId: `${taskId}-series`,
-            draft: imageDraft,
-            outputDirectory,
-            workspaceStepStates,
-            workspaceErrors,
-            nowIso,
-            emitProgress,
-            generateImageResults
-          })
-        : Promise.resolve(imageResults),
-      enabledSteps.video
-        ? runWorkspaceVideoStep({
-            taskId: `${taskId}-video`,
-            draft: videoDraft,
-            outputDirectory,
-            workspaceStepStates,
-            workspaceErrors,
-            nowIso,
-            emitProgress,
-            generateVideoResults
-          })
-        : Promise.resolve(videoResults)
-    ])
+    const titlePromise = enabledSteps.title
+      ? runWorkspaceTextStep({
+          stepKey: 'title',
+          taskId: `${taskId}-title`,
+          draft: buildWorkspaceTitleTaskDraft(draft, context),
+          workspaceStepStates,
+          workspaceErrors,
+          nowIso,
+          emitProgress,
+          generateTextResults
+        })
+      : Promise.resolve(emptyTextResults)
+    const imagePromise = enabledSteps.image
+      ? runWorkspaceImageStep({
+          taskId: `${taskId}-series`,
+          draft: buildWorkspaceImageTaskDraft(draft, context),
+          outputDirectory,
+          workspaceStepStates,
+          workspaceErrors,
+          nowIso,
+          emitProgress,
+          generateImageResults
+        })
+      : Promise.resolve(emptyImageResults)
 
-    if (imageOutcome.status === 'fulfilled') {
-      imageResults = imageOutcome.value
-    }
-
-    if (videoOutcome.status === 'fulfilled') {
-      videoResults = videoOutcome.value
-    }
+    const titleResults = await titlePromise
+    const descriptionResults = enabledSteps.description
+      ? await runWorkspaceTextStep({
+          stepKey: 'description',
+          taskId: `${taskId}-description`,
+          draft: buildWorkspaceDescriptionTaskDraft(draft, context, titleResults.textResults),
+          workspaceStepStates,
+          workspaceErrors,
+          nowIso,
+          emitProgress,
+          generateTextResults
+        })
+      : emptyTextResults
+    const imageResults = await imagePromise
+    const videoResults = enabledSteps.video
+      ? await runWorkspaceVideoStep({
+          taskId: `${taskId}-video`,
+          draft: buildWorkspaceVideoTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults),
+          outputDirectory,
+          workspaceStepStates,
+          workspaceErrors,
+          nowIso,
+          emitProgress,
+          generateVideoResults
+        })
+      : emptyVideoResults
 
     await emitProgress({
       progress: 100,
       status: workspaceErrors.length ? 'failed' : 'succeeded',
-      error: workspaceErrors.join('；')
+      error: workspaceErrors.join(' | ')
     })
 
     return buildWorkspaceResultPayload({

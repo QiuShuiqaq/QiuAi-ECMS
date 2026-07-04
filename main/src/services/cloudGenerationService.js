@@ -30,10 +30,7 @@ function isTerminalJobStatus(status = '') {
 function resolveImageRequestedConcurrencyTarget(plannedImageCount = 1) {
   const normalizedCount = Math.max(1, Number(plannedImageCount) || 1)
 
-  if (normalizedCount <= 1) return 1
-  if (normalizedCount <= 4) return 2
-  if (normalizedCount <= 6) return 3
-  return 4
+  return Math.max(1, Math.min(6, Math.floor((normalizedCount + 1) / 2)))
 }
 
 function resolveImagePlannedItemCount(draft = {}, fallbackCount = 1) {
