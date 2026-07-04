@@ -2532,6 +2532,8 @@ async function handleRunProject(project) {
 async function handleCancelTask(payload = {}) {
   const projectId = String(payload?.projectId || payload?.id || '').trim()
   const taskId = String(payload?.taskId || '').trim()
+  const taskStatus = String(payload?.status || '').trim()
+  const isQueuedTask = ['排队中', '等待中', 'queued', 'pending', 'waiting'].includes(taskStatus)
 
   if (!projectId && !taskId) {
     return
@@ -2545,14 +2547,14 @@ async function handleCancelTask(payload = {}) {
     await loadStudioSnapshot()
     showActionFeedback({
       type: 'success',
-      title: '已停止',
-      message: '任务已结束'
+      title: isQueuedTask ? '已取消' : '已停止',
+      message: isQueuedTask ? '任务已移出队列' : '任务已结束'
     })
   } catch (error) {
     showActionFeedback({
       type: 'error',
-      title: '停止失败',
-      message: buildErrorMessage(error, '任务停止失败')
+      title: isQueuedTask ? '取消失败' : '停止失败',
+      message: buildErrorMessage(error, isQueuedTask ? '任务取消失败' : '任务停止失败')
     })
   }
 }
@@ -3547,6 +3549,7 @@ onUnmounted(() => {
           @update-draft="handleDraftUpdate"
           @submit-task="handleSubmitTask(activeGeneratorMenuKey)"
           @pick-image="handlePickGeneratorImage"
+          @cancel-task="handleCancelTask"
           @copy-text="handleCopyText"
           @open-export-item="handleOpenGeneratorExportItem"
           @delete-export-item="handleDeleteGeneratorExportItem"

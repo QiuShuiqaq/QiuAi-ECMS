@@ -932,7 +932,8 @@ function handleCancelTask(item) {
   if (!item?.project?.id && !item?.id) return
   emit('cancel-task', {
     projectId: String(item?.project?.id || item?.id || '').trim(),
-    taskId: String(item?.latestRun?.taskId || '').trim()
+    taskId: String(item?.latestRun?.taskId || '').trim(),
+    status: String(item?.status || '').trim()
   })
 }
 
@@ -1727,7 +1728,7 @@ function resolveStageMenuKey(stage = '') {
                 :class="{ 'work-center-studio__queue-card--active': item.isActive }"
               >
                 <div class="work-center-studio__queue-card-head">
-                <div class="work-center-studio__queue-card-copy">
+                  <div class="work-center-studio__queue-card-copy">
                     <strong class="work-center-studio__title-ellipsis work-center-studio__title-ellipsis--double">{{ item.name }}</strong>
                     <span>{{ item.currentStage }}</span>
                   </div>
@@ -1760,7 +1761,7 @@ function resolveStageMenuKey(stage = '') {
                     type="button"
                     @click="handleCancelTask(item)"
                   >
-                    停止任务
+                    {{ item.status === '排队中' ? '取消排队' : '停止任务' }}
                   </button>
                 </div>
               </article>

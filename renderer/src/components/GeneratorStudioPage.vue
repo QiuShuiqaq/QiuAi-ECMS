@@ -28,6 +28,7 @@ const emit = defineEmits([
   'update-draft',
   'submit-task',
   'pick-image',
+  'cancel-task',
   'copy-text',
   'open-export-item',
   'delete-export-item',
@@ -157,9 +158,36 @@ const seriesSourceItems = computed(() => {
   }]
 })
 
+const relevantMenuKeys = computed(() => {
+  return props.mode === 'image'
+    ? ['series-generate']
+    : ['video-generate']
+})
+
+function normalizeTaskStatus(status = '') {
+  return String(status || '').trim()
+}
+
+function isQueuedTaskStatus(status = '') {
+  const normalized = normalizeTaskStatus(status)
+  return ['排队中', '等待中', '待执行', 'queued', 'pending', 'waiting'].includes(normalized)
+}
+
+function isRunningTaskStatus(status = '') {
+  const normalized = normalizeTaskStatus(status)
+  return ['生成中', '进行中', '处理中', 'running', 'processing', 'submitting'].includes(normalized)
+}
+
+function resolveTaskMenuLabel(menuKey = '') {
+  if (menuKey === 'series-generate') return '套图'
+  if (menuKey === 'video-generate') return '视频'
+  return props.mode === 'image' ? '套图' : '视频'
+}
+
 const normalizedTasks = computed(() => {
   return (props.tasks || [])
     .filter((task) => task && typeof task === 'object')
+    .filter((task) => relevantMenuKeys.value.includes(String(task.menuKey || '').trim()))
     .map((task) => ({
       id: task.id || '',
       taskNumber: task.taskNumber || task.id || '',
@@ -172,22 +200,37 @@ const normalizedTasks = computed(() => {
       inputCount: Number(task.inputCount || 0),
       plannedOutputCount: Number(task.plannedOutputCount || 0),
       modelSummary: task.modelSummary || '',
-      batchCount: Number(task.batchCount || 1)
+      batchCount: Number(task.batchCount || 1),
+      createdAt: task.createdAt || task.updatedAt || ''
     }))
+    .sort((left, right) => {
+      const leftWeight = isRunningTaskStatus(left.status) ? 0 : isQueuedTaskStatus(left.status) ? 1 : 2
+      const rightWeight = isRunningTaskStatus(right.status) ? 0 : isQueuedTaskStatus(right.status) ? 1 : 2
+      if (leftWeight !== rightWeight) {
+        return leftWeight - rightWeight
+      }
+
+      const leftTime = new Date(left.createdAt || 0).getTime()
+      const rightTime = new Date(right.createdAt || 0).getTime()
+      return rightTime - leftTime
+    })
 })
 
 const activeTask = computed(() => {
   return normalizedTasks.value.find((task) => ['等待中', '进行中', '处理中', 'pending', 'running', 'submitting'].includes(task.status)) || normalizedTasks.value[0] || null
 })
 
-const queueTasks = computed(() => normalizedTasks.value.filter((task) => task.id !== activeTask.value?.id).slice(0, 12))
+const queueTasks = computed(() => {
+  return normalizedTasks.value
+    .filter((task) => isQueuedTaskStatus(task.status))
+    .slice(0, 12)
+})
 
 const queueSummary = computed(() => {
-  const queue = props.agentReadiness?.queue || {}
   return {
-    queuedCount: Number(queue.queuedCount || 0),
-    runningCount: Number(queue.runningCount || 0),
-    isProcessing: Boolean(queue.isProcessing)
+    queuedCount: normalizedTasks.value.filter((task) => isQueuedTaskStatus(task.status)).length,
+    runningCount: normalizedTasks.value.filter((task) => isRunningTaskStatus(task.status)).length,
+    isProcessing: normalizedTasks.value.some((task) => isRunningTaskStatus(task.status))
   }
 })
 
@@ -316,6 +359,17 @@ function handleExportAll() {
   })
 }
 
+function handleCancelTask(task) {
+  if (!task?.id || !isQueuedTaskStatus(task.status)) {
+    return
+  }
+
+  emit('cancel-task', {
+    taskId: String(task.id || '').trim(),
+    status: String(task.status || '').trim()
+  })
+}
+
 function openPreviewLightbox(images = [], index = 0) {
   const normalizedImages = (Array.isArray(images) ? images : []).filter((item) => Boolean(String(item?.preview || item?.savedPath || item?.path || '').trim()))
   if (!normalizedImages.length) return
@@ -362,6 +416,20 @@ function formatTaskLabel(task) {
   if (task?.taskNumber) parts.push(task.taskNumber)
   if (task?.title) parts.push(task.title)
   return parts.join(' / ') || '当前任务'
+}
+function formatTaskMeta(task) {
+  const parts = []
+  parts.push(resolveTaskMenuLabel(task?.menuKey))
+
+  if (Number(task?.plannedOutputCount || 0) > 0) {
+    parts.push(`计划 ${Number(task.plannedOutputCount)} ${props.mode === 'image' ? '张' : '条'}`)
+  }
+
+  if (Number(task?.batchCount || 0) > 1) {
+    parts.push(`批次 ${Number(task.batchCount)}`)
+  }
+
+  return parts.join(' / ')
 }
 </script>
 
@@ -607,18 +675,31 @@ function formatTaskLabel(task) {
               </div>
             </header>
 
-            <div class="task-queue-list">
-              <article v-for="task in queueTasks" :key="task.id" class="task-queue-item">
+            <div class="task-queue-list task-queue-list--media">
+              <article v-for="task in queueTasks" :key="task.id" class="task-queue-item task-queue-item--media">
                 <div class="task-queue-item__head">
-                  <strong>{{ formatTaskLabel(task) }}</strong>
+                  <div class="task-queue-item__copy">
+                    <strong>{{ formatTaskLabel(task) }}</strong>
+                    <span>{{ formatTaskMeta(task) }}</span>
+                  </div>
                   <span class="task-status" :class="getStatusClass(task.status)">{{ task.status || '等待中' }}</span>
                 </div>
                 <div class="task-queue-item__meta">
-                  <span>{{ task.menuKey }}</span>
+                  <span>{{ resolveTaskMenuLabel(task.menuKey) }}</span>
                   <span>{{ task.progress || 0 }}%</span>
                 </div>
                 <div class="task-progress task-progress--small">
                   <span class="task-progress__bar" :style="{ width: `${task.progress || 0}%` }"></span>
+                </div>
+                <div class="task-queue-item__actions">
+                  <button
+                    v-if="isQueuedTaskStatus(task.status)"
+                    class="secondary-action"
+                    type="button"
+                    @click="handleCancelTask(task)"
+                  >
+                    取消排队
+                  </button>
                 </div>
               </article>
 
@@ -796,6 +877,59 @@ function formatTaskLabel(task) {
 
 .product-result-empty--compact {
   min-height: 120px;
+}
+
+.generator-progress-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.task-queue-list--media {
+  align-content: start;
+}
+
+.task-queue-item--media {
+  gap: 10px;
+}
+
+.task-queue-item__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.task-queue-item__copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+}
+
+.task-queue-item__copy span {
+  color: #a8a2bb;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.task-queue-item__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-queue-item__actions .secondary-action {
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+@media (max-width: 960px) {
+  .generator-progress-pane {
+    grid-template-columns: 1fr;
+  }
 }
 
 .generator-export__item-actions {
