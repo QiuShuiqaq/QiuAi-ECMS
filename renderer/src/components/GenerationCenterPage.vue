@@ -228,7 +228,12 @@ function resolveDraftImageLanguage() {
 }
 
 function resolveDraftProductName() {
-  return String(resolveDraftValue('productName', activeProjectEntry.value?.project?.baseInfo?.productName || '')).trim()
+  const draftValue = normalizedDraft.value?.productName
+  if (draftValue !== undefined && draftValue !== null) {
+    return String(draftValue)
+  }
+
+  return String(activeProjectEntry.value?.project?.baseInfo?.productName || '').trim()
 }
 
 function resolveDraftProjectName() {
@@ -719,8 +724,8 @@ function goToQueuePage(nextPage = 1) {
 }
 
 function updateDraftPatch(patch = {}) {
-  Object.entries(patch || {}).forEach(([field, value]) => {
-    emit('update-draft', { field, value })
+  emit('update-draft', {
+    patch: patch && typeof patch === 'object' ? patch : {}
   })
 }
 
@@ -776,6 +781,33 @@ function handleProjectMaxCharsBlur(field, value, options) {
   })
 }
 
+function handleProjectQuantityInput(field, value) {
+  updateProjectGenerationConfig({
+    [field]: sanitizeNumericInput(value)
+  })
+}
+
+function handleProjectQuantityBlur(field, value, { fallback, min = 1, max = 20 } = {}) {
+  updateProjectGenerationConfig({
+    [field]: normalizeNumericInput(value, { fallback, min, max })
+  })
+}
+
+function resolveProjectGenerateCountInputValue() {
+  const currentValue = normalizedDraft.value?.generateCount
+  if (currentValue !== undefined && currentValue !== null) {
+    return String(currentValue)
+  }
+
+  return String(resolveProjectGenerateCount())
+}
+
+function handleProjectGenerateCountInput(value) {
+  updateProjectGenerationConfig({
+    generateCount: sanitizeNumericInput(value)
+  })
+}
+
 function handleProjectGenerateCountChange(value) {
   const nextCount = Math.max(1, Math.min(12, Number(value) || 1))
   const nextAssignments = Array.from({ length: nextCount }, (_unused, index) => {
@@ -797,6 +829,10 @@ function handleProjectGenerateCountChange(value) {
     imageTemplateId: nextAssignments[0]?.templateId || '',
     promptAssignments: nextAssignments
   })
+}
+
+function handleProjectGenerateCountBlur(value) {
+  handleProjectGenerateCountChange(value)
 }
 
 function handleProjectImageTemplateChange(index, templateId) {
@@ -1142,11 +1178,12 @@ function resolveStageMenuKey(stage = '') {
             <div class="generator-form__row">
               <span class="generator-form__label">数量</span>
               <input
-                :value="resolveDraftValue('titleQuantity', 3)"
-                type="number"
-                min="1"
-                max="20"
-                @input="updateProjectGenerationConfig({ titleQuantity: Number($event.target.value) || 3 })"
+                :value="resolveDraftInputValue('titleQuantity', 3)"
+                type="text"
+                inputmode="numeric"
+                placeholder="3"
+                @input="handleProjectQuantityInput('titleQuantity', $event.target.value)"
+                @blur="handleProjectQuantityBlur('titleQuantity', $event.target.value, { fallback: 3, min: 1, max: 20 })"
               >
             </div>
             <div class="generator-form__row">
@@ -1204,11 +1241,12 @@ function resolveStageMenuKey(stage = '') {
             <div class="generator-form__row">
               <span class="generator-form__label">数量</span>
               <input
-                :value="resolveDraftValue('descriptionQuantity', 2)"
-                type="number"
-                min="1"
-                max="20"
-                @input="updateProjectGenerationConfig({ descriptionQuantity: Number($event.target.value) || 2 })"
+                :value="resolveDraftInputValue('descriptionQuantity', 2)"
+                type="text"
+                inputmode="numeric"
+                placeholder="2"
+                @input="handleProjectQuantityInput('descriptionQuantity', $event.target.value)"
+                @blur="handleProjectQuantityBlur('descriptionQuantity', $event.target.value, { fallback: 2, min: 1, max: 20 })"
               >
             </div>
             <div class="generator-form__row">
@@ -1255,11 +1293,12 @@ function resolveStageMenuKey(stage = '') {
             <div class="generator-form__row">
               <span class="generator-form__label">数量</span>
               <input
-                type="number"
-                min="1"
-                max="12"
-                :value="resolveProjectGenerateCount()"
-                @input="handleProjectGenerateCountChange($event.target.value)"
+                type="text"
+                inputmode="numeric"
+                placeholder="4"
+                :value="resolveProjectGenerateCountInputValue()"
+                @input="handleProjectGenerateCountInput($event.target.value)"
+                @blur="handleProjectGenerateCountBlur($event.target.value)"
               />
             </div>
             <div class="generator-form__row">

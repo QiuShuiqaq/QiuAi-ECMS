@@ -33,9 +33,15 @@ const filteredTemplates = computed(() => {
 })
 
 const currentPromptValue = computed(() => String(props.draft[promptField.value] || ''))
-const currentQuantity = computed(() => Math.max(1, Number(props.draft[quantityField.value]) || 1))
 const currentMaxChars = computed(() => {
   const value = props.draft[maxCharsField.value]
+  if (value === undefined || value === null) {
+    return ''
+  }
+  return String(value)
+})
+const currentQuantityInput = computed(() => {
+  const value = props.draft[quantityField.value]
   if (value === undefined || value === null) {
     return ''
   }
@@ -77,6 +83,16 @@ function handleMaxCharsBlur(value) {
   const digits = sanitizeNumericInput(value)
   const normalized = digits ? Math.max(1, Math.min(500, Number(digits))) : 60
   updateField(maxCharsField.value, String(normalized))
+}
+
+function handleQuantityInput(value) {
+  updateField(quantityField.value, sanitizeNumericInput(value))
+}
+
+function handleQuantityBlur(value) {
+  const digits = sanitizeNumericInput(value)
+  const normalized = digits ? Math.max(1, Math.min(50, Number(digits))) : 1
+  updateField(quantityField.value, String(normalized))
 }
 
 function handleTemplateChange(templateId) {
@@ -130,7 +146,14 @@ function handleExportAll() {
         <div class="generator-form__group">
           <div class="generator-form__row">
             <span class="generator-form__label">生成数量</span>
-            <input :value="currentQuantity" type="number" min="1" max="50" @input="updateField(quantityField, $event.target.value)">
+            <input
+              :value="currentQuantityInput"
+              type="text"
+              inputmode="numeric"
+              placeholder="1"
+              @input="handleQuantityInput($event.target.value)"
+              @blur="handleQuantityBlur($event.target.value)"
+            >
           </div>
           <div class="generator-form__row">
             <span class="generator-form__label">最大字数</span>

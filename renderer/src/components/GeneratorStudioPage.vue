@@ -81,9 +81,27 @@ function updateField(field, value) {
 }
 
 function emitSeriesDraftPatch(patch = {}) {
-  Object.entries(patch).forEach(([field, value]) => {
-    updateField(field, value)
+  emit('update-draft', {
+    patch: patch && typeof patch === 'object' ? patch : {}
   })
+}
+
+function sanitizeNumericInput(value) {
+  return String(value ?? '').replace(/[^\d]/g, '')
+}
+
+function normalizeNumericInput(value, { fallback, min = 1, max = 99 } = {}) {
+  const digits = sanitizeNumericInput(value)
+  const baseValue = digits ? Number(digits) : fallback
+  return String(Math.max(min, Math.min(max, baseValue)))
+}
+
+function handleNumericFieldInput(field, value) {
+  updateField(field, sanitizeNumericInput(value))
+}
+
+function handleNumericFieldBlur(field, value, options = {}) {
+  updateField(field, normalizeNumericInput(value, options))
 }
 
 function buildPromptAssignments(items = []) {
@@ -283,7 +301,7 @@ function handleSeriesModePick(nextMode) {
 }
 
 function handleSingleGenerateCountChange(value) {
-  const nextCount = Math.max(1, Number(value) || 1)
+  const nextCount = Math.max(1, Number(sanitizeNumericInput(value)) || 1)
   const nextItems = buildSingleModeSeriesItems(props.draft.sourceImage, nextCount, seriesSourceItems.value)
   emitSeriesDraftPatch({
     generateCount: nextCount,
@@ -410,23 +428,38 @@ function formatTaskLabel(task) {
 
           <div v-if="mode === 'image'" class="generator-form__row">
             <span class="generator-form__label">批次</span>
-            <input :value="draft.batchCount || 1" type="number" min="1" @input="updateField('batchCount', $event.target.value)">
+            <input
+              :value="draft.batchCount ?? '1'"
+              type="text"
+              inputmode="numeric"
+              placeholder="1"
+              @input="handleNumericFieldInput('batchCount', $event.target.value)"
+              @blur="handleNumericFieldBlur('batchCount', $event.target.value, { fallback: 1, min: 1, max: 20 })"
+            >
           </div>
 
           <div v-if="mode === 'image'" class="generator-form__row">
             <span class="generator-form__label">数量</span>
             <input
-              :value="seriesGenerationMode === 'single' ? (draft.generateCount || seriesSourceItems.length || 1) : seriesSourceItems.length"
-              type="number"
-              min="1"
+              :value="seriesGenerationMode === 'single' ? (draft.generateCount ?? String(seriesSourceItems.length || 1)) : seriesSourceItems.length"
+              type="text"
+              inputmode="numeric"
               :disabled="seriesGenerationMode === 'group'"
-              @input="seriesGenerationMode === 'single' && handleSingleGenerateCountChange($event.target.value)"
+              @input="seriesGenerationMode === 'single' && handleNumericFieldInput('generateCount', $event.target.value)"
+              @blur="seriesGenerationMode === 'single' && handleSingleGenerateCountChange($event.target.value)"
             >
           </div>
 
           <div v-if="mode === 'video'" class="generator-form__row">
             <span class="generator-form__label">批次</span>
-            <input :value="draft.videoQuantity || 1" type="number" min="1" @input="updateField('videoQuantity', $event.target.value)">
+            <input
+              :value="draft.videoQuantity ?? '1'"
+              type="text"
+              inputmode="numeric"
+              placeholder="1"
+              @input="handleNumericFieldInput('videoQuantity', $event.target.value)"
+              @blur="handleNumericFieldBlur('videoQuantity', $event.target.value, { fallback: 1, min: 1, max: 20 })"
+            >
           </div>
         </div>
 

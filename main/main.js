@@ -24,9 +24,12 @@ async function bootstrap () {
   await app.whenReady()
   app.setAppUserModelId('com.qiuai.desktop')
   registerLocalMediaProtocol()
-  const { studioTaskManagerService } = registerIpc()
+  const { studioTaskManagerService, studioWorkspaceService } = registerIpc()
   registerAppEvents(createMainWindow, {
-    onBeforeQuit: () => studioTaskManagerService?.flushPendingWrites?.()
+    onBeforeQuit: () => {
+      studioWorkspaceService?.flushPendingStateWrites?.()
+      studioTaskManagerService?.flushPendingWrites?.()
+    }
   })
   createMainWindow()
 }

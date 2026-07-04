@@ -3211,6 +3211,7 @@ function createStudioWorkspaceService({
   getAvailableDiskSpaceBytes: getAvailableDiskSpaceBytesDependency = (targetPath) => getAvailableDiskSpaceBytes(targetPath),
   getNowMs = () => Date.now(),
   exportScanCacheTtlMs = 3000,
+  draftPersistDebounceMs = 250,
   exportTaskDirectory: exportTaskDirectoryDependency = defaultExportTaskDirectory,
   generateImageResults,
   generateTextResults,
@@ -3247,6 +3248,9 @@ function createStudioWorkspaceService({
   let isLaunchingQueuedTasks = false
   let taskQueuePromise = Promise.resolve()
   let resolveTaskQueuePromise = null
+  let cachedStudioState = null
+  let pendingStateFlushTimer = null
+  let hasPendingStateFlush = false
 
   function buildAgentReadinessSnapshot(tasks = getStoredTasks()) {
     const queuedTaskIds = queuedTaskExecutions
@@ -3622,8 +3626,10 @@ function createStudioWorkspaceService({
     launchQueuedTasksUpToLimit().catch(() => undefined)
   }
 
+  cachedStudioState = mergeStudioState(store.get(STUDIO_WORKSPACE_KEY, {}))
+
   function getStoredState() {
-    return mergeStudioState(store.get(STUDIO_WORKSPACE_KEY, {}))
+    return cachedStudioState
   }
 
   function getStoredTasks(state = getStoredState()) {
@@ -3634,9 +3640,41 @@ function createStudioWorkspaceService({
     return sortTasks(state.tasks)
   }
 
-  function saveState(nextState) {
-    store.set(STUDIO_WORKSPACE_KEY, nextState)
-    return nextState
+  function flushPendingStateWrites(force = false) {
+    if (pendingStateFlushTimer) {
+      clearTimeout(pendingStateFlushTimer)
+      pendingStateFlushTimer = null
+    }
+
+    if (!cachedStudioState) {
+      return cachedStudioState
+    }
+
+    if (!force && !hasPendingStateFlush) {
+      return cachedStudioState
+    }
+
+    store.set(STUDIO_WORKSPACE_KEY, cachedStudioState)
+    hasPendingStateFlush = false
+    return cachedStudioState
+  }
+
+  function saveState(nextState, { deferred = false } = {}) {
+    cachedStudioState = mergeStudioState(nextState)
+
+    if (!deferred) {
+      return flushPendingStateWrites(true)
+    }
+
+    hasPendingStateFlush = true
+    if (pendingStateFlushTimer) {
+      clearTimeout(pendingStateFlushTimer)
+    }
+    pendingStateFlushTimer = setTimeout(() => {
+      flushPendingStateWrites()
+    }, Math.max(0, Number(draftPersistDebounceMs) || 0))
+
+    return cachedStudioState
   }
 
   async function syncCreditStateWithRealtimeBalance() {
@@ -3679,7 +3717,7 @@ function createStudioWorkspaceService({
         ...state.formDrafts,
         [menuKey]: nextDraft
       }
-    })
+    }, { deferred: true })
 
     return nextDraft
   }
@@ -3969,6 +4007,7 @@ function createStudioWorkspaceService({
     exportSelectedResults,
     exportProjectBundle,
     deleteExportItem,
+    flushPendingStateWrites,
     waitForIdle: async () => {
       await taskQueuePromise
     }

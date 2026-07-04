@@ -120,6 +120,9 @@ const publishConfigState = ref({
   isLoading: false,
   error: ''
 })
+const draftPersistDebounceMs = 250
+const pendingDraftPersistPatches = new Map()
+const pendingDraftPersistTimers = new Map()
 
 function normalizeSeriesSourceItems(sourceItems = [], fallbackAssignments = []) {
   const items = Array.isArray(sourceItems) ? sourceItems : []
@@ -909,6 +912,7 @@ async function loadUserAgreementState() {
 }
 
 async function loadStudioSnapshot() {
+  await flushAllPendingDraftPersistence()
   const snapshot = await workspaceClient.getSnapshot()
   formDrafts.value = snapshot.formDrafts || {}
   workspaceDashboard.value = snapshot.workspaceDashboard || workspaceDashboard.value
@@ -1178,6 +1182,7 @@ async function handleOpenProjectSettings(project) {
 }
 
 async function persistDraft(menuKey, patch) {
+  await flushPendingDraftPersistence(menuKey)
   const nextDraft = {
     ...(formDrafts.value[menuKey] || {}),
     ...patch
@@ -1192,25 +1197,129 @@ async function persistDraft(menuKey, patch) {
   })
 }
 
-async function handleDraftUpdate({ field, value }) {
+function normalizeDraftUpdatePayload(payload = {}) {
+  if (payload && typeof payload === 'object' && payload.patch && typeof payload.patch === 'object') {
+    return {
+      patch: payload.patch,
+      immediate: payload.immediate === true
+    }
+  }
+
+  if (payload && typeof payload === 'object' && typeof payload.field === 'string') {
+    return {
+      patch: {
+        [payload.field]: payload.value
+      },
+      immediate: payload.immediate === true
+    }
+  }
+
+  return {
+    patch: {},
+    immediate: false
+  }
+}
+
+function applyDraftPatch(menuKey, patch = {}) {
+  const nextDraft = {
+    ...(formDrafts.value[menuKey] || {}),
+    ...patch
+  }
+  formDrafts.value = {
+    ...formDrafts.value,
+    [menuKey]: nextDraft
+  }
+
+  return nextDraft
+}
+
+async function flushPendingDraftPersistence(menuKey = '') {
+  const normalizedMenuKey = String(menuKey || '').trim()
+  if (!normalizedMenuKey) {
+    return
+  }
+
+  const timerId = pendingDraftPersistTimers.get(normalizedMenuKey)
+  if (timerId) {
+    window.clearTimeout(timerId)
+    pendingDraftPersistTimers.delete(normalizedMenuKey)
+  }
+
+  const patch = pendingDraftPersistPatches.get(normalizedMenuKey)
+  if (!patch || !Object.keys(patch).length) {
+    pendingDraftPersistPatches.delete(normalizedMenuKey)
+    return
+  }
+
+  pendingDraftPersistPatches.delete(normalizedMenuKey)
+  await workspaceClient.saveDraft({
+    menuKey: normalizedMenuKey,
+    patch
+  })
+}
+
+async function flushAllPendingDraftPersistence() {
+  const menuKeys = Array.from(new Set([
+    ...pendingDraftPersistPatches.keys(),
+    ...pendingDraftPersistTimers.keys()
+  ]))
+
+  for (const menuKey of menuKeys) {
+    await flushPendingDraftPersistence(menuKey)
+  }
+}
+
+function scheduleDraftPersistence(menuKey, patch = {}, { immediate = false } = {}) {
+  const normalizedMenuKey = String(menuKey || '').trim()
+  if (!normalizedMenuKey || !patch || !Object.keys(patch).length) {
+    return Promise.resolve()
+  }
+
+  applyDraftPatch(normalizedMenuKey, patch)
+
+  if (immediate) {
+    return flushPendingDraftPersistence(normalizedMenuKey).then(() => workspaceClient.saveDraft({
+      menuKey: normalizedMenuKey,
+      patch
+    }))
+  }
+
+  const mergedPatch = {
+    ...(pendingDraftPersistPatches.get(normalizedMenuKey) || {}),
+    ...patch
+  }
+  pendingDraftPersistPatches.set(normalizedMenuKey, mergedPatch)
+
+  const existingTimerId = pendingDraftPersistTimers.get(normalizedMenuKey)
+  if (existingTimerId) {
+    window.clearTimeout(existingTimerId)
+  }
+
+  const timerId = window.setTimeout(() => {
+    flushPendingDraftPersistence(normalizedMenuKey).catch(() => undefined)
+  }, draftPersistDebounceMs)
+  pendingDraftPersistTimers.set(normalizedMenuKey, timerId)
+
+  return Promise.resolve()
+}
+
+async function handleDraftUpdate(payload = {}) {
   if (!activeGeneratorMenuKey.value) {
     return
   }
 
-  await persistDraft(activeGeneratorMenuKey.value, {
-    [field]: value
-  })
+  const { patch, immediate } = normalizeDraftUpdatePayload(payload)
+  await scheduleDraftPersistence(activeGeneratorMenuKey.value, patch, { immediate })
 }
 
-async function handleTextGeneratorDraftUpdate({ field, value }) {
+async function handleTextGeneratorDraftUpdate(payload = {}) {
   const targetMenuKey = activeTextGeneratorView.value ? activeGeneratorMenuKey.value : 'workspace'
   if (!targetMenuKey) {
     return
   }
 
-  await persistDraft(targetMenuKey, {
-    [field]: value
-  })
+  const { patch, immediate } = normalizeDraftUpdatePayload(payload)
+  await scheduleDraftPersistence(targetMenuKey, patch, { immediate })
 }
 
 async function handleCreateProject() {
@@ -2267,6 +2376,7 @@ async function handleSubmitTask(menuKey = activeGeneratorMenuKey.value) {
 
   submitButtonState.value = 'pending'
   try {
+    await flushAllPendingDraftPersistence()
     const draft = formDrafts.value[menuKey] || {}
     const balanceError = assertClientSideBalanceForTask({
       menuKey,
@@ -2337,6 +2447,7 @@ async function handleSubmitTextGenerator(textKind = 'title') {
 
   submitButtonState.value = 'pending'
   try {
+    await flushAllPendingDraftPersistence()
     const textDraft = buildStandaloneTextDraft(textKind)
     const balanceError = assertClientSideBalanceForTask({
       menuKey: activeGeneratorMenuKey.value,
@@ -2383,6 +2494,7 @@ async function handleRunProject(project) {
 
   submitButtonState.value = 'pending'
   try {
+    await flushAllPendingDraftPersistence()
     const projectDraft = buildWorkspaceRunDraft(project, formDrafts.value.workspace || {})
     const balanceError = assertClientSideBalanceForTask({
       menuKey: 'workspace',
@@ -3236,6 +3348,11 @@ watch(
 )
 
 onUnmounted(() => {
+  for (const timerId of pendingDraftPersistTimers.values()) {
+    window.clearTimeout(timerId)
+  }
+  pendingDraftPersistTimers.clear()
+  flushAllPendingDraftPersistence().catch(() => undefined)
   stopRuntimePolling()
   stopPublishTaskPolling()
   stopSelectionManifestPolling()
