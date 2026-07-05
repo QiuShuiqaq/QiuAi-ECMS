@@ -90,7 +90,8 @@ export function createSoftwareOrderController({
         channel: 'alipay',
         customerName: activationFormRef?.value?.customerName || '',
         contact: activationFormRef?.value?.contact || '',
-        inviteCode: activationFormRef?.value?.inviteCode || '',
+        inviteCode: activationFormRef?.value?.agentInviteCode || '',
+        agentInviteCode: activationFormRef?.value?.agentInviteCode || '',
         deviceName: 'QiuAi Desktop'
       }),
       buildRefreshPayload: (currentOrder) => ({

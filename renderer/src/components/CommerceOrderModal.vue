@@ -45,6 +45,20 @@ const props = defineProps({
   isRechargeSubmitting: {
     type: Boolean,
     default: false
+  },
+  isAgentQuoteLoading: {
+    type: Boolean,
+    default: false
+  },
+  agentQuoteState: {
+    type: Object,
+    default: () => ({
+      verified: false,
+      valid: false,
+      message: '',
+      agentDisplayName: '',
+      packagePrices: {}
+    })
   }
 })
 
@@ -54,7 +68,8 @@ const emit = defineEmits([
   'submit-compute-order',
   'submit-recharge-order',
   'update-activation-form',
-  'update-recharge-form'
+  'update-recharge-form',
+  'verify-agent-invite-code'
 ])
 
 const selectionState = reactive({
@@ -73,7 +88,7 @@ const modeMeta = computed(() => {
     return {
       eyebrow: 'Compute Package',
       title: '算力购买',
-      subtitle: '选择算力包，下单后自动在浏览器中打开支付宝支付页面。'
+      subtitle: '选择算力包，创建订单后会自动打开支付宝支付页面。'
     }
   }
 
@@ -81,14 +96,14 @@ const modeMeta = computed(() => {
     return {
       eyebrow: 'Direct Recharge',
       title: '算力直充',
-      subtitle: '选择余额类型和充值金额，创建真实支付订单后跳转支付宝。'
+      subtitle: '选择余额类型与充值金额，创建订单后会自动打开支付宝支付页面。'
     }
   }
 
   return {
     eyebrow: 'Software License',
     title: '授权购买',
-    subtitle: '填写基础信息并选择授权套餐，支付完成后当前设备会自动尝试激活。'
+    subtitle: '填写用户名、手机号，必要时校验代理邀请码，支付完成后当前设备会自动尝试激活。'
   }
 })
 
@@ -153,6 +168,27 @@ const submitLabel = computed(() => {
   return props.isRechargeSubmitting ? '正在创建订单...' : '下单并前往支付'
 })
 
+const verifiedAgentMessage = computed(() => {
+  if (!isSoftwareMode.value) {
+    return ''
+  }
+
+  if (props.isAgentQuoteLoading) {
+    return '正在校验代理邀请码...'
+  }
+
+  if (props.agentQuoteState?.verified && props.agentQuoteState?.valid) {
+    const displayName = String(props.agentQuoteState.agentDisplayName || '').trim()
+    return displayName ? `已匹配代理：${displayName}` : '代理邀请码校验通过'
+  }
+
+  if (props.agentQuoteState?.verified && !props.agentQuoteState?.valid) {
+    return props.agentQuoteState?.message || '代理邀请码无效'
+  }
+
+  return '未校验时默认显示官方价格'
+})
+
 watch(
   () => props.softwarePackages,
   (packages) => {
@@ -196,12 +232,27 @@ function formatBalanceAmount(value) {
   return numericValue % 1 === 0 ? String(numericValue) : numericValue.toFixed(2)
 }
 
+function resolveSoftwarePackagePrice(pkg = {}) {
+  const packagePrices = props.agentQuoteState?.packagePrices || {}
+  const matchedQuote = packagePrices[pkg.id]
+
+  if (props.agentQuoteState?.verified && props.agentQuoteState?.valid && matchedQuote) {
+    return Number(matchedQuote.agentSalePriceAmount || pkg.agentSalePriceAmount || pkg.priceAmount || 0)
+  }
+
+  return Number(pkg.officialPriceAmount || pkg.priceAmount || 0)
+}
+
 function updateRechargeField(field, value) {
   emit('update-recharge-form', { field, value })
 }
 
 function updateActivationField(field, value) {
   emit('update-activation-form', { field, value })
+}
+
+function handleVerifyAgentInviteCode() {
+  emit('verify-agent-invite-code')
 }
 
 function submitOrder() {
@@ -261,7 +312,7 @@ function submitOrder() {
           </label>
 
           <label class="commerce-order-modal__field">
-            <span>手机号</span>
+            <span>手机</span>
             <input
               :value="activationForm.contact || ''"
               type="text"
@@ -270,19 +321,33 @@ function submitOrder() {
             >
           </label>
 
-          <label class="commerce-order-modal__field">
-            <span>邀请码</span>
-            <input
-              :value="activationForm.inviteCode || ''"
-              type="text"
-              placeholder="选填"
-              @input="updateActivationField('inviteCode', $event.target.value)"
-            >
-          </label>
-
+          <div class="commerce-order-modal__field">
+            <span>代理邀请码</span>
+            <div class="commerce-order-modal__inline-field">
+              <input
+                :value="activationForm.agentInviteCode || ''"
+                type="text"
+                placeholder="选填"
+                @input="updateActivationField('agentInviteCode', $event.target.value)"
+              >
+              <button
+                type="button"
+                class="secondary-action commerce-order-modal__verify-button"
+                :disabled="props.isAgentQuoteLoading || !(activationForm.agentInviteCode || '').trim()"
+                @click="handleVerifyAgentInviteCode"
+              >
+                {{ props.isAgentQuoteLoading ? '校验中' : '校验' }}
+              </button>
+            </div>
+          </div>
         </div>
+
         <div class="commerce-order-modal__notice">
-          <span>用户名和手机号均不可重复，手机号购买成功后不可再次重复购买。</span>
+          <span>{{ verifiedAgentMessage }}</span>
+        </div>
+
+        <div class="commerce-order-modal__notice">
+          <span>用户名和手机号均不可重复。手机号购买成功后再次使用相同手机号购买，会提示已购买过产品。</span>
         </div>
       </section>
 
@@ -325,7 +390,7 @@ function submitOrder() {
               :class="{ 'commerce-order-modal__amount-preset--active': Number(rechargeForm.amountCny) === Number(amount) }"
               @click="updateRechargeField('amountCny', amount)"
             >
-              ¥{{ amount }}
+              {{ amount }} 元
             </button>
           </div>
         </div>
@@ -333,8 +398,8 @@ function submitOrder() {
 
       <section v-if="!isRechargeMode" class="commerce-order-modal__section">
         <div class="commerce-order-modal__section-head">
-          <span>{{ isSoftwareMode ? '授权套餐' : (isComputeMode ? '算力套餐' : '订单信息') }}</span>
-          <span v-if="isCatalogLoading && !isRechargeMode">加载中...</span>
+          <span>{{ isSoftwareMode ? '授权套餐' : '算力套餐' }}</span>
+          <span v-if="isCatalogLoading">加载中...</span>
         </div>
 
         <div v-if="isSoftwareMode" class="commerce-order-modal__list commerce-order-modal__list--software">
@@ -350,7 +415,7 @@ function submitOrder() {
               <strong>{{ pkg.name }}</strong>
             </div>
             <div class="commerce-order-modal__option-side">
-              <strong>¥{{ formatAmount(pkg.priceAmount) }}</strong>
+              <strong>¥{{ formatAmount(resolveSoftwarePackagePrice(pkg)) }}</strong>
             </div>
           </button>
         </div>
@@ -384,31 +449,13 @@ function submitOrder() {
             </div>
           </button>
         </div>
-
-        <div v-if="false" class="commerce-order-modal__summary">
-          <div class="commerce-order-modal__summary-item">
-            <span>支付方式</span>
-            <strong>{{ rechargeForm.channel === 'wechat' ? '微信' : '支付宝' }}</strong>
-          </div>
-          <div class="commerce-order-modal__summary-item">
-            <span>充值到</span>
-            <strong>{{ rechargeForm.walletType === 'video' ? '视频余额' : (rechargeForm.walletType === 'text' ? '文本余额' : '图片余额') }}</strong>
-          </div>
-          <div class="commerce-order-modal__summary-item">
-            <span>订单金额</span>
-            <strong>{{ formatAmount(rechargeForm.amountCny) }} CNY</strong>
-          </div>
-        </div>
       </section>
 
       <section v-if="!isRechargeMode" class="commerce-order-modal__section">
         <div class="commerce-order-modal__grid commerce-order-modal__grid--single">
           <label class="commerce-order-modal__field">
             <span>支付方式</span>
-            <select
-              :value="isRechargeMode ? rechargeForm.channel : 'alipay'"
-              :disabled="true"
-            >
+            <select :value="isRechargeMode ? rechargeForm.channel : 'alipay'" disabled>
               <option value="alipay">支付宝</option>
             </select>
           </label>
@@ -518,54 +565,6 @@ function submitOrder() {
   gap: 14px;
 }
 
-.commerce-order-modal__card--recharge .commerce-order-modal__header {
-  align-items: center;
-}
-
-.commerce-order-modal__card--recharge .commerce-order-modal__header strong {
-  font-size: 26px;
-}
-
-.commerce-order-modal__card--recharge .commerce-order-modal__header p {
-  margin-top: 8px;
-  max-width: 360px;
-  line-height: 1.5;
-}
-
-.commerce-order-modal__card--recharge .commerce-order-modal__field {
-  gap: 7px;
-}
-
-.commerce-order-modal__card--recharge .commerce-order-modal__field select,
-.commerce-order-modal__card--recharge .commerce-order-modal__field input {
-  min-height: 42px;
-}
-
-.commerce-order-modal__amount-presets {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.commerce-order-modal__amount-preset {
-  min-height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
-  color: rgba(226, 232, 244, 0.9);
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
-}
-
-.commerce-order-modal__amount-preset:hover,
-.commerce-order-modal__amount-preset--active {
-  border-color: rgba(118, 173, 255, 0.52);
-  background: rgba(118, 173, 255, 0.12);
-  transform: translateY(-1px);
-}
-
 .commerce-order-modal__section-head {
   display: flex;
   justify-content: space-between;
@@ -598,33 +597,32 @@ function submitOrder() {
   font-size: 13px;
 }
 
+.commerce-order-modal__inline-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.commerce-order-modal__verify-button {
+  min-width: 84px;
+}
+
 .commerce-order-modal__list {
   display: grid;
   gap: 12px;
-  max-height: 320px;
-  overflow: auto;
-  padding-right: 4px;
 }
 
 .commerce-order-modal__list--software {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: minmax(88px, auto);
-  max-height: none;
-  overflow: visible;
-  padding-right: 0;
 }
 
 .commerce-order-modal__list--compute {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  max-height: none;
-  overflow: visible;
-  padding-right: 0;
   gap: 10px;
 }
 
 .commerce-order-modal__option {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
   width: 100%;
@@ -668,15 +666,22 @@ function submitOrder() {
   min-width: 0;
 }
 
-.commerce-order-modal__option-copy span {
-  color: rgba(205, 214, 238, 0.72);
-}
-
 .commerce-order-modal__option--software .commerce-order-modal__option-copy strong {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.commerce-order-modal__option-side {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.commerce-order-modal__option-side strong {
+  font-size: 22px;
+  line-height: 1;
 }
 
 .commerce-order-modal__compute-head {
@@ -732,47 +737,29 @@ function submitOrder() {
   white-space: nowrap;
 }
 
-.commerce-order-modal__option-side {
-  display: grid;
-  justify-items: end;
-  gap: 4px;
-}
-
-.commerce-order-modal__option--software .commerce-order-modal__option-side {
-  justify-items: center;
-}
-
-.commerce-order-modal__option-side strong {
-  font-size: 24px;
-}
-
-.commerce-order-modal__option--software .commerce-order-modal__option-side strong {
-  font-size: 22px;
-  line-height: 1;
-}
-
-.commerce-order-modal__summary {
+.commerce-order-modal__amount-presets {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.commerce-order-modal__summary-item {
-  display: grid;
   gap: 8px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.commerce-order-modal__summary-item span {
-  color: rgba(205, 214, 238, 0.72);
-  font-size: 12px;
+.commerce-order-modal__amount-preset {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(226, 232, 244, 0.9);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 
-.commerce-order-modal__summary-item strong {
-  font-size: 18px;
+.commerce-order-modal__amount-preset:hover,
+.commerce-order-modal__amount-preset--active {
+  border-color: rgba(118, 173, 255, 0.52);
+  background: rgba(118, 173, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .commerce-order-modal__footer {
@@ -799,33 +786,20 @@ function submitOrder() {
     padding: 18px;
   }
 
-  .commerce-order-modal__grid--triple,
-  .commerce-order-modal__summary {
-    grid-template-columns: 1fr;
-  }
-
-  .commerce-order-modal__option:not(.commerce-order-modal__option--software) {
+  .commerce-order-modal__grid--triple {
     grid-template-columns: 1fr;
   }
 
   .commerce-order-modal__list--software {
-    grid-template-columns: repeat(4, minmax(116px, 1fr));
-    overflow-x: auto;
-    overflow-y: visible;
-    padding-bottom: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .commerce-order-modal__list--compute {
-    grid-template-columns: repeat(4, minmax(164px, 1fr));
-    overflow-x: auto;
-    overflow-y: visible;
-    padding-bottom: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .commerce-order-modal__option-side,
-  .commerce-order-modal__footer {
-    justify-items: stretch;
-    justify-content: stretch;
+  .commerce-order-modal__inline-field {
+    grid-template-columns: 1fr;
   }
 }
 </style>

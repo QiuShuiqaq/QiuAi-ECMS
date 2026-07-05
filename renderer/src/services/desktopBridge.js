@@ -652,6 +652,14 @@ export function listSoftwarePackages () {
   return invoke(getChannel('LICENSE_LIST_PACKAGES'))
 }
 
+export function quoteAgentPrices (payload) {
+  if (!hasBridge()) {
+    return Promise.reject(createBridgeUnavailableError())
+  }
+
+  return invoke(getChannel('LICENSE_QUOTE_AGENT_PRICES'), payload)
+}
+
 export function createSoftwareOrder (payload) {
   if (!hasBridge()) {
     return Promise.reject(createBridgeUnavailableError())

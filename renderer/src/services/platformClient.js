@@ -38,6 +38,7 @@ import {
   openExternalResource,
   openOutputDirectory,
   pickStudioInputAssets,
+  quoteAgentPrices,
   removeProjectTemplate,
   removePromptTemplate,
   retryPublishTask,
@@ -66,6 +67,7 @@ export const catalogClient = {
 }
 
 export const commerceClient = {
+  quoteAgentPrices,
   createSoftwareOrder,
   getSoftwareOrder,
   createComputePackageOrder,

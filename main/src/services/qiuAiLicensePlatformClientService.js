@@ -53,8 +53,15 @@ function normalizeSoftwareOrderPayload(payload = {}) {
     customerName: trimString(payload.customerName),
     contact: trimString(payload.contact),
     inviteCode: trimString(payload.inviteCode),
+    agentInviteCode: trimString(payload.agentInviteCode),
     deviceFingerprint: trimString(payload.deviceFingerprint),
     deviceName: trimString(payload.deviceName)
+  }
+}
+
+function normalizeAgentQuotePayload(payload = {}) {
+  return {
+    agentInviteCode: trimString(payload.agentInviteCode || payload.inviteCode)
   }
 }
 
@@ -383,6 +390,12 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
+  async function quoteAgentPrices(payload = {}) {
+    return request('post', '/api/agent-quote', {
+      data: normalizeAgentQuotePayload(payload)
+    })
+  }
+
   async function getSoftwareOrder({ id = '', sessionToken = '', orderAccessToken = '' } = {}) {
     return request('get', `/api/orders/${trimString(id)}`, {
       sessionToken,
@@ -569,6 +582,7 @@ function createQiuAiLicensePlatformClientService({
 
   const softwareCommerce = {
     listPackages: listSoftwarePackages,
+    quoteAgentPrices,
     createOrder: createSoftwareOrder,
     getOrder: getSoftwareOrder
   }
@@ -644,8 +658,8 @@ function createQiuAiLicensePlatformClientService({
     listSelectionPlatforms,
     listSelectionSites,
     listComputePackages,
-    listSoftwarePackages
-    ,
+    listSoftwarePackages,
+    quoteAgentPrices,
     retryPublishTask,
     upsertPublishDraft,
     createPublishTask

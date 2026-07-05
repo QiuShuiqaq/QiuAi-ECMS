@@ -219,8 +219,17 @@ const isDataCenterRefreshingBalances = ref(false)
 const activationForm = ref({
   customerName: '',
   contact: '',
-  inviteCode: ''
+  inviteCode: '',
+  agentInviteCode: ''
 })
+const agentQuoteState = ref({
+  verified: false,
+  valid: false,
+  message: '',
+  agentDisplayName: '',
+  packagePrices: {}
+})
+const isAgentQuoteLoading = ref(false)
 const userAgreementState = ref({
   title: '用户须知与使用协议暨责任认定书',
   version: 'QIUAI-ECMS-USER-NOTICE-v4.0',
@@ -366,9 +375,6 @@ const currentExportItems = computed(() => {
 })
 
 const workspaceDraft = computed(() => formDrafts.value.workspace || {})
-const workspaceResultPayload = computed(() => resultsByMenu.value.workspace || emptyGeneratorResultPayload)
-const workspaceExportItems = computed(() => exportItemsByMenu.value.workspace || [])
-
 const activeWorkspaceGeneratorView = computed(() => {
   const currentMenuKey = String(activeMenu.value || '').trim()
   if (!resolveGeneratorView(currentMenuKey)) {
@@ -578,7 +584,21 @@ function buildErrorMessage(error, fallback = '请求失败') {
     return '请输入用户名'
   }
 
+  if (errorCode === 'AGENT_INVITE_CODE_INVALID') {
+    return '代理邀请码无效'
+  }
+
   return String(error?.message || fallback)
+}
+
+function resetAgentQuoteState() {
+  agentQuoteState.value = {
+    verified: false,
+    valid: false,
+    message: '',
+    agentDisplayName: '',
+    packagePrices: {}
+  }
 }
 
 function applyProjectPatchLocally(project = {}, patch = {}) {
@@ -1138,6 +1158,57 @@ async function loadPurchaseCenterCatalog() {
     computePackages.value = Array.isArray(computeRows) ? computeRows : []
   } finally {
     isCatalogLoading.value = false
+  }
+}
+
+async function handleVerifyAgentInviteCode() {
+  const agentInviteCode = String(activationForm.value.agentInviteCode || '').trim()
+  if (!agentInviteCode) {
+    resetAgentQuoteState()
+    return
+  }
+
+  isAgentQuoteLoading.value = true
+  try {
+    const payload = await commerceClient.quoteAgentPrices({ agentInviteCode })
+    const packagePrices = Object.fromEntries(
+      (Array.isArray(payload?.packages) ? payload.packages : []).map((item) => [
+        item.id,
+        {
+          officialPriceAmount: Number(item.officialPriceAmount || 0),
+          agentSalePriceAmount: Number(item.agentSalePriceAmount || 0)
+        }
+      ])
+    )
+
+    if (payload?.valid) {
+      agentQuoteState.value = {
+        verified: true,
+        valid: true,
+        message: '',
+        agentDisplayName: String(payload?.agent?.displayName || '').trim(),
+        packagePrices
+      }
+      return
+    }
+
+    agentQuoteState.value = {
+      verified: true,
+      valid: false,
+      message: '代理邀请码无效',
+      agentDisplayName: '',
+      packagePrices: {}
+    }
+  } catch (error) {
+    agentQuoteState.value = {
+      verified: true,
+      valid: false,
+      message: buildErrorMessage(error, '代理邀请码校验失败'),
+      agentDisplayName: '',
+      packagePrices: {}
+    }
+  } finally {
+    isAgentQuoteLoading.value = false
   }
 }
 
@@ -3029,6 +3100,7 @@ async function handleRenameProjectTemplate(payload) {
 
 function openLicensePurchase() {
   activeGeneratorMenu.value = ''
+  resetAgentQuoteState()
   commerceOrderModalMode.value = 'software'
   commerceOrderModalVisible.value = true
 }
@@ -3124,6 +3196,8 @@ async function handleClearPermission() {
     activationForm.value.customerName = ''
     activationForm.value.contact = ''
     activationForm.value.inviteCode = ''
+    activationForm.value.agentInviteCode = ''
+    resetAgentQuoteState()
     permissionActivationModalVisible.value = false
     await loadActivationState()
     await loadUserAgreementState()
@@ -3175,6 +3249,9 @@ function handleActivationFormUpdate({ field, value }) {
   }
 
   activationForm.value[field] = value
+  if (field === 'agentInviteCode') {
+    resetAgentQuoteState()
+  }
 }
 
 async function handleCreateRecharge() {
@@ -3395,12 +3472,15 @@ onUnmounted(() => {
       :is-software-order-submitting="isSoftwareOrderSubmitting"
       :is-compute-package-order-submitting="isComputePackageOrderSubmitting"
       :is-recharge-submitting="isRechargeSubmitting"
+      :is-agent-quote-loading="isAgentQuoteLoading"
+      :agent-quote-state="agentQuoteState"
       @close="closeCommerceOrderModal"
       @submit-software-order="handleCreateSoftwareOrder"
       @submit-compute-order="handleCreateComputePackageOrder"
       @submit-recharge-order="handleCreateRecharge"
       @update-activation-form="handleActivationFormUpdate"
       @update-recharge-form="handleRechargeFormUpdate"
+      @verify-agent-invite-code="handleVerifyAgentInviteCode"
     />
 
     <ModelPricingModal

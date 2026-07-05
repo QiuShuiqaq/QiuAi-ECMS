@@ -206,6 +206,10 @@ function registerLicenseIpc({
     })
   })
 
+  ipcMain.handle(ipcChannels.LICENSE_QUOTE_AGENT_PRICES, async (_event, payload = {}) => {
+    return remoteLicensePlatformClient.quoteAgentPrices(payload)
+  })
+
   ipcMain.handle(ipcChannels.LICENSE_CREATE_ORDER, async (_event, payload = {}) => {
     return remoteLicensePlatformClient.createSoftwareOrder(
       await buildSoftwareOrderPayload({

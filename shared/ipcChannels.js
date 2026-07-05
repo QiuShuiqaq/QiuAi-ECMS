@@ -4,6 +4,7 @@ module.exports = {
   LICENSE_REMOTE_ACTIVATE: 'license:remote-activate',
   LICENSE_CLEAR_LOCAL_AUTH: 'license:clear-local-auth',
   LICENSE_LIST_PACKAGES: 'license:list-packages',
+  LICENSE_QUOTE_AGENT_PRICES: 'license:quote-agent-prices',
   LICENSE_CREATE_ORDER: 'license:create-order',
   LICENSE_GET_ORDER: 'license:get-order',
   LICENSE_GET_USER_AGREEMENT_STATUS: 'license:get-user-agreement-status',
