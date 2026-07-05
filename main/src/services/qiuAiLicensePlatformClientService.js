@@ -260,6 +260,11 @@ function createServiceError(code, message, details = {}) {
   return error
 }
 
+const GENERATION_JOB_CREATE_TIMEOUT_MS = 30000
+const GENERATION_JOB_READ_TIMEOUT_MS = 30000
+const GENERATION_ARTIFACT_DOWNLOAD_TIMEOUT_MS = 120000
+const SERVICE_CAPACITY_PROFILE_TIMEOUT_MS = 15000
+
 function createQiuAiLicensePlatformClientService({
   baseUrl,
   getBaseUrl,
@@ -285,7 +290,7 @@ function createQiuAiLicensePlatformClientService({
     return resolvedBaseUrl
   }
 
-  async function request(method, path, { params, data, sessionToken = '' } = {}) {
+  async function request(method, path, { params, data, sessionToken = '', timeoutOverrideMs } = {}) {
     try {
       const currentBaseUrl = resolveBaseUrl()
       const response = await requestClient.request({
@@ -293,7 +298,7 @@ function createQiuAiLicensePlatformClientService({
         url: `${currentBaseUrl}${path}`,
         params,
         data,
-        timeout: timeoutMs,
+        timeout: Number(timeoutOverrideMs) > 0 ? Number(timeoutOverrideMs) : timeoutMs,
         headers: {
           'Content-Type': 'application/json',
           ...buildSessionHeaders(sessionToken)
@@ -315,7 +320,7 @@ function createQiuAiLicensePlatformClientService({
     }
   }
 
-  async function requestBinary(pathOrUrl, { params, sessionToken = '' } = {}) {
+  async function requestBinary(pathOrUrl, { params, sessionToken = '', timeoutOverrideMs } = {}) {
     try {
       const normalizedPathOrUrl = trimString(pathOrUrl)
       const currentBaseUrl = resolveBaseUrl()
@@ -325,7 +330,7 @@ function createQiuAiLicensePlatformClientService({
           ? normalizedPathOrUrl
           : `${currentBaseUrl}${normalizedPathOrUrl}`,
         params,
-        timeout: timeoutMs,
+        timeout: Number(timeoutOverrideMs) > 0 ? Number(timeoutOverrideMs) : timeoutMs,
         responseType: 'arraybuffer',
         headers: buildSessionHeaders(sessionToken)
       })
@@ -362,7 +367,8 @@ function createQiuAiLicensePlatformClientService({
 
   async function getServiceCapacityProfile({ sessionToken = '' } = {}) {
     return request('get', '/api/service-capacity/profile', {
-      sessionToken
+      sessionToken,
+      timeoutOverrideMs: SERVICE_CAPACITY_PROFILE_TIMEOUT_MS
     })
   }
 
@@ -474,7 +480,8 @@ function createQiuAiLicensePlatformClientService({
 
   async function createGenerationJob(payload = {}) {
     const response = await request('post', '/api/generation/jobs', {
-      data: normalizeGenerationJobPayload(payload)
+      data: normalizeGenerationJobPayload(payload),
+      timeoutOverrideMs: GENERATION_JOB_CREATE_TIMEOUT_MS
     })
     return normalizeGenerationJobResponse(response)
   }
@@ -544,7 +551,8 @@ function createQiuAiLicensePlatformClientService({
       sessionToken,
       params: {
         mode: trimString(mode || 'full') || 'full'
-      }
+      },
+      timeoutOverrideMs: GENERATION_JOB_READ_TIMEOUT_MS
     })
     return normalizeGenerationJobResponse(response)
   }
@@ -554,6 +562,7 @@ function createQiuAiLicensePlatformClientService({
     const artifactUrl = normalizedDownloadUrl || `/api/generation/artifacts/${trimString(id)}/download`
     return requestBinary(artifactUrl, {
       sessionToken,
+      timeoutOverrideMs: GENERATION_ARTIFACT_DOWNLOAD_TIMEOUT_MS,
       params: normalizedDownloadUrl && isAbsoluteHttpUrl(normalizedDownloadUrl)
         ? undefined
         : undefined
