@@ -10,6 +10,14 @@ function sleep(durationMs) {
   })
 }
 
+function buildWorkspaceDraftSnapshot(draft = {}, extra = {}) {
+  const workspaceRunGroupId = trimString(draft.workspaceRunGroupId || '')
+  return {
+    ...(workspaceRunGroupId ? { workspaceRunGroupId } : {}),
+    ...extra
+  }
+}
+
 function trimString(value = '') {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -383,6 +391,7 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
         jobType: 'IMAGE_SET',
         menuKey: 'series-generate',
         draftSnapshot: {
+          ...buildWorkspaceDraftSnapshot(draft, {}),
           model: trimString(draft.model || 'gpt-image-2'),
           size: trimString(draft.size || '1:1'),
           batchCount,
@@ -496,6 +505,7 @@ function buildVideoPayload({ draft, sessionToken }) {
         jobType: 'VIDEO',
         menuKey: 'video-generate',
         draftSnapshot: {
+          ...buildWorkspaceDraftSnapshot(draft, {}),
           model: trimString(draft.model || 'MiniMax-Hailuo-2.3-Fast'),
           duration: trimString(draft.duration || '6s'),
           resolution: trimString(draft.resolution || '768P')
@@ -618,6 +628,7 @@ function buildTextPayload({ draft, sessionToken }) {
         jobType: 'TEXT',
         menuKey: 'workspace',
         draftSnapshot: {
+          ...buildWorkspaceDraftSnapshot(draft, {}),
           model,
           quantity
         },

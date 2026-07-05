@@ -222,7 +222,7 @@ const activeTask = computed(() => {
 
 const queueTasks = computed(() => {
   return normalizedTasks.value
-    .filter((task) => isQueuedTaskStatus(task.status))
+    .filter((task) => isQueuedTaskStatus(task.status) || isRunningTaskStatus(task.status))
     .slice(0, 12)
 })
 

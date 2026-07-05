@@ -1894,6 +1894,7 @@ function buildWorkspaceDescriptionTaskDraft(draft = {}, context = {}, titleResul
 
 function buildStandaloneTitleTaskDraft(draft = {}) {
   return {
+    workspaceRunGroupId: String(draft.workspaceRunGroupId || '').trim(),
     taskKind: 'title',
     model: draft.model,
     quantity: Math.max(1, Number(draft.titleQuantity) || 1),
@@ -1912,6 +1913,7 @@ function buildStandaloneTitleTaskDraft(draft = {}) {
 
 function buildStandaloneDescriptionTaskDraft(draft = {}) {
   return {
+    workspaceRunGroupId: String(draft.workspaceRunGroupId || '').trim(),
     taskKind: 'description',
     model: draft.model,
     quantity: Math.max(1, Number(draft.descriptionQuantity) || 1),
@@ -1939,6 +1941,7 @@ function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [
 
   return {
     ...draft,
+    workspaceRunGroupId: String(draft.workspaceRunGroupId || '').trim(),
     imageLanguage,
     sourceImage: draft.sourceImage || null,
     model: draft.imageModel || 'gpt-image-2',
@@ -1977,6 +1980,7 @@ function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [
 function buildWorkspaceVideoTaskDraft(draft = {}, context = {}, titleResults = [], descriptionResults = []) {
   return {
     ...draft,
+    workspaceRunGroupId: String(draft.workspaceRunGroupId || '').trim(),
     sourceImage: draft.sourceImage || null,
     model: draft.videoModel || 'MiniMax-Hailuo-2.3-Fast',
     prompt: [
@@ -2275,6 +2279,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   onProgress
 }) {
   if (menuKey === 'workspace') {
+    const workspaceRunGroupId = String(taskId || '').trim()
     const enabledSteps = normalizeProjectEnabledSteps(draft.enabledSteps)
     const nowIso = () => new Date().toISOString()
     const workspaceStepStates = createWorkspaceStepStates(enabledSteps, nowIso)
@@ -2291,6 +2296,10 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     })
 
     const context = buildWorkspaceExecutionContext(draft)
+    const workspaceDraft = {
+      ...draft,
+      workspaceRunGroupId
+    }
     const emptyTextResults = {
       textResults: [],
       usageSummary: null
@@ -2317,7 +2326,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       ? runWorkspaceTextStep({
           stepKey: 'title',
           taskId: `${taskId}-title`,
-          draft: buildWorkspaceTitleTaskDraft(draft, context),
+          draft: buildWorkspaceTitleTaskDraft(workspaceDraft, context),
           workspaceStepStates,
           workspaceErrors,
           nowIso,
@@ -2328,7 +2337,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     const imagePromise = enabledSteps.image
       ? runWorkspaceImageStep({
           taskId: `${taskId}-series`,
-          draft: buildWorkspaceImageTaskDraft(draft, context),
+          draft: buildWorkspaceImageTaskDraft(workspaceDraft, context),
           outputDirectory,
           workspaceStepStates,
           workspaceErrors,
@@ -2343,7 +2352,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       ? await runWorkspaceTextStep({
           stepKey: 'description',
           taskId: `${taskId}-description`,
-          draft: buildWorkspaceDescriptionTaskDraft(draft, context, titleResults.textResults),
+          draft: buildWorkspaceDescriptionTaskDraft(workspaceDraft, context, titleResults.textResults),
           workspaceStepStates,
           workspaceErrors,
           nowIso,
@@ -2355,7 +2364,7 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
     const videoResults = enabledSteps.video
       ? await runWorkspaceVideoStep({
           taskId: `${taskId}-video`,
-          draft: buildWorkspaceVideoTaskDraft(draft, context, titleResults.textResults, descriptionResults.textResults),
+          draft: buildWorkspaceVideoTaskDraft(workspaceDraft, context, titleResults.textResults, descriptionResults.textResults),
           outputDirectory,
           workspaceStepStates,
           workspaceErrors,
