@@ -237,6 +237,24 @@ async function fileToDataUrl(filePath = '', { readFile, getMimeTypeFromPath }) {
   return `data:${mimeType};base64,${buffer.toString('base64')}`
 }
 
+async function fileToRemoteSourceDataUrl(filePath = '', {
+  readFile,
+  getMimeTypeFromPath,
+  prepareSourceImageDataUrl
+}) {
+  if (typeof prepareSourceImageDataUrl === 'function') {
+    return prepareSourceImageDataUrl({
+      filePath,
+      minimumShortSidePx: 300
+    })
+  }
+
+  return fileToDataUrl(filePath, {
+    readFile,
+    getMimeTypeFromPath
+  })
+}
+
 function extensionFromMimeType(mimeType = '', assetType = '') {
   const normalizedMimeType = trimString(mimeType).toLowerCase()
 
@@ -373,16 +391,17 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
   return {
     sessionToken,
     sourceImagePath,
-    buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
+    buildJobPayload: async ({ readFile, getMimeTypeFromPath, prepareSourceImageDataUrl, serviceCapacityProfile }) => {
       if (!outputDescriptors.length || (!hasRunnableSourceImage(draft.sourceImage) && !trimString(sourceImagePath))) {
         throw new Error('Source image path is required.')
       }
 
       const descriptorsWithDataUrl = await Promise.all(outputDescriptors.map(async (descriptor) => ({
         ...descriptor,
-        sourceImageDataUrl: await fileToDataUrl(descriptor.sourceImagePath, {
+        sourceImageDataUrl: await fileToRemoteSourceDataUrl(descriptor.sourceImagePath, {
           readFile,
-          getMimeTypeFromPath
+          getMimeTypeFromPath,
+          prepareSourceImageDataUrl
         })
       })))
 
@@ -494,10 +513,11 @@ function buildVideoPayload({ draft, sessionToken }) {
   return {
     sessionToken,
     sourceImagePath,
-    buildJobPayload: async ({ readFile, getMimeTypeFromPath, serviceCapacityProfile }) => {
-      const sourceImageDataUrl = await fileToDataUrl(sourceImagePath, {
+    buildJobPayload: async ({ readFile, getMimeTypeFromPath, prepareSourceImageDataUrl, serviceCapacityProfile }) => {
+      const sourceImageDataUrl = await fileToRemoteSourceDataUrl(sourceImagePath, {
         readFile,
-        getMimeTypeFromPath
+        getMimeTypeFromPath,
+        prepareSourceImageDataUrl
       })
 
       return {
@@ -693,6 +713,7 @@ async function runRemoteJob({
   remoteLicensePlatformClient,
   readFile,
   getMimeTypeFromPath,
+  prepareSourceImageDataUrl,
   pollIntervalMs,
   pollTimeoutMs
 }) {
@@ -704,6 +725,7 @@ async function runRemoteJob({
   const jobPayload = await payloadBuilder.buildJobPayload({
     readFile,
     getMimeTypeFromPath,
+    prepareSourceImageDataUrl,
     serviceCapacityProfile
   })
   const createdJob = await remoteLicensePlatformClient.createGenerationJob(jobPayload)
@@ -846,6 +868,7 @@ function createCloudGenerationService({
   remoteLicensePlatformClient,
   readFile = fs.readFile,
   getMimeTypeFromPath,
+  prepareSourceImageDataUrl,
   pollIntervalMs = 10000,
   pollTimeoutMs = 30 * 60 * 1000
 }) {
@@ -865,6 +888,7 @@ function createCloudGenerationService({
       remoteLicensePlatformClient,
       readFile,
       getMimeTypeFromPath,
+      prepareSourceImageDataUrl,
       pollIntervalMs,
       pollTimeoutMs
     })
@@ -880,6 +904,7 @@ function createCloudGenerationService({
       remoteLicensePlatformClient,
       readFile,
       getMimeTypeFromPath,
+      prepareSourceImageDataUrl,
       pollIntervalMs,
       pollTimeoutMs
     })

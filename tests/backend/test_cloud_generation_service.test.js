@@ -353,6 +353,158 @@ describe('cloudGenerationService', () => {
     })
   })
 
+  it('normalizes small remote source images before image job submission when a preparation hook is provided', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-normalized-1',
+      status: 'SUCCEEDED'
+    })
+    remoteClient.getGenerationJob.mockResolvedValue({
+      id: 'job-image-normalized-1',
+      status: 'SUCCEEDED',
+      groups: [
+        {
+          groupIndex: 1,
+          status: 'SUCCEEDED',
+          completedItemCount: 1,
+          failedItemCount: 0
+        }
+      ],
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'SUCCEEDED',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Result 1'
+        }
+      ],
+      artifacts: [
+        {
+          id: 'artifact-image-normalized-1',
+          groupIndex: 1,
+          slotIndex: 1,
+          assetType: 'IMAGE',
+          metadata: {
+            mimeType: 'image/png',
+            title: 'Result 1',
+            providerModel: 'gpt-image-2'
+          }
+        }
+      ]
+    })
+    remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('image-binary'))
+
+    const prepareSourceImageDataUrl = vi.fn().mockResolvedValue('data:image/png;base64,normalized-image')
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+      getMimeTypeFromPath: () => 'image/jpeg',
+      prepareSourceImageDataUrl
+    })
+
+    await service.generateImageResults({
+      menuKey: 'series-generate',
+      draft: {
+        batchCount: 1,
+        generateCount: 1,
+        model: 'gpt-image-2',
+        size: '1:1',
+        prompt: 'test prompt',
+        sourceImage: {
+          storedPath: 'F:/tmp/source-small.jpg'
+        },
+        promptAssignments: [
+          {
+            imageType: 'main',
+            prompt: 'test prompt'
+          }
+        ]
+      },
+      taskId: 'task-remote-image-normalized-1',
+      outputDirectory: 'F:/tmp/qiuai-cloud-generation'
+    })
+
+    expect(prepareSourceImageDataUrl).toHaveBeenCalledWith({
+      filePath: 'F:/tmp/source-small.jpg',
+      minimumShortSidePx: 300
+    })
+    expect(remoteClient.createGenerationJob.mock.calls[0][0].items[0].inputSnapshot.urls[0]).toBe('data:image/png;base64,normalized-image')
+  })
+
+  it('normalizes small remote source images before video job submission when a preparation hook is provided', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-video-normalized-1',
+      status: 'SUCCEEDED'
+    })
+    remoteClient.getGenerationJob.mockResolvedValue({
+      id: 'job-video-normalized-1',
+      status: 'SUCCEEDED',
+      groups: [
+        {
+          groupIndex: 1,
+          status: 'SUCCEEDED',
+          completedItemCount: 1,
+          failedItemCount: 0
+        }
+      ],
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'SUCCEEDED',
+          assetType: 'VIDEO',
+          providerModel: 'MiniMax-Hailuo-2.3-Fast',
+          title: 'Video'
+        }
+      ],
+      artifacts: [
+        {
+          id: 'artifact-video-normalized-1',
+          groupIndex: 1,
+          slotIndex: 1,
+          assetType: 'VIDEO',
+          metadata: {
+            mimeType: 'video/mp4',
+            title: 'Video',
+            providerModel: 'MiniMax-Hailuo-2.3-Fast'
+          }
+        }
+      ]
+    })
+    remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('video-binary'))
+
+    const prepareSourceImageDataUrl = vi.fn().mockResolvedValue('data:image/png;base64,normalized-video-frame')
+    const service = createCloudGenerationService({
+      settingsService: createSettingsService(),
+      remoteLicensePlatformClient: remoteClient,
+      readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+      getMimeTypeFromPath: () => 'image/jpeg',
+      prepareSourceImageDataUrl
+    })
+
+    await service.generateVideoResults({
+      draft: {
+        model: 'MiniMax-Hailuo-2.3-Fast',
+        prompt: 'video prompt',
+        sourceImage: {
+          storedPath: 'F:/tmp/video-source-small.jpg'
+        }
+      },
+      taskId: 'task-remote-video-normalized-1',
+      outputDirectory: 'F:/tmp/qiuai-cloud-generation'
+    })
+
+    expect(prepareSourceImageDataUrl).toHaveBeenCalledWith({
+      filePath: 'F:/tmp/video-source-small.jpg',
+      minimumShortSidePx: 300
+    })
+    expect(remoteClient.createGenerationJob.mock.calls[0][0].items[0].inputSnapshot.firstFrameImageDataUrl).toBe('data:image/png;base64,normalized-video-frame')
+  })
+
   it('passes through artifact downloadUrl so completed assets can be fetched directly when the platform provides one', async () => {
     const remoteClient = createRemoteClient()
     remoteClient.createGenerationJob.mockResolvedValue({

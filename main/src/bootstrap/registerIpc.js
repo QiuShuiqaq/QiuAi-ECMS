@@ -19,8 +19,10 @@ const { createCloudGenerationService } = require('../services/cloudGenerationSer
 const { createStudioTaskManagerService } = require('../services/studioTaskManagerService')
 const { createDataTraceService } = require('../services/dataTraceService')
 const { attachConsoleCapture } = require('../services/consoleCaptureService')
+const { createRemoteImagePreparationService } = require('../services/remoteImagePreparationService')
 const { ensureDataLayout } = require('../services/dataPathsService')
 const { getMimeTypeFromPath } = require('../services/localInputAssetService')
+const fs = require('node:fs/promises')
 
 function registerIpc() {
   ensureDataLayout().catch(() => {})
@@ -58,10 +60,15 @@ function registerIpc() {
   })
   const promptTemplateService = createPromptTemplateStoreService({ store: promptStore })
   const studioTaskManagerService = createStudioTaskManagerService()
+  const remoteImagePreparationService = createRemoteImagePreparationService({
+    readFile: fs.readFile,
+    getMimeTypeFromPath
+  })
   const cloudGenerationService = createCloudGenerationService({
     settingsService,
     remoteLicensePlatformClient,
-    getMimeTypeFromPath
+    getMimeTypeFromPath,
+    prepareSourceImageDataUrl: remoteImagePreparationService.prepareSourceImageDataUrl
   })
   const studioWorkspaceService = createStudioWorkspaceService({
     store: studioStore,

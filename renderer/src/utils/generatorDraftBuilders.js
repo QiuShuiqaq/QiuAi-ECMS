@@ -12,12 +12,20 @@ function hasRunnableLocalSourceImage(sourceImage) {
 }
 
 function resolveWorkspaceSourceImage(project, workspaceDraft = {}) {
+  const projectSourceImage = Array.isArray(project?.assets?.sourceImages)
+    ? project.assets.sourceImages.find((item) => hasRunnableLocalSourceImage(item)) || project.assets.sourceImages[0] || null
+    : null
   const draftSourceImage = workspaceDraft?.sourceImage || null
+
+  if (hasRunnableLocalSourceImage(projectSourceImage)) {
+    return projectSourceImage
+  }
+
   if (hasRunnableLocalSourceImage(draftSourceImage)) {
     return draftSourceImage
   }
 
-  return project?.assets?.sourceImages?.[0] || draftSourceImage || null
+  return projectSourceImage || draftSourceImage || null
 }
 
 export function buildSeriesPromptAssignments({

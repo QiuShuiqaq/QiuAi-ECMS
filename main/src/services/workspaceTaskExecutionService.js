@@ -38,21 +38,100 @@ function createWorkspaceTaskExecutionService({
     )
   }
 
+  function resolveLinkedProjectSourceImages(project = null) {
+    const sourceImages = Array.isArray(project?.assets?.sourceImages)
+      ? project.assets.sourceImages
+      : []
+
+    return sourceImages.filter((item) => hasLocalSourcePath(item))
+  }
+
+  function hydrateDraftSourceAssetsFromProjectState(menuKey = '', draft = {}) {
+    const normalizedProjectId = String(draft?.projectId || '').trim()
+    if (!normalizedProjectId) {
+      return draft
+    }
+
+    const linkedProject = (getStoredState()?.productProjects || []).find((project) => {
+      return String(project?.id || '').trim() === normalizedProjectId
+    }) || null
+    const projectSourceImages = resolveLinkedProjectSourceImages(linkedProject)
+
+    if (!projectSourceImages.length) {
+      return draft
+    }
+
+    if (menuKey === 'workspace' || menuKey === 'video-generate') {
+      if (hasLocalSourcePath(draft.sourceImage)) {
+        return draft
+      }
+
+      return {
+        ...draft,
+        sourceImage: projectSourceImages[0]
+      }
+    }
+
+    if (menuKey !== 'series-generate') {
+      return draft
+    }
+
+    const currentSeriesSourceItems = Array.isArray(draft.seriesSourceItems)
+      ? draft.seriesSourceItems
+      : []
+    const hasSeriesSourceItems = currentSeriesSourceItems.some((item) => hasLocalSourcePath(item?.sourceImage))
+    const nextSourceImage = hasLocalSourcePath(draft.sourceImage)
+      ? draft.sourceImage
+      : projectSourceImages[0]
+
+    if (hasSeriesSourceItems) {
+      return {
+        ...draft,
+        sourceImage: nextSourceImage
+      }
+    }
+
+    const promptAssignments = Array.isArray(draft.promptAssignments) ? draft.promptAssignments : []
+    const fallbackSeriesSourceItems = projectSourceImages.map((sourceImage, index) => {
+      const assignment = promptAssignments[index] || {}
+      const existingItem = currentSeriesSourceItems[index] || {}
+
+      return {
+        ...existingItem,
+        id: existingItem.id || sourceImage.id || `series-source-${index + 1}`,
+        sourceImage,
+        templateId: existingItem.templateId || assignment.templateId || draft.imageTemplateId || '',
+        prompt: existingItem.prompt || assignment.prompt || draft.prompt || '',
+        size: existingItem.size || draft.size || '1:1',
+        imageType: existingItem.imageType || assignment.imageType || '',
+        differenceLevel: existingItem.differenceLevel || assignment.differenceLevel || 'off'
+      }
+    })
+
+    return {
+      ...draft,
+      sourceImage: nextSourceImage,
+      seriesSourceItems: fallbackSeriesSourceItems
+    }
+  }
+
   async function prepareDraftForExecution({ menuKey, draft, inputDirectory, outputDirectory }) {
     await ensureDirectory(inputDirectory)
     await ensureDirectory(outputDirectory)
 
+    const draftWithResolvedSourceAssets = hydrateDraftSourceAssetsFromProjectState(menuKey, draft)
+
     const sourcePaths = []
     const sourcePathAssignments = []
 
-    if (menuKey === 'workspace' && hasLocalSourcePath(draft.sourceImage)) {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+    if (menuKey === 'workspace' && hasLocalSourcePath(draftWithResolvedSourceAssets.sourceImage)) {
+      const sourcePath = draftWithResolvedSourceAssets.sourceImage?.path || draftWithResolvedSourceAssets.sourceImage?.storedPath || ''
       sourcePathAssignments.push({ type: 'workspace-source' })
       sourcePaths.push(sourcePath)
     }
 
     if (menuKey === 'series-generate') {
-      const seriesSourceItems = Array.isArray(draft.seriesSourceItems) ? draft.seriesSourceItems : []
+      const seriesSourceItems = Array.isArray(draftWithResolvedSourceAssets.seriesSourceItems) ? draftWithResolvedSourceAssets.seriesSourceItems : []
       if (seriesSourceItems.length) {
         seriesSourceItems.forEach((item, index) => {
           const sourcePath = item?.sourceImage?.path || item?.sourceImage?.storedPath || ''
@@ -62,7 +141,7 @@ function createWorkspaceTaskExecutionService({
           }
         })
       } else {
-        const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+        const sourcePath = draftWithResolvedSourceAssets.sourceImage?.path || draftWithResolvedSourceAssets.sourceImage?.storedPath || ''
         if (sourcePath) {
           sourcePathAssignments.push({ type: 'series-generate-source' })
           sourcePaths.push(sourcePath)
@@ -71,7 +150,7 @@ function createWorkspaceTaskExecutionService({
     }
 
     if (menuKey === 'video-generate') {
-      const sourcePath = draft.sourceImage?.path || draft.sourceImage?.storedPath || ''
+      const sourcePath = draftWithResolvedSourceAssets.sourceImage?.path || draftWithResolvedSourceAssets.sourceImage?.storedPath || ''
       if (sourcePath) {
         sourcePathAssignments.push({ type: 'video-generate-source' })
         sourcePaths.push(sourcePath)
@@ -85,7 +164,7 @@ function createWorkspaceTaskExecutionService({
         })
       : []
 
-    const preparedDraft = JSON.parse(JSON.stringify(draft))
+    const preparedDraft = JSON.parse(JSON.stringify(draftWithResolvedSourceAssets))
     sourcePathAssignments.forEach((assignment, index) => {
       const storedPath = persistedSourcePaths[index] || ''
       if (!storedPath) {
@@ -172,6 +251,7 @@ function createWorkspaceTaskExecutionService({
       if (executionController.isStopped()) {
         return
       }
+      let intermediatePersistPromise = Promise.resolve()
 
       const handleTaskProgress = async ({ progress, status, error = '', workspaceStepStates = null } = {}) => {
         if (executionController.isStopped()) {
@@ -245,12 +325,75 @@ function createWorkspaceTaskExecutionService({
         })
       }
 
+      const handleIntermediateResult = async (intermediateResultPayload = null) => {
+        if (executionController.isStopped() || menuKey !== 'workspace' || !intermediateResultPayload) {
+          return
+        }
+
+        intermediatePersistPromise = intermediatePersistPromise
+          .catch(() => undefined)
+          .then(async () => {
+            const {
+              exportItems,
+              persistedResultPayload
+            } = await saveStudioResults({
+              menuKey,
+              taskId,
+              draft: preparedDraft,
+              resultPayload: intermediateResultPayload,
+              outputDirectory,
+              writeFile
+            })
+            if (executionController.isStopped()) {
+              return
+            }
+
+            const latestState = getStoredState()
+            let nextProductProjects = latestState.productProjects
+
+            if (preparedDraft.projectId && typeof applyTaskResultToProjects === 'function') {
+              nextProductProjects = applyTaskResultToProjects({
+                latestState,
+                preparedDraft,
+                taskId,
+                menuKey,
+                enrichedResultPayload: persistedResultPayload,
+                createdAt
+              })
+            }
+
+            await persistTaskAndState({
+              task: latestRunningTask,
+              resultsByMenuPatch: {
+                [menuKey]: persistedResultPayload
+              },
+              exportItemsByMenuPatch: {
+                [menuKey]: exportItems
+              },
+              productProjectsPatch: nextProductProjects,
+              activeProductProjectId: preparedDraft.projectId || null
+            })
+          })
+          .catch(async (error) => {
+            await safeRuntimeLog(runtimeLogger, {
+              level: 'warn',
+              event: 'studio-workspace-intermediate-persist-failed',
+              taskId,
+              menuKey,
+              error: String(error?.message || error || 'Unknown intermediate persist error')
+            })
+          })
+
+        return intermediatePersistPromise
+      }
+
       const resultPayloadOutcome = await Promise.race([
         Promise.resolve(buildResultPayload(menuKey, preparedDraft, taskId, outputDirectory, {
           generateImageResults,
           generateTextResults,
           generateVideoResults,
-          onProgress: handleTaskProgress
+          onProgress: handleTaskProgress,
+          onIntermediateResult: handleIntermediateResult
         })).then((resultPayload) => ({
           type: 'result',
           resultPayload
@@ -270,6 +413,7 @@ function createWorkspaceTaskExecutionService({
       }
 
       const resultPayload = resultPayloadOutcome.resultPayload
+      await intermediatePersistPromise.catch(() => undefined)
       if (executionController.isStopped()) {
         return
       }

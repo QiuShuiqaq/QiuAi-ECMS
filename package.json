@@ -1,7 +1,7 @@
 {
   "name": "qiuai",
   "productName": "QiuAi",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Desktop image generation tool for gpt-image-2.",
   "author": {
@@ -9,6 +9,7 @@
   },
   "main": "main/main.js",
   "type": "commonjs",
+  "packageManager": "npm@11.12.1",
   "scripts": {
     "dev": "node scripts/dev-runner.js",
     "sync:icon": "node scripts/sync-app-icon.mjs",
@@ -21,7 +22,7 @@
   "build": {
     "appId": "com.qiuai.desktop",
     "directories": {
-      "output": "../package/QiuAi1.0.8-win"
+      "output": "../package/QiuAi1.0.9-win"
     },
     "files": [
       "main/**/*",

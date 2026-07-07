@@ -2276,7 +2276,8 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
   generateImageResults,
   generateTextResults,
   generateVideoResults,
-  onProgress
+  onProgress,
+  onIntermediateResult
 }) {
   if (menuKey === 'workspace') {
     const workspaceRunGroupId = String(taskId || '').trim()
@@ -2322,6 +2323,28 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
         description: '\u672a\u63d0\u4f9b\u6837\u56fe\uff0c\u8df3\u8fc7\u89c6\u9891\u751f\u6210'
       }
     }
+    const workspaceStageResults = {
+      titleResults: emptyTextResults,
+      descriptionResults: emptyTextResults,
+      imageResults: emptyImageResults,
+      videoResults: emptyVideoResults
+    }
+    const emitIntermediateResult = async () => {
+      if (typeof onIntermediateResult !== 'function') {
+        return
+      }
+
+      await onIntermediateResult(buildWorkspaceResultPayload({
+        taskId,
+        workspaceProjectName: context.workspaceProjectName,
+        titleResults: workspaceStageResults.titleResults,
+        descriptionResults: workspaceStageResults.descriptionResults,
+        imageResults: workspaceStageResults.imageResults,
+        videoResults: workspaceStageResults.videoResults,
+        workspaceStepStates,
+        workspaceErrors
+      }))
+    }
     const titlePromise = enabledSteps.title
       ? runWorkspaceTextStep({
           stepKey: 'title',
@@ -2332,6 +2355,10 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           nowIso,
           emitProgress,
           generateTextResults
+        }).then(async (results) => {
+          workspaceStageResults.titleResults = results
+          await emitIntermediateResult()
+          return results
         })
       : Promise.resolve(emptyTextResults)
     const imagePromise = enabledSteps.image
@@ -2344,10 +2371,15 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           nowIso,
           emitProgress,
           generateImageResults
+        }).then(async (results) => {
+          workspaceStageResults.imageResults = results
+          await emitIntermediateResult()
+          return results
         })
       : Promise.resolve(emptyImageResults)
 
     const titleResults = await titlePromise
+    workspaceStageResults.titleResults = titleResults
     const descriptionResults = enabledSteps.description
       ? await runWorkspaceTextStep({
           stepKey: 'description',
@@ -2360,7 +2392,10 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           generateTextResults
         })
       : emptyTextResults
+    workspaceStageResults.descriptionResults = descriptionResults
+    await emitIntermediateResult()
     const imageResults = await imagePromise
+    workspaceStageResults.imageResults = imageResults
     const videoResults = enabledSteps.video
       ? await runWorkspaceVideoStep({
           taskId: `${taskId}-video`,
@@ -2373,6 +2408,8 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           generateVideoResults
         })
       : emptyVideoResults
+    workspaceStageResults.videoResults = videoResults
+    await emitIntermediateResult()
 
     await emitProgress({
       progress: 100,
