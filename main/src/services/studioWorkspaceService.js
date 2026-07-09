@@ -2065,7 +2065,8 @@ async function runWorkspaceImageStep({
   workspaceErrors,
   nowIso,
   emitProgress,
-  generateImageResults
+  generateImageResults,
+  onPartialImageResults
 } = {}) {
   const emptyImageResults = {
     textResults: [],
@@ -2089,6 +2090,11 @@ async function runWorkspaceImageStep({
       draft,
       taskId,
       outputDirectory,
+      onPartialResult: async (partialResult) => {
+        if (typeof onPartialImageResults === 'function') {
+          await onPartialImageResults(partialResult)
+        }
+      },
       onProgress: async ({ progress, status } = {}) => {
         const mappedProgress = 18 + Math.round((Math.max(0, Number(progress) || 0) * 0.6))
         await emitProgress({
@@ -2361,23 +2367,6 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           return results
         })
       : Promise.resolve(emptyTextResults)
-    const imagePromise = enabledSteps.image
-      ? runWorkspaceImageStep({
-          taskId: `${taskId}-series`,
-          draft: buildWorkspaceImageTaskDraft(workspaceDraft, context),
-          outputDirectory,
-          workspaceStepStates,
-          workspaceErrors,
-          nowIso,
-          emitProgress,
-          generateImageResults
-        }).then(async (results) => {
-          workspaceStageResults.imageResults = results
-          await emitIntermediateResult()
-          return results
-        })
-      : Promise.resolve(emptyImageResults)
-
     const titleResults = await titlePromise
     workspaceStageResults.titleResults = titleResults
     const descriptionResults = enabledSteps.description
@@ -2394,10 +2383,28 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       : emptyTextResults
     workspaceStageResults.descriptionResults = descriptionResults
     await emitIntermediateResult()
-    const imageResults = await imagePromise
-    workspaceStageResults.imageResults = imageResults
-    const videoResults = enabledSteps.video
-      ? await runWorkspaceVideoStep({
+    const imagePromise = enabledSteps.image
+      ? runWorkspaceImageStep({
+          taskId: `${taskId}-series`,
+          draft: buildWorkspaceImageTaskDraft(workspaceDraft, context),
+          outputDirectory,
+          workspaceStepStates,
+          workspaceErrors,
+          nowIso,
+          emitProgress,
+          generateImageResults,
+          onPartialImageResults: async (partialResult) => {
+            workspaceStageResults.imageResults = partialResult
+            await emitIntermediateResult()
+          }
+        }).then(async (results) => {
+          workspaceStageResults.imageResults = results
+          await emitIntermediateResult()
+          return results
+        })
+      : Promise.resolve(emptyImageResults)
+    const videoPromise = enabledSteps.video
+      ? runWorkspaceVideoStep({
           taskId: `${taskId}-video`,
           draft: buildWorkspaceVideoTaskDraft(workspaceDraft, context, titleResults.textResults, descriptionResults.textResults),
           outputDirectory,
@@ -2407,7 +2414,10 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
           emitProgress,
           generateVideoResults
         })
-      : emptyVideoResults
+      : Promise.resolve(emptyVideoResults)
+    const imageResults = await imagePromise
+    workspaceStageResults.imageResults = imageResults
+    const videoResults = await videoPromise
     workspaceStageResults.videoResults = videoResults
     await emitIntermediateResult()
 
@@ -2450,7 +2460,10 @@ async function buildResultPayload(menuKey, draft, taskId, outputDirectory, {
       draft: normalizedDraft,
       taskId,
       outputDirectory,
-      onProgress
+      onProgress,
+      onPartialResult: typeof onIntermediateResult === 'function'
+        ? async (partialResult) => onIntermediateResult(partialResult)
+        : undefined
     })
   }
 

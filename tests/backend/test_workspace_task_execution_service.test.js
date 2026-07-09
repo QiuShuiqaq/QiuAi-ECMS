@@ -420,4 +420,109 @@ describe('workspaceTaskExecutionService', () => {
       ]
     })
   })
+
+  it('persists intermediate series generation results before the final task summary', async () => {
+    const saveCalls = []
+    const { service, savedStates, setState } = await createService({
+      buildTaskSummary: ({ taskId, resultPayload }) => ({
+        id: taskId,
+        status: 'completed',
+        progress: 100,
+        resultPayload
+      }),
+      buildResultPayload: async (_menuKey, _draft, taskId, _outputDirectory, { onIntermediateResult }) => {
+        await onIntermediateResult({
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: `${taskId}-group-1`,
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'partial',
+              completedCount: 1,
+              failedCount: 0,
+              outputs: [
+                {
+                  id: `${taskId}-image-1`,
+                  savedPath: 'F:/output/task-series-1/batch-01-slot-01-image.png',
+                  path: 'F:/output/task-series-1/batch-01-slot-01-image.png'
+                }
+              ]
+            }
+          ],
+          completionStatus: 'running',
+          summary: { title: 'partial image result' }
+        })
+
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: `${taskId}-group-1`,
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'partial',
+              completedCount: 1,
+              failedCount: 1,
+              outputs: [
+                {
+                  id: `${taskId}-image-1`,
+                  savedPath: 'F:/output/task-series-1/batch-01-slot-01-image.png',
+                  path: 'F:/output/task-series-1/batch-01-slot-01-image.png'
+                }
+              ]
+            }
+          ],
+          completionStatus: 'partial',
+          summary: { title: 'final partial image result' }
+        }
+      },
+      saveStudioResults: async ({ resultPayload }) => {
+        const marker = saveCalls.length + 1
+        saveCalls.push(resultPayload)
+        return {
+          exportItems: [{ id: `series-export-${marker}` }],
+          persistedResultPayload: {
+            ...resultPayload,
+            persistedMarker: marker
+          }
+        }
+      }
+    })
+    setState({
+      productProjects: [],
+      projectRuns: []
+    })
+
+    await service.runQueuedTaskExecution({
+      menuKey: 'series-generate',
+      draft: {},
+      taskId: 'task-series-1',
+      taskNumber: 'QAI-SERIES-001',
+      createdAt: '2026-06-21 12:00:00',
+      inputDirectory: 'F:/input/task-series-1',
+      outputDirectory: 'F:/output/task-series-1'
+    })
+
+    const resultStateWrites = savedStates.filter((payload) => payload.resultsByMenuPatch?.['series-generate'])
+    expect(resultStateWrites).toHaveLength(2)
+    expect(resultStateWrites[0]).toMatchObject({
+      resultsByMenuPatch: {
+        'series-generate': {
+          persistedMarker: 1,
+          completionStatus: 'running'
+        }
+      }
+    })
+    expect(resultStateWrites[1]).toMatchObject({
+      resultsByMenuPatch: {
+        'series-generate': {
+          persistedMarker: 2,
+          completionStatus: 'partial'
+        }
+      }
+    })
+  })
 })

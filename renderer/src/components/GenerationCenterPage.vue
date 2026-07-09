@@ -533,8 +533,9 @@ const currentProjectSteps = computed(() => {
     ? latestRun.stepStates
     : {}
   const resolveWorkspaceStepStatus = (stepKey, hasOutput) => {
-    if (hasOutput) return '已完成'
     const stepStatus = String(stepStates?.[stepKey]?.status || '').trim().toLowerCase()
+    if (hasOutput && stepStatus === 'running') return '生成中'
+    if (hasOutput) return '已完成'
     if (stepStatus === 'failed') return '失败'
     if (stepStatus === 'running') return '生成中'
     if (stepStatus === 'success') return '已完成'

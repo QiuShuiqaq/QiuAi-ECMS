@@ -368,6 +368,136 @@ describe('studioWorkspaceService', () => {
     expect(maxConcurrentExecutions).toBe(2)
   })
 
+  it('keeps workspace image tasks usable when only part of the image set finishes', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+    const generatedImagePath = path.resolve(outputRootDirectory, 'workspace-partial-image-1.png')
+    await fs.writeFile(generatedImagePath, 'workspace-partial-image')
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { image: 100 })
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      writeFile: async () => undefined,
+      createId: (() => {
+        let sequence = 0
+        return () => `workspace-partial-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260709-1001',
+      getNow: () => '2026-07-09T12:00:00.000Z',
+      generateImageResults: async ({ onPartialResult }) => {
+        const partialPayload = {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: 'workspace-partial-group-1',
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'partial',
+              completedCount: 1,
+              failedCount: 0,
+              pendingCount: 1,
+              outputs: [
+                {
+                  id: 'workspace-partial-image-1',
+                  title: 'Result 1',
+                  savedPath: generatedImagePath,
+                  path: generatedImagePath,
+                  sourceTag: 'generated'
+                }
+              ]
+            }
+          ],
+          completionStatus: 'running',
+          completedArtifactCount: 1,
+          expectedArtifactCount: 2,
+          summary: {
+            title: 'Image Sets 1',
+            description: '1/2'
+          }
+        }
+
+        if (typeof onPartialResult === 'function') {
+          await onPartialResult(partialPayload)
+        }
+
+        return {
+          ...partialPayload,
+          completionStatus: 'partial',
+          groupedResults: [
+            {
+              ...partialPayload.groupedResults[0],
+              failedCount: 1,
+              pendingCount: 0
+            }
+          ]
+        }
+      }
+    })
+
+    await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        taskName: '工作中心部分套图',
+        projectName: '工作中心部分套图',
+        productName: '露营灯',
+        sourceImage: {
+          name: 'camp-lamp.jpg',
+          path: 'C:/images/camp-lamp.jpg',
+          preview: 'preview-camp-lamp'
+        },
+        enabledSteps: {
+          title: false,
+          description: false,
+          image: true,
+          video: false
+        },
+        generateCount: 2,
+        promptAssignments: [
+          {
+            id: 'workspace-image-1',
+            imageType: '商品主图',
+            templateId: 'image-main',
+            prompt: '生成商品主图'
+          },
+          {
+            id: 'workspace-image-2',
+            imageType: '细节图',
+            templateId: 'image-detail',
+            prompt: '生成细节图'
+          }
+        ]
+      }
+    })
+
+    const task = await service.createTask({ menuKey: 'workspace' })
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const completedTask = snapshot.tasks.find((item) => item.id === task.id)
+
+    expect(completedTask).toBeTruthy()
+    expect(completedTask.status).not.toBe('澶辫触')
+    expect(snapshot.resultsByMenu.workspace.groupedResults[0]).toMatchObject({
+      status: 'partial',
+      completedCount: 1,
+      failedCount: 1
+    })
+    expect(snapshot.resultsByMenu.workspace.groupedResults[0].outputs).toHaveLength(1)
+    expect(snapshot.resultsByMenu.workspace.workspaceErrors).toEqual([])
+  })
+
   it('normalizes legacy stored projects with the new generation config and run record fields', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()

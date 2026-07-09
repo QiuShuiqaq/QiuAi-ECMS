@@ -274,6 +274,12 @@ function buildArtifactFileName(artifact = {}, extension = '') {
   return `batch-${String(groupIndex).padStart(2, '0')}-slot-${String(slotIndex).padStart(2, '0')}-${assetType}${extension}`
 }
 
+function buildArtifactKey(artifact = {}) {
+  const groupIndex = Math.max(1, Number(artifact.groupIndex) || 1)
+  const slotIndex = Math.max(1, Number(artifact.slotIndex) || 1)
+  return `${groupIndex}:${slotIndex}`
+}
+
 async function saveArtifactToDirectory({
   artifact,
   artifactBuffer,
@@ -383,6 +389,92 @@ function mapGroupStatus(status = '') {
   return 'running'
 }
 
+function deriveJobGroups(job = {}, downloadedArtifacts = [], phase = 'final') {
+  const items = Array.isArray(job.items) ? job.items : []
+  const explicitGroups = Array.isArray(job.groups) ? job.groups : []
+  const artifactKeySet = new Set(downloadedArtifacts.map((artifact) => buildArtifactKey(artifact)))
+  const groupIndexSet = new Set()
+
+  explicitGroups.forEach((group) => {
+    groupIndexSet.add(Math.max(1, Number(group?.groupIndex) || 1))
+  })
+  items.forEach((item) => {
+    groupIndexSet.add(Math.max(1, Number(item?.groupIndex) || 1))
+  })
+  downloadedArtifacts.forEach((artifact) => {
+    groupIndexSet.add(Math.max(1, Number(artifact?.groupIndex) || 1))
+  })
+
+  return Array.from(groupIndexSet).sort((left, right) => left - right).map((groupIndex) => {
+    const explicitGroup = explicitGroups.find((group) => Math.max(1, Number(group?.groupIndex) || 1) === groupIndex) || null
+    const groupItems = items.filter((item) => Math.max(1, Number(item?.groupIndex) || 1) === groupIndex)
+    const totalCount = groupItems.length || downloadedArtifacts.filter((artifact) => Math.max(1, Number(artifact?.groupIndex) || 1) === groupIndex).length
+    const completedCount = groupItems.filter((item) => artifactKeySet.has(buildArtifactKey(item))).length
+    const failedCount = groupItems.filter((item) => {
+      const status = trimString(item?.status || '').toUpperCase()
+      return status === 'FAILED' || status === 'CANCELLED'
+    }).length
+    const pendingCount = Math.max(0, totalCount - completedCount - failedCount)
+
+    let status = mapGroupStatus(explicitGroup?.status || '')
+    if (!explicitGroup) {
+      if (pendingCount > 0) {
+        status = completedCount > 0 || failedCount > 0
+          ? 'partial'
+          : 'running'
+      } else if (completedCount > 0 && failedCount > 0) {
+        status = 'partial'
+      } else if (completedCount === totalCount && totalCount > 0) {
+        status = 'succeeded'
+      } else if (failedCount === totalCount && totalCount > 0) {
+        status = 'failed'
+      } else {
+        status = phase === 'partial' ? 'running' : 'failed'
+      }
+    } else if (phase === 'partial' && status === 'failed' && completedCount > 0) {
+      status = 'partial'
+    }
+
+    return {
+      groupIndex,
+      status,
+      completedItemCount: explicitGroup?.completedItemCount ?? completedCount,
+      failedItemCount: explicitGroup?.failedItemCount ?? failedCount,
+      pendingItemCount: pendingCount
+    }
+  })
+}
+
+function resolveImageCompletionStatus(job = {}, downloadedArtifacts = [], phase = 'final') {
+  if (phase === 'partial') {
+    return 'running'
+  }
+
+  const items = Array.isArray(job.items) ? job.items : []
+  const totalCount = items.length || downloadedArtifacts.length
+  const completedCount = downloadedArtifacts.length
+  const failedCount = items.filter((item) => {
+    const status = trimString(item?.status || '').toUpperCase()
+    return status === 'FAILED' || status === 'CANCELLED'
+  }).length
+
+  if (completedCount <= 0) {
+    return 'failed'
+  }
+
+  if (totalCount > 0 && completedCount >= totalCount && failedCount <= 0) {
+    return 'success'
+  }
+
+  return 'partial'
+}
+
+function countSucceededItems(job = {}) {
+  return (Array.isArray(job.items) ? job.items : []).filter((item) => {
+    return trimString(item?.status || '').toUpperCase() === 'SUCCEEDED'
+  }).length
+}
+
 function buildSeriesGeneratePayload({ draft, sessionToken }) {
   const batchCount = Math.max(1, Number(draft.batchCount) || 1)
   const outputDescriptors = buildSeriesSourceDescriptors(draft)
@@ -440,9 +532,9 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
         })
       }
     },
-    mapResult: ({ job, downloadedArtifacts }) => {
+    mapResult: ({ job, downloadedArtifacts, phase = 'final' }) => {
       const items = Array.isArray(job.items) ? job.items : []
-      const groups = Array.isArray(job.groups) ? job.groups : []
+      const groups = deriveJobGroups(job, downloadedArtifacts, phase)
       const artifactMap = new Map(
         downloadedArtifacts.map((artifact) => [`${artifact.groupIndex}:${artifact.slotIndex}`, artifact])
       )
@@ -452,10 +544,10 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           .filter((item) => Number(item.groupIndex) === Number(group.groupIndex))
           .sort((left, right) => Number(left.slotIndex) - Number(right.slotIndex))
 
-        const outputs = groupItems.map((item) => {
+        const outputs = groupItems.flatMap((item) => {
           const artifact = artifactMap.get(`${item.groupIndex}:${item.slotIndex}`)
           if (artifact) {
-            return {
+            return [{
               id: `${job.id}-series-${item.groupIndex}-${item.slotIndex}`,
               title: trimString(artifact.metadata?.title || item.title || '') || `Result ${item.slotIndex}`,
               model: trimString(artifact.metadata?.providerModel || item.providerModel || ''),
@@ -465,19 +557,10 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
               sourceUrl: trimString(artifact.downloadUrl || ''),
               publishReadyUrl: trimString(artifact.downloadUrl || ''),
               sourceTag: 'generated'
-            }
+            }]
           }
 
-          return {
-            id: `${job.id}-series-${item.groupIndex}-${item.slotIndex}-failed`,
-            title: trimString(item.title || '') || `Result ${item.slotIndex}`,
-            model: trimString(item.providerModel || ''),
-            savedPath: '',
-            path: '',
-            sourceTag: 'failed',
-            status: 'failed',
-            error: trimString(item.lastErrorMessage || '') || 'Remote generation failed for this slot.'
-          }
+          return []
         })
 
         return {
@@ -486,21 +569,28 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           groupTitle: `Batch ${group.groupIndex}`,
           promptSummary: trimString(draft.prompt || ''),
           notes: '',
-          status: mapGroupStatus(group.status),
-          completedCount: Number(group.completedItemCount || 0),
+          status: group.status,
+          completedCount: Number(group.completedItemCount || outputs.length || 0),
           failedCount: Number(group.failedItemCount || 0),
+          pendingCount: Number(group.pendingItemCount || 0),
           outputs
         }
       })
+      const completionStatus = resolveImageCompletionStatus(job, downloadedArtifacts, phase)
+      const completedArtifactCount = downloadedArtifacts.length
+      const expectedArtifactCount = items.length || completedArtifactCount
 
       return {
         textResults: [],
         comparisonResults: [],
         groupedResults,
         usageSummary: normalizeUsageSummary(job.usageSummary),
+        completionStatus,
+        completedArtifactCount,
+        expectedArtifactCount,
         summary: {
           title: `Image Sets ${groupedResults.length}`,
-          description: `${trimString(draft.model || 'gpt-image-2')} / ${trimString(draft.sourceImage?.name || 'reference')}`
+          description: `${trimString(draft.model || 'gpt-image-2')} / ${trimString(draft.sourceImage?.name || 'reference')} / ${completedArtifactCount}/${expectedArtifactCount}`
         }
       }
     }
@@ -710,6 +800,7 @@ async function runRemoteJob({
   payloadBuilder,
   outputDirectory,
   onProgress,
+  onPartialResult,
   remoteLicensePlatformClient,
   readFile,
   getMimeTypeFromPath,
@@ -730,6 +821,46 @@ async function runRemoteJob({
   })
   const createdJob = await remoteLicensePlatformClient.createGenerationJob(jobPayload)
   let latestJob = createdJob
+  const downloadedArtifacts = []
+  const downloadedArtifactKeys = new Set()
+
+  async function materializeArtifacts(job = {}, phase = 'partial') {
+    const jobArtifacts = Array.isArray(job.artifacts) ? job.artifacts : []
+    let hasNewArtifacts = false
+
+    for (const artifact of jobArtifacts) {
+      const artifactKey = buildArtifactKey(artifact)
+      if (downloadedArtifactKeys.has(artifactKey)) {
+        continue
+      }
+
+      const artifactBuffer = await remoteLicensePlatformClient.downloadGenerationArtifact({
+        id: artifact.id,
+        sessionToken: jobPayload.sessionToken,
+        downloadUrl: trimString(artifact.downloadUrl || '')
+      })
+      const savedPath = await saveArtifactToDirectory({
+        artifact,
+        artifactBuffer,
+        outputDirectory
+      })
+
+      downloadedArtifactKeys.add(artifactKey)
+      downloadedArtifacts.push({
+        ...artifact,
+        savedPath
+      })
+      hasNewArtifacts = true
+    }
+
+    if (hasNewArtifacts && typeof onPartialResult === 'function') {
+      await onPartialResult(payloadBuilder.mapResult({
+        job,
+        downloadedArtifacts,
+        phase
+      }))
+    }
+  }
 
   await onProgress?.({
     progress: 5,
@@ -738,6 +869,19 @@ async function runRemoteJob({
 
   while (!TERMINAL_JOB_STATUSES.has(String(latestJob.status || ''))) {
     if (Date.now() - startedAt >= pollTimeoutMs) {
+      if (downloadedArtifacts.length > 0) {
+        await onProgress?.({
+          progress: 100,
+          status: 'succeeded',
+          error: ''
+        })
+        return payloadBuilder.mapResult({
+          job: latestJob,
+          downloadedArtifacts,
+          phase: 'final'
+        })
+      }
+
       throw new Error('Remote generation timed out. Please retry later.')
     }
 
@@ -748,10 +892,22 @@ async function runRemoteJob({
       mode: 'compact'
     })
 
+    if (countSucceededItems(latestJob) > downloadedArtifacts.length) {
+      const artifactSnapshot = await remoteLicensePlatformClient.getGenerationJob({
+        id: createdJob.id,
+        sessionToken: jobPayload.sessionToken,
+        mode: 'full'
+      })
+      latestJob = artifactSnapshot
+      await materializeArtifacts(artifactSnapshot, 'partial')
+    }
+
     await onProgress?.({
       progress: calculateProgress(latestJob),
-      status: ['FAILED', 'CANCELLED', 'PARTIAL_FAILED'].includes(String(latestJob.status || '')) ? 'failed' : 'running',
-      error: resolveJobFailureMessage(latestJob, 'Remote generation failed.')
+      status: latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED'
+        ? (downloadedArtifacts.length > 0 ? 'running' : 'failed')
+        : 'running',
+      error: downloadedArtifacts.length > 0 ? '' : resolveJobFailureMessage(latestJob, 'Remote generation failed.')
     })
   }
 
@@ -760,41 +916,28 @@ async function runRemoteJob({
     sessionToken: jobPayload.sessionToken,
     mode: 'full'
   })
+  await materializeArtifacts(latestJob, 'partial')
 
-  if (latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') {
+  if ((latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') && downloadedArtifacts.length <= 0) {
     throw new Error(resolveJobFailureMessage(latestJob, 'Remote generation failed.'))
-  }
-
-  const downloadedArtifacts = []
-  for (const artifact of Array.isArray(latestJob.artifacts) ? latestJob.artifacts : []) {
-    const artifactBuffer = await remoteLicensePlatformClient.downloadGenerationArtifact({
-      id: artifact.id,
-      sessionToken: jobPayload.sessionToken,
-      downloadUrl: trimString(artifact.downloadUrl || '')
-    })
-    const savedPath = await saveArtifactToDirectory({
-      artifact,
-      artifactBuffer,
-      outputDirectory
-    })
-
-    downloadedArtifacts.push({
-      ...artifact,
-      savedPath
-    })
   }
 
   await onProgress?.({
     progress: 100,
-    status: latestJob.status === 'PARTIAL_FAILED' ? 'failed' : 'succeeded',
-    error: latestJob.status === 'PARTIAL_FAILED'
-      ? resolveJobFailureMessage(latestJob, 'Remote generation partially failed.')
-      : ''
+    status: downloadedArtifacts.length > 0 || latestJob.status === 'SUCCEEDED' || latestJob.status === 'PARTIAL_FAILED'
+      ? 'succeeded'
+      : 'failed',
+    error: downloadedArtifacts.length > 0 ? '' : (
+      latestJob.status === 'PARTIAL_FAILED'
+        ? resolveJobFailureMessage(latestJob, 'Remote generation partially failed.')
+        : ''
+    )
   })
 
   return payloadBuilder.mapResult({
     job: latestJob,
-    downloadedArtifacts
+    downloadedArtifacts,
+    phase: 'final'
   })
 }
 
@@ -872,7 +1015,7 @@ function createCloudGenerationService({
   pollIntervalMs = 10000,
   pollTimeoutMs = 30 * 60 * 1000
 }) {
-  async function generateImageResults({ menuKey, draft, outputDirectory, onProgress }) {
+  async function generateImageResults({ menuKey, draft, outputDirectory, onProgress, onPartialResult }) {
     if (menuKey !== 'series-generate') {
       const error = new Error('Unsupported image task menu key. Use the current series generation flow instead.')
       error.code = 'UNSUPPORTED_IMAGE_MENU_KEY'
@@ -885,6 +1028,7 @@ function createCloudGenerationService({
       payloadBuilder: buildSeriesGeneratePayload({ draft, sessionToken }),
       outputDirectory,
       onProgress,
+      onPartialResult,
       remoteLicensePlatformClient,
       readFile,
       getMimeTypeFromPath,

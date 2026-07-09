@@ -326,7 +326,7 @@ function createWorkspaceTaskExecutionService({
       }
 
       const handleIntermediateResult = async (intermediateResultPayload = null) => {
-        if (executionController.isStopped() || menuKey !== 'workspace' || !intermediateResultPayload) {
+        if (executionController.isStopped() || !intermediateResultPayload) {
           return
         }
 

@@ -83,7 +83,7 @@ describe('cloudGenerationService', () => {
       resolveImageRequestedConcurrencyTarget(10),
       resolveImageRequestedConcurrencyTarget(11),
       resolveImageRequestedConcurrencyTarget(12)
-    ]).toEqual([1, 2, 2, 2, 3, 3, 4, 4, 4, 4, 4, 4])
+    ]).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6])
   })
 
   it('clamps image requested concurrency to the runtime per-project image limit returned by the server', () => {
@@ -230,6 +230,41 @@ describe('cloudGenerationService', () => {
           }
         ]
       })
+      .mockResolvedValueOnce({
+        id: 'job-image-progress-1',
+        status: 'SUCCEEDED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 1,
+            failedItemCount: 0
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-progress-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
     remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('image-binary'))
 
     const service = createCloudGenerationService({
@@ -271,6 +306,294 @@ describe('cloudGenerationService', () => {
     expect(progressEvents[1].progress).toBeGreaterThan(20)
     expect(progressEvents.at(-1)).toMatchObject({ progress: 100, status: 'succeeded' })
   })
+
+  it('returns partial image results and emits intermediate artifacts instead of failing the whole batch when only some slots complete', async () => {
+    const remoteClient = createRemoteClient()
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-partial-1',
+      status: 'RUNNING',
+      pollingAdvice: {
+        recommendedIntervalMs: 1,
+        minIntervalMs: 1
+      },
+      items: [
+        {
+          groupIndex: 1,
+          slotIndex: 1,
+          status: 'RUNNING',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Result 1'
+        },
+        {
+          groupIndex: 1,
+          slotIndex: 2,
+          status: 'RUNNING',
+          assetType: 'IMAGE',
+          providerModel: 'gpt-image-2',
+          title: 'Result 2'
+        }
+      ]
+    })
+    remoteClient.getGenerationJob
+      .mockResolvedValueOnce({
+        id: 'job-image-partial-1',
+        status: 'RUNNING',
+        pollingAdvice: {
+          recommendedIntervalMs: 1,
+          minIntervalMs: 1
+        },
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          },
+          {
+            groupIndex: 1,
+            slotIndex: 2,
+            status: 'RUNNING',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 2'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-partial-1',
+        status: 'RUNNING',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'RUNNING',
+            completedItemCount: 1,
+            failedItemCount: 0
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          },
+          {
+            groupIndex: 1,
+            slotIndex: 2,
+            status: 'RUNNING',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 2'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-partial-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-partial-1',
+        status: 'PARTIAL_FAILED',
+        pollingAdvice: {
+          recommendedIntervalMs: 0,
+          minIntervalMs: 0
+        },
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'PARTIAL_FAILED',
+            completedItemCount: 1,
+            failedItemCount: 1
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          },
+          {
+            groupIndex: 1,
+            slotIndex: 2,
+            status: 'FAILED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 2',
+            lastErrorMessage: 'upstream timeout'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-partial-1',
+        status: 'PARTIAL_FAILED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'PARTIAL_FAILED',
+            completedItemCount: 1,
+            failedItemCount: 1
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          },
+          {
+            groupIndex: 1,
+            slotIndex: 2,
+            status: 'FAILED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 2',
+            lastErrorMessage: 'upstream timeout'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-partial-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-partial-1',
+        status: 'PARTIAL_FAILED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'PARTIAL_FAILED',
+            completedItemCount: 1,
+            failedItemCount: 1
+          }
+        ],
+        items: [
+          {
+            groupIndex: 1,
+            slotIndex: 1,
+            status: 'SUCCEEDED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 1'
+          },
+          {
+            groupIndex: 1,
+            slotIndex: 2,
+            status: 'FAILED',
+            assetType: 'IMAGE',
+            providerModel: 'gpt-image-2',
+            title: 'Result 2',
+            lastErrorMessage: 'upstream timeout'
+          }
+        ],
+        artifacts: [
+          {
+            id: 'artifact-partial-1',
+            groupIndex: 1,
+            slotIndex: 1,
+            assetType: 'IMAGE',
+            metadata: {
+              mimeType: 'image/png',
+              title: 'Result 1',
+              providerModel: 'gpt-image-2'
+            }
+          }
+        ]
+      })
+    remoteClient.downloadGenerationArtifact.mockResolvedValue(Buffer.from('partial-image-binary'))
+
+    const partialResults = []
+    const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qiuai-cloud-partial-'))
+
+    try {
+      const service = createCloudGenerationService({
+        settingsService: createSettingsService(),
+        remoteLicensePlatformClient: remoteClient,
+        readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+        getMimeTypeFromPath: () => 'image/png',
+        pollIntervalMs: 1
+      })
+
+      const result = await service.generateImageResults({
+        menuKey: 'series-generate',
+        draft: {
+          batchCount: 1,
+          generateCount: 2,
+          model: 'gpt-image-2',
+          size: '1:1',
+          prompt: 'partial prompt',
+          sourceImage: {
+            storedPath: 'F:/tmp/source.png'
+          },
+          promptAssignments: [
+            {
+              imageType: 'main',
+              prompt: 'partial prompt 1'
+            },
+            {
+              imageType: 'detail',
+              prompt: 'partial prompt 2'
+            }
+          ]
+        },
+        taskId: 'task-remote-image-partial-1',
+        outputDirectory,
+        onPartialResult: (payload) => {
+          partialResults.push(payload)
+        }
+      })
+
+      expect(partialResults).toHaveLength(1)
+      expect(partialResults[0]).toMatchObject({
+        completionStatus: 'running',
+        completedArtifactCount: 1,
+        expectedArtifactCount: 2
+      })
+      expect(partialResults[0].groupedResults[0].outputs).toHaveLength(1)
+      expect(result).toMatchObject({
+        completionStatus: 'partial',
+        completedArtifactCount: 1,
+        expectedArtifactCount: 2
+      })
+      expect(result.groupedResults[0]).toMatchObject({
+        status: 'partial',
+        completedCount: 1,
+        failedCount: 1
+      })
+      expect(result.groupedResults[0].outputs).toHaveLength(1)
+      expect(remoteClient.downloadGenerationArtifact).toHaveBeenCalledTimes(1)
+    } finally {
+      await fs.rm(outputDirectory, { recursive: true, force: true })
+    }
+  }, 15000)
 
   it('requests image concurrency from total planned outputs instead of raw batch count inflation', async () => {
     const remoteClient = createRemoteClient()
