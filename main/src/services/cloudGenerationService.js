@@ -41,6 +41,15 @@ function resolveImageRequestedConcurrencyTarget(plannedImageCount = 1) {
   return Math.max(1, Math.min(6, Math.floor((normalizedCount + 1) / 2)))
 }
 
+function canUseAggressiveImageBurst(serviceCapacityProfile = null) {
+  const profile = serviceCapacityProfile && typeof serviceCapacityProfile === 'object'
+    ? serviceCapacityProfile
+    : {}
+  const utilizationRate = Number(profile.imagePoolLoadState?.utilizationRate)
+
+  return Number.isFinite(utilizationRate) && utilizationRate < 0.8
+}
+
 function resolveImagePlannedItemCount(draft = {}, fallbackCount = 1) {
   const batchCount = Math.max(1, Number(draft.batchCount) || 1)
   const seriesSourceItems = Array.isArray(draft.seriesSourceItems)
@@ -84,7 +93,9 @@ function resolveRequestedConcurrency({
   }
 
   const imageCount = resolveImagePlannedItemCount(draft, plannedImageCount)
-  const preferredConcurrency = resolveImageRequestedConcurrencyTarget(imageCount)
+  const preferredConcurrency = canUseAggressiveImageBurst(profile)
+    ? Math.max(1, Math.min(maxAllowedConcurrency, imageCount))
+    : resolveImageRequestedConcurrencyTarget(imageCount)
   const serverLimit = Math.max(
     1,
     Number(profile.currentImageConcurrencyPerProject) ||
@@ -521,6 +532,7 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
             assetType: 'IMAGE',
             providerType: 'GRSAI',
             providerModel: trimString(draft.model || 'gpt-image-2'),
+            maxAttempts: 2,
             inputSnapshot: {
               prompt: descriptor.prompt,
               aspectRatio: descriptor.aspectRatio,
@@ -1013,7 +1025,8 @@ function createCloudGenerationService({
   getMimeTypeFromPath,
   prepareSourceImageDataUrl,
   pollIntervalMs = 10000,
-  pollTimeoutMs = 30 * 60 * 1000
+  pollTimeoutMs = 30 * 60 * 1000,
+  imagePollTimeoutMs = 10 * 60 * 1000
 }) {
   async function generateImageResults({ menuKey, draft, outputDirectory, onProgress, onPartialResult }) {
     if (menuKey !== 'series-generate') {
@@ -1034,7 +1047,7 @@ function createCloudGenerationService({
       getMimeTypeFromPath,
       prepareSourceImageDataUrl,
       pollIntervalMs,
-      pollTimeoutMs
+      pollTimeoutMs: imagePollTimeoutMs
     })
   }
 
@@ -1074,6 +1087,7 @@ function createCloudGenerationService({
 }
 
 module.exports = {
+  canUseAggressiveImageBurst,
   createCloudGenerationService,
   resolveImageRequestedConcurrencyTarget,
   resolveRequestedConcurrency,

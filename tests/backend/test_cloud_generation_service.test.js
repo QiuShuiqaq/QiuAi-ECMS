@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  canUseAggressiveImageBurst,
   createCloudGenerationService,
   resolveImageRequestedConcurrencyTarget,
   resolveRequestedConcurrency,
@@ -102,6 +103,52 @@ describe('cloudGenerationService', () => {
         effectiveImageConcurrency: 16
       }
     })).toBe(3)
+  })
+
+  it('requests full planned image concurrency when image pool load is below 80 percent', () => {
+    expect(canUseAggressiveImageBurst({
+      imagePoolLoadState: {
+        utilizationRate: 0.79
+      }
+    })).toBe(true)
+
+    expect(resolveRequestedConcurrency({
+      assetType: 'IMAGE',
+      draft: {
+        batchCount: 1,
+        generateCount: 8
+      },
+      serviceCapacityProfile: {
+        imagePoolLoadState: {
+          utilizationRate: 0.79
+        },
+        currentImageConcurrencyPerProject: 8,
+        effectiveImageConcurrency: 16
+      }
+    })).toBe(8)
+  })
+
+  it('keeps the conservative image concurrency curve when image pool load is 80 percent or higher', () => {
+    expect(canUseAggressiveImageBurst({
+      imagePoolLoadState: {
+        utilizationRate: 0.8
+      }
+    })).toBe(false)
+
+    expect(resolveRequestedConcurrency({
+      assetType: 'IMAGE',
+      draft: {
+        batchCount: 1,
+        generateCount: 8
+      },
+      serviceCapacityProfile: {
+        imagePoolLoadState: {
+          utilizationRate: 0.8
+        },
+        currentImageConcurrencyPerProject: 8,
+        effectiveImageConcurrency: 16
+      }
+    })).toBe(4)
   })
 
   it('falls back to the legacy image concurrency field when runtime profile fields are absent', () => {
