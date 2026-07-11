@@ -83,6 +83,8 @@ const fallbackMenuItems = [
 const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   ? studioMenuConfig.primaryMenuItems
   : fallbackMenuItems
+const CURRENT_PRODUCT_KEY = 'qiuai-ecms'
+const CURRENT_PRODUCT_CODES = new Set(['QIUAI_ECMS', 'QIUAI'])
 const activeMenu = ref('work-center')
 const commerceOrderModalVisible = ref(false)
 const commerceOrderModalMode = ref('software')
@@ -1146,16 +1148,24 @@ async function refreshSelectionItems(overrides = {}) {
 async function loadPurchaseCenterCatalog() {
   isCatalogLoading.value = true
   try {
-    const softwareRows = await catalogClient.listSoftwarePackages()
-    softwarePackages.value = Array.isArray(softwareRows) ? softwareRows : []
+    const softwareRows = await catalogClient.listSoftwarePackages({ productKey: CURRENT_PRODUCT_KEY })
+    softwarePackages.value = (Array.isArray(softwareRows) ? softwareRows : []).filter((item) => {
+      const productCode = String(item?.productCode || '').trim().toUpperCase()
+      const productName = String(item?.productName || '').trim().toUpperCase()
+      return CURRENT_PRODUCT_CODES.has(productCode) || productName === 'QIUAI-ECMS'
+    })
 
     if (!isActivated.value) {
       computePackages.value = []
       return
     }
 
-    const computeRows = await catalogClient.listComputePackages()
-    computePackages.value = Array.isArray(computeRows) ? computeRows : []
+    const computeRows = await catalogClient.listComputePackages({ productKey: CURRENT_PRODUCT_KEY })
+    computePackages.value = (Array.isArray(computeRows) ? computeRows : []).filter((item) => {
+      const productCode = String(item?.productCode || '').trim().toUpperCase()
+      const productName = String(item?.productName || '').trim().toUpperCase()
+      return CURRENT_PRODUCT_CODES.has(productCode) || productName === 'QIUAI-ECMS'
+    })
   } finally {
     isCatalogLoading.value = false
   }
@@ -2761,17 +2771,45 @@ async function handleOpenResource(target) {
   await shellClient.openExternalResource({ target })
 }
 
-async function handleExportProject(projectId) {
+async function handleExportProject(payload) {
   if (!ensureActivatedOrPromptPurchase('请先购买授权激活设备后再导出项目')) {
     return
   }
 
+  const normalizedProjectIds = Array.isArray(payload?.projectIds)
+    ? payload.projectIds.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const singleProjectId = typeof payload === 'string'
+    ? String(payload || '').trim()
+    : String(payload?.projectId || payload?.id || '').trim()
+  const targetProjectIds = normalizedProjectIds.length ? normalizedProjectIds : (singleProjectId ? [singleProjectId] : [])
+  const autoDeleteAfterExport = Boolean(payload?.autoDeleteAfterExport)
+
+  if (!targetProjectIds.length) {
+    return
+  }
+
   try {
-    await workspaceClient.exportProjectBundle({ projectId })
+    const exportResult = await workspaceClient.exportProjectBundle({
+      projectId: targetProjectIds[0] || '',
+      projectIds: targetProjectIds
+    })
+
+    if (exportResult?.canceled) {
+      return
+    }
+
+    if (autoDeleteAfterExport) {
+      for (const projectId of targetProjectIds) {
+        await workspaceClient.deleteProject({ projectId })
+      }
+      await loadStudioSnapshot()
+    }
+
     showActionFeedback({
       type: 'success',
       title: '已导出',
-      message: '项目包已生成'
+      message: autoDeleteAfterExport ? '项目包已生成，已自动删除勾选内容' : '项目包已生成'
     })
   } catch (error) {
     showActionFeedback({
@@ -2862,6 +2900,7 @@ async function handleExportCurrentResults(payload = {}) {
   const selectedExportIds = Array.isArray(payload?.selectedExportIds) && payload.selectedExportIds.length
     ? payload.selectedExportIds
     : currentExportItems.value.map((item) => item.id).filter(Boolean)
+  const autoDeleteAfterExport = Boolean(payload?.autoDeleteAfterExport)
 
   if (!selectedExportIds.length) {
     return
@@ -2877,10 +2916,25 @@ async function handleExportCurrentResults(payload = {}) {
       return
     }
 
+    if (autoDeleteAfterExport) {
+      for (const exportItemId of selectedExportIds) {
+        const exportItem = currentExportItems.value.find((item) => String(item?.id || '').trim() === exportItemId)
+        if (!exportItem) {
+          continue
+        }
+        await workspaceClient.deleteExportItem({
+          menuKey: activeGeneratorMenuKey.value,
+          exportItemId,
+          exportItemPath: String(exportItem?.directoryPath || exportItem?.outputDirectory || exportItem?.savedPath || '').trim()
+        })
+      }
+      await loadStudioSnapshot()
+    }
+
     showActionFeedback({
       type: 'success',
       title: '已导出',
-      message: '结果压缩包已生成'
+      message: autoDeleteAfterExport ? '结果压缩包已生成，已自动删除勾选内容' : '结果压缩包已生成'
     })
   } catch (error) {
     showActionFeedback({
@@ -2891,12 +2945,15 @@ async function handleExportCurrentResults(payload = {}) {
   }
 }
 
-async function handleExportTextResults() {
+async function handleExportTextResults(payload = {}) {
   if (!ensureActivatedOrPromptPurchase('请先购买授权激活设备后再导出文本结果')) {
     return
   }
 
-  const selectedExportIds = currentExportItems.value.map((item) => item.id).filter(Boolean)
+  const selectedExportIds = Array.isArray(payload?.selectedExportIds) && payload.selectedExportIds.length
+    ? payload.selectedExportIds
+    : currentExportItems.value.map((item) => item.id).filter(Boolean)
+  const autoDeleteAfterExport = Boolean(payload?.autoDeleteAfterExport)
   if (!selectedExportIds.length) {
     return
   }
@@ -2911,10 +2968,25 @@ async function handleExportTextResults() {
       return
     }
 
+    if (autoDeleteAfterExport) {
+      for (const exportItemId of selectedExportIds) {
+        const exportItem = currentExportItems.value.find((item) => String(item?.id || '').trim() === exportItemId)
+        if (!exportItem) {
+          continue
+        }
+        await workspaceClient.deleteExportItem({
+          menuKey: activeGeneratorMenuKey.value,
+          exportItemId,
+          exportItemPath: String(exportItem?.directoryPath || exportItem?.outputDirectory || exportItem?.savedPath || '').trim()
+        })
+      }
+      await loadStudioSnapshot()
+    }
+
     showActionFeedback({
       type: 'success',
       title: '已导出',
-      message: '文本结果压缩包已生成'
+      message: autoDeleteAfterExport ? '文本结果压缩包已生成，已自动删除勾选内容' : '文本结果压缩包已生成'
     })
   } catch (error) {
     showActionFeedback({

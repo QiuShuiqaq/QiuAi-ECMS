@@ -644,12 +644,12 @@ export function clearLocalAuthorization () {
   return invoke(getChannel('LICENSE_CLEAR_LOCAL_AUTH'))
 }
 
-export function listSoftwarePackages () {
+export function listSoftwarePackages (payload = {}) {
   if (!hasBridge()) {
     return Promise.reject(createBridgeUnavailableError())
   }
 
-  return invoke(getChannel('LICENSE_LIST_PACKAGES'))
+  return invoke(getChannel('LICENSE_LIST_PACKAGES'), payload)
 }
 
 export function quoteAgentPrices (payload) {
@@ -676,12 +676,12 @@ export function getSoftwareOrder (payload) {
   return invoke(getChannel('LICENSE_GET_ORDER'), payload)
 }
 
-export function listComputePackages () {
+export function listComputePackages (payload = {}) {
   if (!hasBridge()) {
     return Promise.reject(createBridgeUnavailableError())
   }
 
-  return invoke(getChannel('COMPUTE_PACKAGE_LIST'))
+  return invoke(getChannel('COMPUTE_PACKAGE_LIST'), payload)
 }
 
 export function createComputePackageOrder (payload) {

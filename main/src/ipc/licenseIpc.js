@@ -200,9 +200,10 @@ function registerLicenseIpc({
     return authorizationService.getActivationStatus()
   })
 
-  ipcMain.handle(ipcChannels.LICENSE_LIST_PACKAGES, async () => {
+  ipcMain.handle(ipcChannels.LICENSE_LIST_PACKAGES, async (_event, payload = {}) => {
     return remoteLicensePlatformClient.listSoftwarePackages({
-      sessionToken: await getSessionToken(settingsService)
+      sessionToken: await getSessionToken(settingsService),
+      productKey: trimString(payload.productKey)
     })
   })
 
@@ -227,11 +228,12 @@ function registerLicenseIpc({
     })
   })
 
-  ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_LIST, async () => {
+  ipcMain.handle(ipcChannels.COMPUTE_PACKAGE_LIST, async (_event, payload = {}) => {
     try {
       const sessionToken = await requireSessionToken(settingsService)
       return await remoteLicensePlatformClient.listComputePackages({
-        sessionToken
+        sessionToken,
+        productKey: trimString(payload.productKey)
       })
     } catch (error) {
       if (

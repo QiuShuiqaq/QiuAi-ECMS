@@ -384,9 +384,12 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function listSoftwarePackages({ sessionToken = '' } = {}) {
+  async function listSoftwarePackages({ sessionToken = '', productKey = '' } = {}) {
     return request('get', '/api/packages', {
-      sessionToken
+      sessionToken,
+      params: {
+        productKey: trimString(productKey)
+      }
     })
   }
 
@@ -411,9 +414,12 @@ function createQiuAiLicensePlatformClientService({
     })
   }
 
-  async function listComputePackages({ sessionToken = '' } = {}) {
+  async function listComputePackages({ sessionToken = '', productKey = '' } = {}) {
     return request('get', '/api/compute-packages', {
-      sessionToken
+      sessionToken,
+      params: {
+        productKey: trimString(productKey)
+      }
     })
   }
 

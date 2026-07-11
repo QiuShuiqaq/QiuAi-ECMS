@@ -179,6 +179,7 @@ function updateRechargeField(field, value) {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 
 .purchase-center__hero,
@@ -208,7 +209,7 @@ function updateRechargeField(field, value) {
 
 .purchase-center__wallet-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 }
 
@@ -233,6 +234,7 @@ function updateRechargeField(field, value) {
 .purchase-center__package-side {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
 }
@@ -249,6 +251,19 @@ function updateRechargeField(field, value) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+}
+
+.purchase-center__package-main strong,
+.purchase-center__package-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.purchase-center__package-side {
+  align-items: flex-end;
 }
 
 .purchase-center__recharge-form {
@@ -261,5 +276,46 @@ function updateRechargeField(field, value) {
 .primary-action,
 .secondary-action {
   border-radius: 12px;
+}
+
+@media (max-width: 960px) {
+  .purchase-center__recharge-form {
+    grid-template-columns: 1fr;
+  }
+
+  .purchase-center__order-actions,
+  .purchase-center__package-side {
+    align-items: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .purchase-center__hero,
+  .purchase-center__section,
+  .purchase-center__wallet-card,
+  .purchase-center__recharge-card,
+  .purchase-center__order-panel,
+  .purchase-center__package-card {
+    padding: 14px;
+  }
+
+  .purchase-center__section-header,
+  .purchase-center__order-panel,
+  .purchase-center__package-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .purchase-center__package-side,
+  .purchase-center__order-actions {
+    width: 100%;
+  }
+
+  .purchase-center__package-side .primary-action,
+  .purchase-center__order-actions .primary-action,
+  .purchase-center__order-actions .secondary-action {
+    width: 100%;
+  }
 }
 </style>

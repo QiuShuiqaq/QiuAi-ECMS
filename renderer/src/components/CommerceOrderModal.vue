@@ -491,6 +491,9 @@ function submitOrder() {
   width: min(860px, 100%);
   display: grid;
   gap: 18px;
+  max-height: min(88vh, 920px);
+  min-width: 0;
+  overflow-y: auto;
   padding: 24px;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -512,6 +515,7 @@ function submitOrder() {
 .commerce-order-modal__header {
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
 }
@@ -590,6 +594,7 @@ function submitOrder() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .commerce-order-modal__field span {
@@ -613,11 +618,11 @@ function submitOrder() {
 }
 
 .commerce-order-modal__list--software {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
 }
 
 .commerce-order-modal__list--compute {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -764,8 +769,26 @@ function submitOrder() {
 
 .commerce-order-modal__footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.commerce-order-modal__footer .primary-action,
+.commerce-order-modal__footer .secondary-action {
+  min-width: 120px;
+}
+
+@media (max-width: 1080px) {
+  .commerce-order-modal__card--software,
+  .commerce-order-modal__card--compute {
+    width: min(900px, 100%);
+  }
+
+  .commerce-order-modal__list--software,
+  .commerce-order-modal__list--compute {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .commerce-order-modal__card--recharge .commerce-order-modal__footer {
@@ -800,6 +823,38 @@ function submitOrder() {
 
   .commerce-order-modal__inline-field {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .commerce-order-modal {
+    padding: 12px;
+  }
+
+  .commerce-order-modal__card {
+    gap: 14px;
+    max-height: 92vh;
+    padding: 16px;
+  }
+
+  .commerce-order-modal__header strong {
+    font-size: 22px;
+  }
+
+  .commerce-order-modal__list--software,
+  .commerce-order-modal__list--compute,
+  .commerce-order-modal__amount-presets,
+  .commerce-order-modal__card--recharge .commerce-order-modal__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .commerce-order-modal__footer {
+    justify-content: stretch;
+  }
+
+  .commerce-order-modal__footer .primary-action,
+  .commerce-order-modal__footer .secondary-action {
+    width: 100%;
   }
 }
 </style>
