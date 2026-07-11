@@ -498,6 +498,162 @@ describe('studioWorkspaceService', () => {
     expect(snapshot.resultsByMenu.workspace.workspaceErrors).toEqual([])
   })
 
+  it('replaces stale partial image files with stable slot-based filenames', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+    const generatedImagePath1 = path.resolve(outputRootDirectory, 'stable-image-1.png')
+    const generatedImagePath2 = path.resolve(outputRootDirectory, 'stable-image-2.png')
+    await fs.writeFile(generatedImagePath1, 'stable-image-1')
+    await fs.writeFile(generatedImagePath2, 'stable-image-2')
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    await seedDashboardBalances(settingsService, { image: 100 })
+
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      persistSourceFiles: async ({ sourcePaths, targetDirectory }) => {
+        return sourcePaths.map((sourcePath) => path.resolve(targetDirectory, path.basename(sourcePath)))
+      },
+      createId: (() => {
+        let sequence = 0
+        return () => `stable-slot-${++sequence}`
+      })(),
+      createTaskNumber: () => 'QAI-20260711-2001',
+      getNow: () => '2026-07-11T10:00:00.000Z',
+      generateImageResults: async ({ onPartialResult }) => {
+        const partialPayload = {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: 'stable-slot-group-1',
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'partial',
+              completedCount: 1,
+              failedCount: 0,
+              pendingCount: 1,
+              outputs: [
+                {
+                  id: 'stable-slot-image-2-temp',
+                  slotIndex: 2,
+                  title: 'Temp Result 2',
+                  savedPath: generatedImagePath2,
+                  path: generatedImagePath2,
+                  sourceTag: 'generated'
+                }
+              ]
+            }
+          ],
+          completionStatus: 'running',
+          completedArtifactCount: 1,
+          expectedArtifactCount: 2,
+          summary: {
+            title: 'Image Sets 1',
+            description: '1/2'
+          }
+        }
+
+        if (typeof onPartialResult === 'function') {
+          await onPartialResult(partialPayload)
+        }
+
+        return {
+          textResults: [],
+          comparisonResults: [],
+          groupedResults: [
+            {
+              id: 'stable-slot-group-1',
+              groupType: 'batch',
+              groupTitle: 'Batch 1',
+              status: 'succeeded',
+              completedCount: 2,
+              failedCount: 0,
+              pendingCount: 0,
+              outputs: [
+                {
+                  id: 'stable-slot-image-1',
+                  slotIndex: 1,
+                  title: 'Result 1',
+                  savedPath: generatedImagePath1,
+                  path: generatedImagePath1,
+                  sourceTag: 'generated'
+                },
+                {
+                  id: 'stable-slot-image-2',
+                  slotIndex: 2,
+                  title: 'Result 2',
+                  savedPath: generatedImagePath2,
+                  path: generatedImagePath2,
+                  sourceTag: 'generated'
+                }
+              ]
+            }
+          ],
+          completionStatus: 'success',
+          completedArtifactCount: 2,
+          expectedArtifactCount: 2,
+          summary: {
+            title: 'Image Sets 1',
+            description: '2/2'
+          }
+        }
+      }
+    })
+
+    await service.saveDraft({
+      menuKey: 'series-generate',
+      patch: {
+        taskName: '稳定命名套图',
+        productName: '露营灯',
+        sourceImage: {
+          name: 'camp-lamp.jpg',
+          path: 'C:/images/camp-lamp.jpg',
+          preview: 'preview-camp-lamp'
+        },
+        generateCount: 2,
+        promptAssignments: [
+          {
+            id: 'stable-slot-prompt-1',
+            imageType: '商品主图',
+            templateId: 'image-main',
+            prompt: '生成商品主图'
+          },
+          {
+            id: 'stable-slot-prompt-2',
+            imageType: '细节图',
+            templateId: 'image-detail',
+            prompt: '生成细节图'
+          }
+        ]
+      }
+    })
+
+    const task = await service.createTask({ menuKey: 'series-generate' })
+    await service.waitForIdle()
+
+    const snapshot = service.getSnapshot()
+    const completedTask = snapshot.tasks.find((item) => item.id === task.id)
+    expect(completedTask).toBeTruthy()
+
+    const outputEntries = await fs.readdir(completedTask.outputDirectory, { withFileTypes: true })
+    const groupDirectoryEntry = outputEntries.find((entry) => entry.isDirectory())
+    expect(groupDirectoryEntry).toBeTruthy()
+
+    const groupDirectory = path.resolve(completedTask.outputDirectory, groupDirectoryEntry.name)
+    const files = (await fs.readdir(groupDirectory)).sort()
+
+    expect(files).toEqual([
+      '01-Result-1.png',
+      '02-Result-2.png'
+    ])
+  })
+
   it('normalizes legacy stored projects with the new generation config and run record fields', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()

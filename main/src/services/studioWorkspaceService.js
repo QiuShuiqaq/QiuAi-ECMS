@@ -2571,6 +2571,55 @@ function sanitizePathSegment(value, fallbackValue = 'result') {
   return sanitizedValue || fallbackValue
 }
 
+function resolveGroupedOutputSlotNumber(output = {}, fallbackIndex = 0) {
+  const slotIndex = Number(output?.slotIndex)
+  if (Number.isInteger(slotIndex) && slotIndex > 0) {
+    return slotIndex
+  }
+
+  return fallbackIndex + 1
+}
+
+function buildGroupedOutputFileTarget({
+  groupDirectory,
+  output,
+  fallbackIndex = 0,
+  parsedPreview = null
+}) {
+  const slotNumber = resolveGroupedOutputSlotNumber(output, fallbackIndex)
+  const outputBaseName = sanitizePathSegment(output?.title || `result-${slotNumber}`, `result-${slotNumber}`)
+  const extension = parsedPreview?.extension || path.extname(String(output?.savedPath || output?.path || '').trim()) || '.bin'
+
+  return path.resolve(groupDirectory, `${String(slotNumber).padStart(2, '0')}-${outputBaseName}${extension}`)
+}
+
+async function cleanupStaleGroupedOutputFiles(groupDirectory, activePaths = []) {
+  const normalizedActivePaths = new Set(
+    activePaths
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .map((item) => path.resolve(item))
+  )
+  const directoryEntries = await fs.readdir(groupDirectory, { withFileTypes: true }).catch(() => [])
+
+  await Promise.all(directoryEntries.map(async (entry) => {
+    if (!entry?.isFile?.()) {
+      return
+    }
+
+    if (!/^\d{2,}-/.test(String(entry.name || ''))) {
+      return
+    }
+
+    const targetPath = path.resolve(groupDirectory, entry.name)
+    if (normalizedActivePaths.has(targetPath)) {
+      return
+    }
+
+    await fs.rm(targetPath, { force: true })
+  }))
+}
+
 function resolveTaskFolderBaseName({ draft, menuKey, taskId }) {
   return sanitizePathSegment(draft.taskName || '', `${menuKey}-${taskId}`)
 }
@@ -2694,23 +2743,31 @@ async function saveStudioResults({
       failedCount: Number(group.failedCount ?? 0),
       outputs: []
     }
+    const activeGroupedOutputPaths = []
 
     for (const [index, output] of (group.outputs || []).entries()) {
       let savedPath = ''
       const parsedPreview = parseDataUrlPayload(output.preview || '')
-      const outputBaseName = sanitizePathSegment(output.title || `result-${index + 1}`, `result-${index + 1}`)
+      const targetPath = buildGroupedOutputFileTarget({
+        groupDirectory,
+        output,
+        fallbackIndex: index,
+        parsedPreview
+      })
 
       if (parsedPreview) {
-        savedPath = path.resolve(groupDirectory, `${String(index).padStart(2, '0')}-${outputBaseName}${parsedPreview.extension}`)
+        savedPath = targetPath
         await writeFile(savedPath, parsedPreview.buffer)
       } else if (output.savedPath && await fileExists(output.savedPath)) {
-        savedPath = path.resolve(groupDirectory, `${String(index).padStart(2, '0')}-${outputBaseName}${path.extname(output.savedPath) || ''}`)
+        savedPath = targetPath
         if (path.resolve(output.savedPath) !== path.resolve(savedPath)) {
           await fs.copyFile(output.savedPath, savedPath)
         }
       } else {
         continue
       }
+
+      activeGroupedOutputPaths.push(savedPath)
 
       persistedGroup.outputs.push({
         ...output,
@@ -2719,6 +2776,8 @@ async function saveStudioResults({
         savedPath
       })
     }
+
+    await cleanupStaleGroupedOutputFiles(groupDirectory, activeGroupedOutputPaths)
 
     persistedResultPayload.groupedResults.push(persistedGroup)
 

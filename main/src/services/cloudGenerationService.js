@@ -561,6 +561,8 @@ function buildSeriesGeneratePayload({ draft, sessionToken }) {
           if (artifact) {
             return [{
               id: `${job.id}-series-${item.groupIndex}-${item.slotIndex}`,
+              groupIndex: Number(item.groupIndex) || Number(group.groupIndex) || 1,
+              slotIndex: Number(item.slotIndex) || 1,
               title: trimString(artifact.metadata?.title || item.title || '') || `Result ${item.slotIndex}`,
               model: trimString(artifact.metadata?.providerModel || item.providerModel || ''),
               savedPath: artifact.savedPath,
