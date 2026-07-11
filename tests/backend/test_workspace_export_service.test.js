@@ -198,6 +198,68 @@ describe('workspaceExportService', () => {
     expect(stagedEntries[0]).toContain('group-a')
   })
 
+  it('exports multiple product projects into one staging archive', async () => {
+    const outputRootDirectory = await createTempDirectory()
+    const imageDirectory = await createTempDirectory('qiuai-export-batch-image-')
+    const imagePath = path.resolve(imageDirectory, 'result-1.png')
+    await fs.writeFile(imagePath, 'image-content')
+
+    const state = createState({
+      productProjects: [
+        {
+          id: 'project-1',
+          name: 'Portable Lamp',
+          content: {
+            selectedTitle: 'Portable Lamp Title',
+            selectedDescription: 'Portable Lamp Description'
+          },
+          assets: {
+            generatedImages: [{ savedPath: imagePath }]
+          }
+        },
+        {
+          id: 'project-2',
+          name: 'Desk Fan',
+          content: {
+            selectedTitle: 'Desk Fan Title',
+            selectedDescription: 'Desk Fan Description'
+          },
+          assets: {}
+        }
+      ]
+    })
+
+    const { createWorkspaceExportService } = await import('../../main/src/services/workspaceExportService.js')
+
+    let stagedEntries = []
+    const service = createWorkspaceExportService({
+      ...state,
+      getResolvedExportItemsByMenu: () => state.getStoredState().exportItemsByMenu,
+      ensureDirectory: async (targetPath) => {
+        await fs.mkdir(targetPath, { recursive: true })
+      },
+      exportTaskDirectory: async ({ sourceDirectory, targetZipPath }) => {
+        stagedEntries = await fs.readdir(sourceDirectory)
+        return { targetZipPath }
+      }
+    })
+
+    const result = await service.exportProjectBundle({
+      projectIds: ['project-1', 'project-2'],
+      targetZipPath: path.resolve(outputRootDirectory, 'projects.zip')
+    })
+
+    expect(result).toMatchObject({
+      canceled: false,
+      projectIds: ['project-1', 'project-2'],
+      exportedCount: 2,
+      targetZipPath: path.resolve(outputRootDirectory, 'projects.zip')
+    })
+    expect(stagedEntries).toHaveLength(2)
+    expect(stagedEntries[0]).toContain('Portable-Lamp')
+    expect(stagedEntries[1]).toContain('Desk-Fan')
+  })
+
 })
 
 afterEach(async () => {

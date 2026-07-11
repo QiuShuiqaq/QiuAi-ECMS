@@ -35,7 +35,7 @@ function resolveUploadDefaultPath (settingsService, menuKey = '') {
   return process.cwd()
 }
 
-function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceService, activationGuard }) {
+function registerStudioIpc ({ studioWorkspaceService, settingsService, dataTraceService, activationGuard }) {
   async function requireActivated () {
     await activationGuard?.assertActivated?.()
   }
@@ -66,13 +66,20 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
   ipcMain.handle(ipcChannels.STUDIO_EXPORT_PROJECT_BUNDLE, async (_event, payload = {}) => {
     await requireActivated()
     const snapshot = studioWorkspaceService.getSnapshot()
-    const project = (snapshot.productProjects || []).find((item) => item.id === payload.projectId)
+    const requestedProjectIds = Array.isArray(payload.projectIds)
+      ? payload.projectIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : []
+    const singleProjectId = String(payload.projectId || '').trim()
+    const targetProjectIds = requestedProjectIds.length ? requestedProjectIds : (singleProjectId ? [singleProjectId] : [])
+    const targetProjects = (snapshot.productProjects || []).filter((item) => targetProjectIds.includes(item.id))
 
-    if (!project) {
-      throw new Error('未找到可导出的商品项目')
+    if (!targetProjects.length) {
+      throw new Error('Project not found for export')
     }
 
-    const archiveName = `${project.name || 'product-project'}.zip`
+    const archiveName = targetProjects.length === 1
+      ? `${targetProjects[0].name || 'product-project'}.zip`
+      : 'product-projects.zip'
     const result = await dialog.showSaveDialog({
       defaultPath: path.resolve(process.cwd(), archiveName),
       filters: [
@@ -92,6 +99,8 @@ function registerStudioIpc({ studioWorkspaceService, settingsService, dataTraceS
 
     return studioWorkspaceService.exportProjectBundle({
       ...payload,
+      projectId: targetProjectIds[0] || '',
+      projectIds: targetProjectIds,
       targetZipPath: result.filePath
     })
   })

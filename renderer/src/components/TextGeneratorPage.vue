@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import openFolderIcon from '../../../icon/wenjianjia.png'
 import deleteIcon from '../../../icon/shanchu.png'
 
@@ -67,6 +67,20 @@ const exportCards = computed(() => {
   }))
 })
 
+const selectedExportIds = ref([])
+const autoDeleteAfterExport = ref(false)
+
+watch(exportCards, (cards) => {
+  const validIdSet = new Set(cards.map((item) => item.id))
+  selectedExportIds.value = selectedExportIds.value.filter((item) => validIdSet.has(item))
+}, { immediate: true })
+
+const areAllExportCardsSelected = computed(() => {
+  return exportCards.value.length > 0 && selectedExportIds.value.length === exportCards.value.length
+})
+
+const hasSelectedExportCards = computed(() => selectedExportIds.value.length > 0)
+
 function updateField(field, value) {
   emit('update-draft', { field, value })
 }
@@ -100,9 +114,36 @@ function handleTemplateChange(templateId) {
   updateField(promptField.value, template?.prompt || '')
 }
 
+function handleToggleExportSelection(exportId) {
+  if (!exportId) {
+    return
+  }
+
+  if (selectedExportIds.value.includes(exportId)) {
+    selectedExportIds.value = selectedExportIds.value.filter((item) => item !== exportId)
+    return
+  }
+
+  selectedExportIds.value = [...selectedExportIds.value, exportId]
+}
+
+function handleToggleAllExports() {
+  if (areAllExportCardsSelected.value) {
+    selectedExportIds.value = []
+    return
+  }
+
+  selectedExportIds.value = exportCards.value.map((item) => item.id)
+}
+
 function handleExportAll() {
+  if (!selectedExportIds.value.length) {
+    return
+  }
+
   emit('export-results', {
-    selectedExportIds: exportCards.value.map((item) => item.id)
+    selectedExportIds: selectedExportIds.value.slice(),
+    autoDeleteAfterExport: autoDeleteAfterExport.value
   })
 }
 </script>
@@ -111,8 +152,10 @@ function handleExportAll() {
   <section class="generator-studio-page text-studio-page">
     <article class="generator-column generator-column--settings">
       <header class="generator-column__header">
+        <div class="generator-column__header-copy">
         <strong>参数设置</strong>
         <h2>{{ title }}</h2>
+        </div>
       </header>
 
       <div class="generator-form">
@@ -219,11 +262,33 @@ function handleExportAll() {
       <header class="generator-column__header">
         <strong>结果导出</strong>
         <h2>{{ exportCards.length }} 组</h2>
+        <div class="generator-export__toolbar">
+          <button class="secondary-action" type="button" @click="handleToggleAllExports">
+            {{ areAllExportCardsSelected ? '取消全选' : '全选' }}
+          </button>
+          <label class="generator-export__checkbox">
+            <input v-model="autoDeleteAfterExport" type="checkbox">
+            <span>自动删除</span>
+          </label>
+          <button class="primary-action" type="button" :disabled="!hasSelectedExportCards" @click="handleExportAll">打包导出</button>
+        </div>
       </header>
 
       <div class="generator-export">
         <div v-if="exportCards.length" class="generator-export__list">
-          <article v-for="item in exportCards" :key="item.id" class="generator-export__item">
+          <article
+            v-for="item in exportCards"
+            :key="item.id"
+            class="generator-export__item"
+            :class="{ 'generator-export__item--selected': selectedExportIds.includes(item.id) }"
+          >
+            <label class="generator-export__item-check">
+              <input
+                :checked="selectedExportIds.includes(item.id)"
+                type="checkbox"
+                @change="handleToggleExportSelection(item.id)"
+              >
+            </label>
             <div class="generator-export__copy">
               <strong>{{ item.name }}</strong>
               <span>{{ item.status }}{{ item.itemCount ? ` / ${item.itemCount}` : '' }}</span>
@@ -341,6 +406,100 @@ function handleExportAll() {
   min-height: 120px;
 }
 
+.generator-column--export > .generator-column__header {
+  align-items: center;
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  row-gap: 10px;
+}
+
+.generator-export__toolbar {
+  align-items: center;
+  display: grid;
+  gap: 8px 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.generator-column--export > .generator-column__header > h2 {
+  justify-self: end;
+}
+
+.generator-column--export > .generator-column__header > strong,
+.generator-column--export > .generator-column__header > h2 {
+  white-space: nowrap;
+}
+
+.generator-export__toolbar .secondary-action,
+.generator-export__toolbar .primary-action {
+  align-items: center;
+  font-size: 12px;
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.generator-export__toolbar .secondary-action {
+  min-width: 78px;
+}
+
+.generator-export__checkbox {
+  align-items: center;
+  color: #a8a2bb;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.generator-export {
+  margin-top: 12px;
+}
+
+.generator-export__toolbar .primary-action {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.generator-export__checkbox input {
+  margin: 0;
+}
+
+@media (max-width: 1280px) {
+  .generator-column--export > .generator-column__header {
+    grid-template-columns: 1fr;
+  }
+
+  .generator-column--export > .generator-column__header > h2,
+  .generator-column--export > .generator-column__header > strong {
+    justify-self: start;
+  }
+
+  .generator-export__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .generator-export__toolbar .secondary-action,
+  .generator-export__toolbar .primary-action {
+    font-size: 11px;
+    min-height: 28px;
+    padding: 0 8px;
+  }
+
+  .generator-export__checkbox {
+    font-size: 11px;
+    justify-self: start;
+  }
+}
+
+.generator-export__checkbox input,
+.generator-export__item-check input {
+  accent-color: #6b72ff;
+}
+
 .generator-export__list {
   display: flex;
   flex-direction: column;
@@ -356,6 +515,17 @@ function handleExportAll() {
   max-height: 72px;
   padding: 14px 16px;
   overflow: hidden;
+}
+
+.generator-export__item--selected {
+  border-color: rgba(107, 114, 255, 0.38);
+  box-shadow: 0 0 0 1px rgba(107, 114, 255, 0.14) inset;
+}
+
+.generator-export__item-check {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .generator-export__item-actions {
@@ -413,5 +583,9 @@ function handleExportAll() {
 .icon-action-button--danger:hover {
   background: rgba(74, 24, 24, 0.96);
   border-color: rgba(255, 120, 120, 0.4);
+}
+
+.generator-export__actions {
+  display: none;
 }
 </style>

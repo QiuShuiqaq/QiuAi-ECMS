@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   imageModelOptions,
   imageSizeOptions,
@@ -82,6 +82,8 @@ const storageContextMenu = ref({
   y: 0,
   item: null
 })
+const selectedProjectIds = ref([])
+const autoDeleteAfterExport = ref(false)
 
 const projectRunMap = computed(() => new Map((props.projectRuns || []).map((item) => [item.id, item])))
 
@@ -673,6 +675,17 @@ const projectStorageRows = computed(() => {
   })
 })
 
+watch(projectStorageRows, (rows) => {
+  const validIdSet = new Set(rows.map((item) => item.id))
+  selectedProjectIds.value = selectedProjectIds.value.filter((item) => validIdSet.has(item))
+}, { immediate: true })
+
+const areAllProjectStorageSelected = computed(() => {
+  return projectStorageRows.value.length > 0 && selectedProjectIds.value.length === projectStorageRows.value.length
+})
+
+const hasSelectedProjectStorage = computed(() => selectedProjectIds.value.length > 0)
+
 const allQueueRows = computed(() => {
   return sortedProjects.value.map((project) => {
     const latestRun = projectRunMap.value.get(project.latestRunId) || null
@@ -958,6 +971,39 @@ function handleSaveTemplate(project) {
 
 function handleCreateProjectFromStorage() {
   emit('create-project')
+}
+
+function handleToggleProjectSelection(projectId) {
+  if (!projectId) {
+    return
+  }
+
+  if (selectedProjectIds.value.includes(projectId)) {
+    selectedProjectIds.value = selectedProjectIds.value.filter((item) => item !== projectId)
+    return
+  }
+
+  selectedProjectIds.value = [...selectedProjectIds.value, projectId]
+}
+
+function handleToggleAllProjectStorage() {
+  if (areAllProjectStorageSelected.value) {
+    selectedProjectIds.value = []
+    return
+  }
+
+  selectedProjectIds.value = projectStorageRows.value.map((item) => item.id)
+}
+
+function handleExportSelectedProjects() {
+  if (!selectedProjectIds.value.length) {
+    return
+  }
+
+  emit('export-project', {
+    projectIds: selectedProjectIds.value.slice(),
+    autoDeleteAfterExport: autoDeleteAfterExport.value
+  })
 }
 
 function handleRefreshStorageWorkspace() {
@@ -1523,34 +1569,56 @@ function resolveStageMenuKey(stage = '') {
               <button class="secondary-action work-center-studio__toolbar-button" type="button" @click="handleToggleStorageSort()">
                 {{ storageSortMode === 'updated-desc' ? '按时间' : '按名称' }}
               </button>
+              <button class="secondary-action work-center-studio__toolbar-button" type="button" @click="handleToggleAllProjectStorage()">
+                {{ areAllProjectStorageSelected ? '取消全选' : '全选' }}
+              </button>
+              <label class="work-center-studio__toolbar-check">
+                <input v-model="autoDeleteAfterExport" type="checkbox">
+                <span>自动删除</span>
+              </label>
+              <button class="primary-action work-center-studio__toolbar-button" type="button" :disabled="!hasSelectedProjectStorage" @click="handleExportSelectedProjects()">
+                打包下载
+              </button>
             </div>
           </header>
 
           <div class="generator-preview-stage work-center-studio__folder-workspace">
-            <button
+            <div
               v-for="item in projectStorageRows"
               :key="item.id"
-              type="button"
-              class="work-center-studio__folder-item"
-              @click="handleSelectProjectStorage(item.project)"
-              @dblclick="handleOpenStorageFolder(item.project)"
-              @contextmenu.prevent.stop="handleOpenStorageContextMenu($event, item)"
+              class="work-center-studio__folder-entry"
             >
-              <span class="work-center-studio__folder-top">
-                <span class="work-center-studio__folder-icon" aria-hidden="true"></span>
-                <span class="work-center-studio__folder-stats">
-                  <span>{{ item.status }}</span>
-                  <span>T{{ item.titleCount }}</span>
-                  <span>D{{ item.descriptionCount }}</span>
-                  <span>I{{ item.imageCount }}</span>
-                  <span>V{{ item.videoCount }}</span>
+              <label class="work-center-studio__folder-check">
+                <input
+                  :checked="selectedProjectIds.includes(item.id)"
+                  type="checkbox"
+                  @change="handleToggleProjectSelection(item.id)"
+                >
+              </label>
+              <button
+                type="button"
+                class="work-center-studio__folder-item"
+                :class="{ 'work-center-studio__folder-item--selected': selectedProjectIds.includes(item.id) }"
+                @click="handleSelectProjectStorage(item.project)"
+                @dblclick="handleOpenStorageFolder(item.project)"
+                @contextmenu.prevent.stop="handleOpenStorageContextMenu($event, item)"
+              >
+                <span class="work-center-studio__folder-top">
+                  <span class="work-center-studio__folder-icon" aria-hidden="true"></span>
+                  <span class="work-center-studio__folder-stats">
+                    <span>{{ item.status }}</span>
+                    <span>T{{ item.titleCount }}</span>
+                    <span>D{{ item.descriptionCount }}</span>
+                    <span>I{{ item.imageCount }}</span>
+                    <span>V{{ item.videoCount }}</span>
+                  </span>
                 </span>
-              </span>
-              <span class="work-center-studio__folder-copy">
-                <strong class="work-center-studio__folder-name">{{ item.name }}</strong>
-                <span class="work-center-studio__folder-meta">{{ resolveTimeLabel(item.updatedAt) }}</span>
-              </span>
-            </button>
+                <span class="work-center-studio__folder-copy">
+                  <strong class="work-center-studio__folder-name">{{ item.name }}</strong>
+                  <span class="work-center-studio__folder-meta">{{ resolveTimeLabel(item.updatedAt) }}</span>
+                </span>
+              </button>
+            </div>
 
             <div v-if="!projectStorageRows.length" class="product-result-empty product-result-empty--compact work-center-studio__storage-empty">
               <span>暂无项目结果</span>
@@ -2287,6 +2355,18 @@ function resolveStageMenuKey(stage = '') {
   border-radius: 10px;
 }
 
+.work-center-studio__toolbar-check {
+  align-items: center;
+  color: #a8a2bb;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.work-center-studio__toolbar-check input,
+.work-center-studio__folder-check input {
+  accent-color: #6b72ff;
+}
+
 .work-center-studio__inspect-copy {
   margin: 0;
   color: rgba(226, 232, 244, 0.88);
@@ -2380,6 +2460,17 @@ function resolveStageMenuKey(stage = '') {
   height: 0;
 }
 
+.work-center-studio__folder-entry {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.work-center-studio__folder-check {
+  align-items: center;
+  display: inline-flex;
+}
+
 .work-center-studio__folder-item {
   display: grid;
   grid-template-columns: 1fr;
@@ -2422,6 +2513,11 @@ function resolveStageMenuKey(stage = '') {
   box-shadow:
     inset 0 0 0 1px rgba(100, 186, 255, 0.12),
     0 10px 20px rgba(0, 0, 0, 0.14);
+}
+
+.work-center-studio__folder-item--selected {
+  border-color: rgba(107, 114, 255, 0.38);
+  box-shadow: 0 0 0 1px rgba(107, 114, 255, 0.14) inset;
 }
 
 .work-center-studio__folder-icon {

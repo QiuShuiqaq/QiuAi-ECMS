@@ -143,70 +143,114 @@ function createWorkspaceExportService({
     throw new Error('getResolvedExportItemsByMenu is required')
   }
 
-  async function exportProjectBundle({
-    projectId = '',
-    targetZipPath = ''
-  } = {}) {
-    const normalizedProjectId = String(projectId || '').trim()
-    if (!normalizedProjectId) {
-      throw new Error('Project ID is required')
+  async function writeProjectBundleContents(project = {}, projectDirectory = '') {
+    await ensureDirectory(projectDirectory)
+
+    const titleText = project.content?.selectedTitle || (project.content?.titleCandidates || []).join('\n')
+    const descriptionText = project.content?.selectedDescription || (project.content?.descriptionCandidates || []).join('\n')
+    const exportManifest = buildProjectExportManifest(project)
+
+    await writeFile(path.resolve(projectDirectory, 'title.txt'), `${String(titleText || '')}\n`, 'utf8')
+    await writeFile(path.resolve(projectDirectory, 'description.txt'), `${String(descriptionText || '')}\n`, 'utf8')
+    await writeFile(path.resolve(projectDirectory, 'manifest.json'), `${JSON.stringify(exportManifest, null, 2)}\n`, 'utf8')
+
+    if (Array.isArray(project.assets?.generatedImages) && project.assets.generatedImages.length) {
+      const imagesDirectory = path.resolve(projectDirectory, 'images')
+      await ensureDirectory(imagesDirectory)
+
+      for (const [index, image] of project.assets.generatedImages.entries()) {
+        const sourcePath = image.savedPath || image.path || image.storedPath || ''
+        if (!sourcePath) {
+          continue
+        }
+
+        await copyFile(
+          sourcePath,
+          path.resolve(imagesDirectory, `${String(index + 1).padStart(2, '0')}-${path.basename(sourcePath)}`)
+        )
+      }
     }
 
+    if (project.assets?.generatedVideo?.savedPath) {
+      const videoPath = project.assets.generatedVideo.savedPath
+      await copyFile(videoPath, path.resolve(projectDirectory, path.basename(videoPath)))
+    }
+  }
+
+  async function exportProjectBundle({
+    projectId = '',
+    projectIds = [],
+    targetZipPath = ''
+  } = {}) {
     if (!targetZipPath) {
       throw new Error('Target zip path is required')
     }
 
-    const state = getStoredState()
-    const project = (state.productProjects || []).find((item) => item.id === normalizedProjectId)
+    const normalizedProjectIds = Array.isArray(projectIds)
+      ? projectIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : []
+    const normalizedProjectId = String(projectId || '').trim()
+    const targetProjectIds = normalizedProjectIds.length
+      ? normalizedProjectIds
+      : normalizedProjectId
+        ? [normalizedProjectId]
+        : []
 
-    if (!project) {
+    if (!targetProjectIds.length) {
+      throw new Error('Project ID is required')
+    }
+
+    const state = getStoredState()
+    const allProjects = Array.isArray(state.productProjects) ? state.productProjects : []
+    const selectedProjects = targetProjectIds
+      .map((id) => allProjects.find((item) => item.id === id) || null)
+      .filter(Boolean)
+
+    if (!selectedProjects.length) {
       throw new Error('Project not found for export')
     }
 
     const stagingDirectory = await mkdtemp(path.join(os.tmpdir(), 'qiuai-project-export-'))
-    const projectDirectory = path.resolve(stagingDirectory, sanitizePathSegment(project.name || 'product-project', 'product-project'))
+    let exportSourceDirectory = stagingDirectory
 
     try {
-      await ensureDirectory(projectDirectory)
-
-      const titleText = project.content?.selectedTitle || (project.content?.titleCandidates || []).join('\n')
-      const descriptionText = project.content?.selectedDescription || (project.content?.descriptionCandidates || []).join('\n')
-      const exportManifest = buildProjectExportManifest(project)
-
-      await writeFile(path.resolve(projectDirectory, 'title.txt'), `${String(titleText || '')}\n`, 'utf8')
-      await writeFile(path.resolve(projectDirectory, 'description.txt'), `${String(descriptionText || '')}\n`, 'utf8')
-      await writeFile(path.resolve(projectDirectory, 'manifest.json'), `${JSON.stringify(exportManifest, null, 2)}\n`, 'utf8')
-
-      if (Array.isArray(project.assets?.generatedImages) && project.assets.generatedImages.length) {
-        const imagesDirectory = path.resolve(projectDirectory, 'images')
-        await ensureDirectory(imagesDirectory)
-
-        for (const [index, image] of project.assets.generatedImages.entries()) {
-          const sourcePath = image.savedPath || image.path || image.storedPath || ''
-          if (!sourcePath) {
-            continue
-          }
-
-          await copyFile(
-            sourcePath,
-            path.resolve(imagesDirectory, `${String(index + 1).padStart(2, '0')}-${path.basename(sourcePath)}`)
+      if (selectedProjects.length === 1) {
+        const project = selectedProjects[0]
+        const projectDirectory = path.resolve(
+          stagingDirectory,
+          sanitizePathSegment(project.name || 'product-project', 'product-project')
+        )
+        await writeProjectBundleContents(project, projectDirectory)
+        exportSourceDirectory = projectDirectory
+      } else {
+        for (const [index, project] of selectedProjects.entries()) {
+          const projectDirectory = path.resolve(
+            stagingDirectory,
+            `${String(index + 1).padStart(2, '0')}-${sanitizePathSegment(project.name || 'product-project', 'product-project')}`
           )
+          await writeProjectBundleContents(project, projectDirectory)
         }
       }
 
-      if (project.assets?.generatedVideo?.savedPath) {
-        const videoPath = project.assets.generatedVideo.savedPath
-        await copyFile(videoPath, path.resolve(projectDirectory, path.basename(videoPath)))
-      }
-
       const exportedArchive = await exportTaskDirectory({
-        sourceDirectory: projectDirectory,
+        sourceDirectory: exportSourceDirectory,
         targetZipPath
       })
 
+      if (selectedProjects.length === 1) {
+        return {
+          canceled: false,
+          projectId: selectedProjects[0].id,
+          projectIds: [selectedProjects[0].id],
+          exportedCount: 1,
+          targetZipPath: exportedArchive.targetZipPath
+        }
+      }
+
       return {
         canceled: false,
-        projectId: normalizedProjectId,
+        projectIds: selectedProjects.map((item) => item.id),
+        exportedCount: selectedProjects.length,
         targetZipPath: exportedArchive.targetZipPath
       }
     } finally {
