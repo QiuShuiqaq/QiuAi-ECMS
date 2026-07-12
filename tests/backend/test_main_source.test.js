@@ -7,7 +7,8 @@ describe('main source', () => {
     const source = fs.readFileSync(path.resolve(process.cwd(), 'main/main.js'), 'utf8')
 
     expect(source).toContain("process.env.QIUAI_DATA_ROOT = path.join(app.getPath('userData'), 'DATA')")
-    expect(source).toContain('const { studioTaskManagerService } = registerIpc()')
-    expect(source).toContain('onBeforeQuit: () => studioTaskManagerService?.flushPendingWrites?.()')
+    expect(source).toContain('const { studioTaskManagerService, studioWorkspaceService } = registerIpc()')
+    expect(source).toContain('studioWorkspaceService?.flushPendingStateWrites?.()')
+    expect(source).toContain('studioTaskManagerService?.flushPendingWrites?.()')
   })
 })

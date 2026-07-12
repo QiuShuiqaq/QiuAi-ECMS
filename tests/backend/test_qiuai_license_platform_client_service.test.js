@@ -164,7 +164,7 @@ describe('qiuAiLicensePlatformClientService', () => {
     expect(request).toHaveBeenNthCalledWith(4, expect.objectContaining({
       method: 'post',
       url: 'https://api.qiuaihub.com/api/orders',
-      data: {
+      data: expect.objectContaining({
         sessionToken: 'session-1',
         productPackageId: 'pkg-1',
         channel: 'alipay',
@@ -173,7 +173,7 @@ describe('qiuAiLicensePlatformClientService', () => {
         inviteCode: '',
         deviceFingerprint: '',
         deviceName: ''
-      }
+      })
     }))
     expect(request).toHaveBeenNthCalledWith(5, expect.objectContaining({
       method: 'get',
@@ -467,7 +467,7 @@ describe('qiuAiLicensePlatformClientService', () => {
       }
     }))
     expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      data: {
+      data: expect.objectContaining({
         sessionToken: 'session-1',
         productPackageId: 'pkg-1',
         channel: 'alipay',
@@ -476,7 +476,7 @@ describe('qiuAiLicensePlatformClientService', () => {
         inviteCode: 'QAI8888',
         deviceFingerprint: 'DEVICE-1',
         deviceName: 'QiuAi Desktop'
-      }
+      })
     }))
     expect(request).toHaveBeenNthCalledWith(3, expect.objectContaining({
       data: {

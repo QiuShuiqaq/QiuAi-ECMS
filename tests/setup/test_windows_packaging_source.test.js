@@ -9,7 +9,7 @@ describe('windows packaging source', () => {
     expect(packageSource).toContain('"package:win"')
     expect(packageSource).toContain('"sync:icon"')
     expect(packageSource).toContain('electron-builder')
-    expect(packageSource).toContain('../package/QiuAi1.1.1-win')
+    expect(packageSource).toContain('../package/QiuAi1.1.2-win')
     expect(packageSource).toContain('build/icons/app-icon.ico')
     expect(packageSource).toContain('"target": "nsis"')
     expect(packageSource).toContain('"target": "portable"')

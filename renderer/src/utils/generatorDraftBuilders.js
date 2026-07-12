@@ -1,5 +1,12 @@
 import { seriesImageTemplateOptions } from './generatorFormOptions'
 
+const allowedTextModels = new Set(['deepseek-chat'])
+
+function normalizeTextModel(model, fallback = 'deepseek-chat') {
+  const preferredModel = String(model || '').trim()
+  return allowedTextModels.has(preferredModel) ? preferredModel : fallback
+}
+
 function hasRunnableLocalSourceImage(sourceImage) {
   if (!sourceImage || typeof sourceImage !== 'object') {
     return false
@@ -174,7 +181,7 @@ export function buildWorkspaceRunDraft(project, workspaceDraft = {}) {
     }),
     seriesSourceItems: workspaceDraft?.seriesSourceItems || [],
     notes: workspaceDraft?.notes || generationConfig.notes || '',
-    model: workspaceDraft?.model || generationConfig.model || 'deepseek-chat'
+    model: normalizeTextModel(workspaceDraft?.model, normalizeTextModel(generationConfig.model))
   }
 }
 

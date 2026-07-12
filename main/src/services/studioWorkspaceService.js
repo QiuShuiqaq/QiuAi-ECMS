@@ -71,6 +71,10 @@ const imageModelOptions = [
   { label: 'nano-banana-2', value: 'nano-banana-2' }
 ]
 
+const textModelOptions = [
+  { label: 'deepseek-chat', value: 'deepseek-chat' }
+]
+
 const videoModelOptions = [
   { label: 'MiniMax-Hailuo-2.3-Fast', value: 'MiniMax-Hailuo-2.3-Fast' }
 ]
@@ -162,11 +166,17 @@ function resolveDefaultModelForMenu() {
 }
 
 function resolveTextModelForMenu() {
-  return 'deepseek-chat'
+  return textModelOptions[0]?.value || 'deepseek-chat'
 }
 
 function resolveVideoAspectRatioForMenu() {
   return '16:9'
+}
+
+function normalizeTextModelValue(model, fallbackModel = resolveTextModelForMenu()) {
+  const preferredModel = String(model || '').trim()
+  const allowedModels = new Set(textModelOptions.map((item) => item.value))
+  return allowedModels.has(preferredModel) ? preferredModel : fallbackModel
 }
 
 async function safeRuntimeLog (runtimeLogger, payload) {
@@ -303,7 +313,7 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       resolution: String(draft.resolution || defaultDraft.resolution || '768P').trim() || '768P',
       aspectRatio: String(draft.aspectRatio || defaultDraft.aspectRatio || resolveVideoAspectRatioForMenu()).trim() || resolveVideoAspectRatioForMenu(),
       motionStrength: String(draft.motionStrength || defaultDraft.motionStrength || 'auto').trim() || 'auto',
-      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
+      model: normalizeTextModelValue(draft.model, defaultDraft.model || resolveTextModelForMenu())
     }
   }
 
@@ -319,7 +329,7 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       titleMaxChars: Math.max(1, Number(draft.titleMaxChars) || defaultDraft.titleMaxChars || 60),
       titleQuantity: Math.max(1, Number(draft.titleQuantity) || defaultDraft.titleQuantity || 3),
       taskKind: 'title',
-      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
+      model: normalizeTextModelValue(draft.model, defaultDraft.model || resolveTextModelForMenu())
     }
   }
 
@@ -335,7 +345,7 @@ function normalizeDraftForMenu(menuKey, draft = {}) {
       descriptionMaxChars: Math.max(1, Number(draft.descriptionMaxChars) || defaultDraft.descriptionMaxChars || 300),
       descriptionQuantity: Math.max(1, Number(draft.descriptionQuantity) || defaultDraft.descriptionQuantity || 2),
       taskKind: 'description',
-      model: String(draft.model || defaultDraft.model || resolveTextModelForMenu())
+      model: normalizeTextModelValue(draft.model, defaultDraft.model || resolveTextModelForMenu())
     }
   }
 
@@ -1930,7 +1940,7 @@ function buildStandaloneDescriptionTaskDraft(draft = {}) {
   }
 }
 
-function buildWorkspaceImageTaskDraft(draft = {}, context = {}, titleResults = [], descriptionResults = []) {
+function buildWorkspaceImageTaskDraft(draft = {}) {
   const workspaceImagePromptBase = String(
     draft.imagePrompt ||
     '围绕商品生成一套适合电商展示的图片，突出主体、卖点和清晰质感'

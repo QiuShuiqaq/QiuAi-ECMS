@@ -7,7 +7,7 @@ function readDesktopFile(relativePath) {
 }
 
 function readPlatformFile(relativePath) {
-  return fs.readFileSync(path.resolve(process.cwd(), '..', 'qiu-commerce-license-platform', relativePath), 'utf8')
+  return fs.readFileSync(path.resolve(process.cwd(), '..', 'qiuai-platform', relativePath), 'utf8')
 }
 
 describe('desktop-server contract source', () => {

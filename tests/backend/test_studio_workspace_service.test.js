@@ -1904,6 +1904,47 @@ describe('studioWorkspaceService', () => {
     expect(legacyAliasDraft.motionStrength).toBe('high')
   })
 
+  it('falls back stale text model ids to deepseek-chat for workspace and text drafts', async () => {
+    const store = createMemoryStore()
+    const outputRootDirectory = await createTempOutputRoot()
+
+    const { createSettingsStoreService } = await import('../../main/src/services/settingsStoreService.js')
+    const { createStudioWorkspaceService } = await import('../../main/src/services/studioWorkspaceService.js')
+
+    const settingsService = createSettingsStoreService({ store })
+    const service = createStudioWorkspaceService({
+      store,
+      settingsService,
+      outputRootDirectory,
+      ensureDirectory: async () => undefined,
+      persistSourceFiles: async () => [],
+      writeFile: async () => undefined
+    })
+
+    const workspaceDraft = await service.saveDraft({
+      menuKey: 'workspace',
+      patch: {
+        model: 'deepseek-v4-pro'
+      }
+    })
+    const titleDraft = await service.saveDraft({
+      menuKey: 'title-generate',
+      patch: {
+        model: 'deepseek-v4-pro'
+      }
+    })
+    const descriptionDraft = await service.saveDraft({
+      menuKey: 'description-generate',
+      patch: {
+        model: 'deepseek-v4-pro'
+      }
+    })
+
+    expect(workspaceDraft.model).toBe('deepseek-chat')
+    expect(titleDraft.model).toBe('deepseek-chat')
+    expect(descriptionDraft.model).toBe('deepseek-chat')
+  })
+
   it('ignores draft writes for non-runtime menu pages', async () => {
     const store = createMemoryStore()
     const outputRootDirectory = await createTempOutputRoot()
