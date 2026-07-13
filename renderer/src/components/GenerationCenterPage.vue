@@ -534,8 +534,13 @@ const currentProjectSteps = computed(() => {
   const stepStates = latestRun?.stepStates && typeof latestRun.stepStates === 'object'
     ? latestRun.stepStates
     : {}
+  const expectedImageCount = Math.max(0, Number(latestRun?.outputs?.imagesExpectedCount || latestRun?.outputs?.expectedImageCount || 0))
   const resolveWorkspaceStepStatus = (stepKey, hasOutput) => {
     const stepStatus = String(stepStates?.[stepKey]?.status || '').trim().toLowerCase()
+    if (stepKey === 'image' && generatedImages.length > 0) {
+      if (stepStatus === 'failed') return '部分完成'
+      if (expectedImageCount > 0 && generatedImages.length < expectedImageCount) return '部分完成'
+    }
     if (hasOutput && stepStatus === 'running') return '生成中'
     if (hasOutput) return '已完成'
     if (stepStatus === 'failed') return '失败'

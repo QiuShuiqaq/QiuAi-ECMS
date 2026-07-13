@@ -486,8 +486,12 @@ describe('studioWorkspaceService', () => {
 
     const snapshot = service.getSnapshot()
     const completedTask = snapshot.tasks.find((item) => item.id === task.id)
+    const latestRun = snapshot.projectRuns.find((item) => item.taskId === task.id)
 
     expect(completedTask).toBeTruthy()
+    expect(completedTask.status).toBe('部分完成')
+    expect(latestRun?.status).toBe('partial')
+    expect(latestRun?.stepStates?.image?.status).toBe('failed')
     expect(completedTask.status).not.toBe('澶辫触')
     expect(snapshot.resultsByMenu.workspace.groupedResults[0]).toMatchObject({
       status: 'partial',

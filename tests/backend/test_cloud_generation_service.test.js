@@ -642,6 +642,159 @@ describe('cloudGenerationService', () => {
     }
   }, 15000)
 
+  it('keeps pulling full image artifacts for a short terminal settlement window before marking the task completed', async () => {
+    const remoteClient = createRemoteClient()
+    const items = Array.from({ length: 5 }, (_unused, index) => ({
+      groupIndex: 1,
+      slotIndex: index + 1,
+      status: 'SUCCEEDED',
+      assetType: 'IMAGE',
+      providerModel: 'gpt-image-2',
+      title: `Result ${index + 1}`
+    }))
+    const partialArtifacts = [1, 2].map((slotIndex) => ({
+      id: `artifact-terminal-${slotIndex}`,
+      groupIndex: 1,
+      slotIndex,
+      assetType: 'IMAGE',
+      metadata: {
+        mimeType: 'image/png',
+        title: `Result ${slotIndex}`,
+        providerModel: 'gpt-image-2'
+      }
+    }))
+    const fullArtifacts = [1, 2, 3, 4, 5].map((slotIndex) => ({
+      id: `artifact-terminal-${slotIndex}`,
+      groupIndex: 1,
+      slotIndex,
+      assetType: 'IMAGE',
+      metadata: {
+        mimeType: 'image/png',
+        title: `Result ${slotIndex}`,
+        providerModel: 'gpt-image-2'
+      }
+    }))
+
+    remoteClient.createGenerationJob.mockResolvedValue({
+      id: 'job-image-terminal-fill-1',
+      status: 'RUNNING',
+      pollingAdvice: {
+        recommendedIntervalMs: 1,
+        minIntervalMs: 1
+      },
+      items
+    })
+    remoteClient.getGenerationJob
+      .mockResolvedValueOnce({
+        id: 'job-image-terminal-fill-1',
+        status: 'SUCCEEDED',
+        pollingAdvice: {
+          recommendedIntervalMs: 1,
+          minIntervalMs: 1
+        },
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 5,
+            failedItemCount: 0
+          }
+        ],
+        items
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-terminal-fill-1',
+        status: 'SUCCEEDED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 5,
+            failedItemCount: 0
+          }
+        ],
+        items,
+        artifacts: partialArtifacts
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-terminal-fill-1',
+        status: 'SUCCEEDED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 5,
+            failedItemCount: 0
+          }
+        ],
+        items,
+        artifacts: partialArtifacts
+      })
+      .mockResolvedValueOnce({
+        id: 'job-image-terminal-fill-1',
+        status: 'SUCCEEDED',
+        groups: [
+          {
+            groupIndex: 1,
+            status: 'SUCCEEDED',
+            completedItemCount: 5,
+            failedItemCount: 0
+          }
+        ],
+        items,
+        artifacts: fullArtifacts
+      })
+
+    remoteClient.downloadGenerationArtifact.mockImplementation(async ({ id }) => Buffer.from(`artifact:${id}`))
+
+    const outputDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qiuai-cloud-terminal-fill-'))
+
+    try {
+      const service = createCloudGenerationService({
+        settingsService: createSettingsService(),
+        remoteLicensePlatformClient: remoteClient,
+        readFile: vi.fn().mockResolvedValue(Buffer.from('source-image')),
+        getMimeTypeFromPath: () => 'image/png',
+        pollIntervalMs: 1
+      })
+
+      const result = await service.generateImageResults({
+        menuKey: 'series-generate',
+        draft: {
+          batchCount: 1,
+          generateCount: 5,
+          model: 'gpt-image-2',
+          size: '1:1',
+          prompt: 'terminal settle prompt',
+          sourceImage: {
+            storedPath: 'F:/tmp/source.png'
+          },
+          promptAssignments: Array.from({ length: 5 }, (_unused, index) => ({
+            imageType: `image-${index + 1}`,
+            prompt: `terminal settle prompt ${index + 1}`
+          }))
+        },
+        taskId: 'task-remote-image-terminal-fill-1',
+        outputDirectory
+      })
+
+      expect(result).toMatchObject({
+        completionStatus: 'success',
+        completedArtifactCount: 5,
+        expectedArtifactCount: 5
+      })
+      expect(result.groupedResults[0]).toMatchObject({
+        status: 'succeeded',
+        completedCount: 5,
+        failedCount: 0
+      })
+      expect(result.groupedResults[0].outputs).toHaveLength(5)
+      expect(remoteClient.downloadGenerationArtifact).toHaveBeenCalledTimes(5)
+    } finally {
+      await fs.rm(outputDirectory, { recursive: true, force: true })
+    }
+  }, 15000)
+
   it('requests image concurrency from total planned outputs instead of raw batch count inflation', async () => {
     const remoteClient = createRemoteClient()
     remoteClient.getServiceCapacityProfile.mockResolvedValue({

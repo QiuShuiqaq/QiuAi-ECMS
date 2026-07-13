@@ -95,6 +95,7 @@ function createWorkspaceProjectRunService({
         title: '',
         description: '',
         images: [],
+        imagesExpectedCount: 0,
         video: null
       },
       storage: {
@@ -335,6 +336,7 @@ function createWorkspaceProjectRunService({
           ? path.dirname(imageOutputs[0].savedPath)
           : nextStorage.imageDirectory
       }
+      nextOutputs.imagesExpectedCount = Math.max(0, Number(resultPayload?.expectedArtifactCount) || 0)
       stepStates.image = {
         ...stepStates.image,
         ...(workspaceStepStates?.image || {}),

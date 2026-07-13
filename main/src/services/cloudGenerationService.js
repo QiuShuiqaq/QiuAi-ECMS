@@ -444,12 +444,16 @@ function deriveJobGroups(job = {}, downloadedArtifacts = [], phase = 'final') {
       }
     } else if (phase === 'partial' && status === 'failed' && completedCount > 0) {
       status = 'partial'
+    } else if (phase === 'final' && status === 'succeeded' && totalCount > 0 && completedCount < totalCount) {
+      status = 'partial'
     }
 
     return {
       groupIndex,
       status,
-      completedItemCount: explicitGroup?.completedItemCount ?? completedCount,
+      completedItemCount: phase === 'final' && totalCount > 0 && completedCount < totalCount
+        ? completedCount
+        : (explicitGroup?.completedItemCount ?? completedCount),
       failedItemCount: explicitGroup?.failedItemCount ?? failedCount,
       pendingItemCount: pendingCount
     }
@@ -478,6 +482,30 @@ function resolveImageCompletionStatus(job = {}, downloadedArtifacts = [], phase 
   }
 
   return 'partial'
+}
+
+function resolveExpectedArtifactCount(job = {}) {
+  const items = Array.isArray(job.items) ? job.items : []
+  if (!items.length) {
+    return 0
+  }
+
+  const jobStatus = trimString(job?.status || '').toUpperCase()
+  if (jobStatus === 'PARTIAL_FAILED' || jobStatus === 'FAILED' || jobStatus === 'CANCELLED') {
+    const succeededCount = countSucceededItems(job)
+    return succeededCount > 0 ? succeededCount : items.length
+  }
+
+  return items.length
+}
+
+function resolveTerminalSettlementRetryMs(pollIntervalMs = 0) {
+  const requestedMs = Number(pollIntervalMs)
+  if (!Number.isFinite(requestedMs) || requestedMs <= 0) {
+    return 3000
+  }
+
+  return Math.max(250, Math.min(3000, Math.round(requestedMs / 2)))
 }
 
 function countSucceededItems(job = {}) {
@@ -932,15 +960,42 @@ async function runRemoteJob({
   })
   await materializeArtifacts(latestJob, 'partial')
 
+  const expectedTerminalArtifactCount = resolveExpectedArtifactCount(latestJob)
+  if (expectedTerminalArtifactCount > 0 && downloadedArtifacts.length < expectedTerminalArtifactCount) {
+    const terminalSettlementRetryMs = resolveTerminalSettlementRetryMs(pollIntervalMs)
+    const maxSettlementAttempts = 4
+
+    for (let attempt = 0; attempt < maxSettlementAttempts; attempt += 1) {
+      await sleep(terminalSettlementRetryMs)
+      latestJob = await remoteLicensePlatformClient.getGenerationJob({
+        id: createdJob.id,
+        sessionToken: jobPayload.sessionToken,
+        mode: 'full'
+      })
+      await materializeArtifacts(latestJob, 'partial')
+
+      if (downloadedArtifacts.length >= resolveExpectedArtifactCount(latestJob)) {
+        break
+      }
+    }
+  }
+
   if ((latestJob.status === 'FAILED' || latestJob.status === 'CANCELLED') && downloadedArtifacts.length <= 0) {
     throw new Error(resolveJobFailureMessage(latestJob, 'Remote generation failed.'))
   }
 
+  const finalExpectedArtifactCount = resolveExpectedArtifactCount(latestJob)
+  const finalStatus = downloadedArtifacts.length >= finalExpectedArtifactCount && finalExpectedArtifactCount > 0
+    ? 'succeeded'
+    : (downloadedArtifacts.length > 0 ? 'partial' : (
+        latestJob.status === 'SUCCEEDED' || latestJob.status === 'PARTIAL_FAILED'
+          ? 'partial'
+          : 'failed'
+      ))
+
   await onProgress?.({
     progress: 100,
-    status: downloadedArtifacts.length > 0 || latestJob.status === 'SUCCEEDED' || latestJob.status === 'PARTIAL_FAILED'
-      ? 'succeeded'
-      : 'failed',
+    status: finalStatus,
     error: downloadedArtifacts.length > 0 ? '' : (
       latestJob.status === 'PARTIAL_FAILED'
         ? resolveJobFailureMessage(latestJob, 'Remote generation partially failed.')

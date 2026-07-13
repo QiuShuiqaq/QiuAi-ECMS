@@ -813,6 +813,7 @@ function normalizeProjectRun(projectRun = {}) {
       selectedTitle: String(outputs.selectedTitle || '').trim(),
       selectedDescription: String(outputs.selectedDescription || '').trim(),
       images: Array.isArray(outputs.images) ? outputs.images.map((item) => normalizeGeneratedMediaOutput(item)) : [],
+      imagesExpectedCount: Math.max(0, Number(outputs.imagesExpectedCount || outputs.expectedImageCount) || 0),
       video: outputs.video && typeof outputs.video === 'object'
         ? normalizeGeneratedMediaOutput(outputs.video)
         : null
@@ -1824,6 +1825,15 @@ function markWorkspaceStepSuccess(workspaceStepStates = {}, stepKey = '', nowIso
   }
 }
 
+function markWorkspaceStepPartial(workspaceStepStates = {}, stepKey = '', nowIso = () => new Date().toISOString()) {
+  workspaceStepStates[stepKey] = {
+    ...workspaceStepStates[stepKey],
+    status: 'failed',
+    error: '',
+    completedAt: nowIso()
+  }
+}
+
 function markWorkspaceStepFailure(workspaceStepStates = {}, workspaceErrors = [], stepKey = '', errorMessage = '', nowIso = () => new Date().toISOString()) {
   const normalizedError = String(errorMessage || '生成失败').trim() || '生成失败'
   workspaceStepStates[stepKey] = {
@@ -2114,7 +2124,11 @@ async function runWorkspaceImageStep({
       }
     })
 
-    markWorkspaceStepSuccess(workspaceStepStates, 'image', nowIso)
+    if (isPartialImageResultPayload(imageResults)) {
+      markWorkspaceStepPartial(workspaceStepStates, 'image', nowIso)
+    } else {
+      markWorkspaceStepSuccess(workspaceStepStates, 'image', nowIso)
+    }
     return imageResults
   } catch (error) {
     markWorkspaceStepFailure(workspaceStepStates, workspaceErrors, 'image', error?.message, nowIso)
@@ -2234,6 +2248,9 @@ function buildWorkspaceResultPayload({
     comparisonResults: [],
     groupedResults: workspaceGroupedResults,
     usageSummary: workspaceUsageSummary,
+    completionStatus: String(imageResults?.completionStatus || '').trim().toLowerCase() === 'partial' ? 'partial' : 'success',
+    completedArtifactCount: Math.max(0, Number(imageResults?.completedArtifactCount) || 0),
+    expectedArtifactCount: Math.max(0, Number(imageResults?.expectedArtifactCount) || 0),
     workspaceResult: {
       titleCandidates: workspaceTextResults
         .filter((item) => item.kind === 'title')
@@ -3010,7 +3027,7 @@ function resolveGroupedProgressState(menuKey, draft = {}, resultPayload = {}) {
   const baseState = resolveGroupedTaskBaseState(menuKey, draft)
   const groups = Array.isArray(resultPayload.groupedResults) ? resultPayload.groupedResults : []
 
-  if (!groups.length || menuKey !== 'series-generate') {
+  if (!groups.length || !['series-generate', 'workspace'].includes(menuKey)) {
     return baseState
   }
 
@@ -3045,6 +3062,18 @@ function resolveGroupedProgressState(menuKey, draft = {}, resultPayload = {}) {
     currentGroupIndex,
     currentGroupCompletedCount
   }
+}
+
+function isPartialImageResultPayload(resultPayload = {}) {
+  const completionStatus = String(resultPayload?.completionStatus || '').trim().toLowerCase()
+  const completedArtifactCount = Math.max(0, Number(resultPayload?.completedArtifactCount) || 0)
+  const expectedArtifactCount = Math.max(0, Number(resultPayload?.expectedArtifactCount) || 0)
+
+  if (completionStatus === 'partial') {
+    return true
+  }
+
+  return expectedArtifactCount > 0 && completedArtifactCount > 0 && completedArtifactCount < expectedArtifactCount
 }
 
 function buildTaskRecord({
@@ -3168,21 +3197,29 @@ function normalizeTaskProgress(progressValue, fallbackValue = 0) {
 
 function buildTaskSummary({ menuKey, draft, taskId, taskNumber, createdAt, inputDirectory, outputDirectory, resultPayload }) {
   const groupedProgress = resolveGroupedProgressState(menuKey, draft, resultPayload)
-  const failedOutputs = Array.isArray(groupedProgress?.groupedResults)
-    ? groupedProgress.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
+  const groupedOutputs = Array.isArray(resultPayload?.groupedResults)
+    ? resultPayload.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
+    : []
+  const failedOutputs = groupedOutputs
         .filter((output) => output?.status === 'failed')
-    : []
-  const successfulGroupedOutputs = Array.isArray(groupedProgress?.groupedResults)
-    ? groupedProgress.groupedResults.flatMap((group) => Array.isArray(group.outputs) ? group.outputs : [])
-        .filter((output) => output?.status !== 'failed')
-    : []
+  const successfulGroupedOutputs = groupedOutputs
+    .filter((output) => output?.status !== 'failed')
   const failedMessages = failedOutputs
     .map((output) => String(output?.error || '').trim())
     .filter(Boolean)
   const workspaceErrors = Array.isArray(resultPayload?.workspaceErrors)
     ? resultPayload.workspaceErrors.map((item) => String(item || '').trim()).filter(Boolean)
     : []
-  const hasPartialFailure = failedOutputs.length > 0 || workspaceErrors.length > 0
+  const completionStatus = String(resultPayload?.completionStatus || '').trim().toLowerCase()
+  const completedArtifactCount = Math.max(0, Number(resultPayload?.completedArtifactCount) || 0)
+  const expectedArtifactCount = Math.max(0, Number(resultPayload?.expectedArtifactCount) || 0)
+  const hasPartialFailure = (
+    failedOutputs.length > 0 ||
+    workspaceErrors.length > 0 ||
+    groupedProgress.failedSubtaskCount > 0 ||
+    completionStatus === 'partial' ||
+    (expectedArtifactCount > 0 && completedArtifactCount < expectedArtifactCount)
+  )
   const hasSuccessfulWorkspaceText = Array.isArray(resultPayload?.textResults) && resultPayload.textResults.length > 0
   const hasSuccessfulOutputs = hasSuccessfulWorkspaceText || successfulGroupedOutputs.length > 0
   const normalizedErrorMessage = Array.from(new Set([...failedMessages, ...workspaceErrors])).join('；')
