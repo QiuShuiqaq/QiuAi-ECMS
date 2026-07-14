@@ -14,9 +14,9 @@ const textPricingItems = [
 ]
 
 const imagePricingItems = [
-  { model: 'gpt-image-2', price: '0.18 元 / 次' },
-  { model: 'nano-banana-fast', price: '0.15 元 / 次' },
-  { model: 'nano-banana-2', price: '0.27 元 / 次' }
+  { model: 'gpt-image-2', price: '0.18 元 / 张' },
+  { model: 'nano-banana-fast', price: '0.15 元 / 张' },
+  { model: 'nano-banana-2', price: '0.27 元 / 张' }
 ]
 
 const videoPricingItems = [

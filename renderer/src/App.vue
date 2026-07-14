@@ -85,6 +85,65 @@ const menuItems = Array.isArray(studioMenuConfig.primaryMenuItems)
   : fallbackMenuItems
 const CURRENT_PRODUCT_KEY = 'qiuai-ecms'
 const CURRENT_PRODUCT_CODES = new Set(['QIUAI_ECMS', 'QIUAI'])
+const MONTHLY_COMPUTE_PURCHASE_BLOCK_REASON = '\u672c\u6708\u5df2\u8d2d\u4e70\u7b97\u529b\u5957\u9910\uff0c\u4e0b\u6708\u53ef\u518d\u6b21\u8d2d\u4e70'
+
+function resolveOrderTimestamp(order = {}) {
+  const candidates = [order?.paidAt, order?.fulfilledAt, order?.createdAt, order?.updatedAt]
+  return candidates.find((value) => typeof value === 'string' && value.trim()) || ''
+}
+
+function isSuccessfulMonthlyComputeOrder(order = {}) {
+  const status = String(order?.status || '').trim().toUpperCase()
+  if (!['PAID', 'FULFILLED', 'COMPLETED'].includes(status)) {
+    return false
+  }
+
+  const orderTimestamp = resolveOrderTimestamp(order)
+  if (!orderTimestamp) {
+    return false
+  }
+
+  const orderDate = new Date(orderTimestamp)
+  if (Number.isNaN(orderDate.getTime())) {
+    return false
+  }
+
+  const now = new Date()
+  return orderDate.getFullYear() === now.getFullYear() && orderDate.getMonth() === now.getMonth()
+}
+
+function annotateComputePackagesForClientPurchaseLimit(packages = [], currentOrder = null) {
+  const hasPurchasedInCurrentMonth = isSuccessfulMonthlyComputeOrder(currentOrder)
+
+  return (Array.isArray(packages) ? packages : []).map((item) => {
+    const capabilityAllowed = item?.canPurchase !== false
+    const capabilityReason = String(item?.purchaseBlockedReason || '').trim()
+    const monthlyBlocked = hasPurchasedInCurrentMonth
+
+    if (!capabilityAllowed) {
+      return {
+        ...item,
+        monthlyPurchaseBlocked: false,
+        purchaseBlockedReason: capabilityReason
+      }
+    }
+
+    if (!monthlyBlocked) {
+      return {
+        ...item,
+        monthlyPurchaseBlocked: false,
+        purchaseBlockedReason: ''
+      }
+    }
+
+    return {
+      ...item,
+      canPurchase: false,
+      monthlyPurchaseBlocked: true,
+      purchaseBlockedReason: MONTHLY_COMPUTE_PURCHASE_BLOCK_REASON
+    }
+  })
+}
 const activeMenu = ref('work-center')
 const commerceOrderModalVisible = ref(false)
 const commerceOrderModalMode = ref('software')
@@ -258,7 +317,13 @@ const currentRechargeOrder = ref(null)
 const currentSoftwareOrder = ref(null)
 const currentComputePackageOrder = ref(null)
 const softwarePackages = ref([])
-const computePackages = ref([])
+const computePackageCatalog = ref([])
+const computePackages = computed(() => {
+  return annotateComputePackagesForClientPurchaseLimit(
+    computePackageCatalog.value,
+    currentComputePackageOrder.value
+  )
+})
 const rechargeForm = reactive({
   walletType: 'image',
   channel: 'alipay',
@@ -1156,12 +1221,12 @@ async function loadPurchaseCenterCatalog() {
     })
 
     if (!isActivated.value) {
-      computePackages.value = []
+      computePackageCatalog.value = []
       return
     }
 
     const computeRows = await catalogClient.listComputePackages({ productKey: CURRENT_PRODUCT_KEY })
-    computePackages.value = (Array.isArray(computeRows) ? computeRows : []).filter((item) => {
+    computePackageCatalog.value = (Array.isArray(computeRows) ? computeRows : []).filter((item) => {
       const productCode = String(item?.productCode || '').trim().toUpperCase()
       const productName = String(item?.productName || '').trim().toUpperCase()
       return CURRENT_PRODUCT_CODES.has(productCode) || productName === 'QIUAI-ECMS'

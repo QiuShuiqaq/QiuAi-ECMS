@@ -155,6 +155,7 @@ function updateRechargeField(field, value) {
           <div class="purchase-center__package-main">
             <strong>{{ pkg.name }}</strong>
             <span>{{ pkg.productName }}</span>
+            <small v-if="pkg.purchaseBlockedReason" class="purchase-center__package-note">{{ pkg.purchaseBlockedReason }}</small>
           </div>
           <div class="purchase-center__package-side">
             <strong class="purchase-center__price">{{ formatAmount(pkg.priceAmount) }}</strong>
@@ -252,6 +253,12 @@ function updateRechargeField(field, value) {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.purchase-center__package-note {
+  color: rgba(255, 196, 108, 0.92);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .purchase-center__package-main strong,

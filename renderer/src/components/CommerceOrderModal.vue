@@ -109,6 +109,9 @@ const modeMeta = computed(() => {
 
 const visibleSoftwarePackages = computed(() => Array.isArray(props.softwarePackages) ? props.softwarePackages : [])
 const visibleComputePackages = computed(() => Array.isArray(props.computePackages) ? props.computePackages : [])
+const selectedComputePackage = computed(() => {
+  return visibleComputePackages.value.find((item) => item.id === selectionState.computePackageId) || null
+})
 
 function resolveSoftwareConcurrencyRank(pkg = {}) {
   const sourceText = `${pkg.code || ''} ${pkg.name || ''} ${pkg.description || ''}`
@@ -150,7 +153,11 @@ const submitDisabled = computed(() => {
   }
 
   if (isComputeMode.value) {
-    return props.isComputePackageOrderSubmitting || !selectionState.computePackageId
+    return (
+      props.isComputePackageOrderSubmitting ||
+      !selectionState.computePackageId ||
+      selectedComputePackage.value?.canPurchase === false
+    )
   }
 
   return props.isRechargeSubmitting || !(Number(props.rechargeForm.amountCny) >= 1)
@@ -426,7 +433,11 @@ function submitOrder() {
             :key="pkg.id"
             type="button"
             class="commerce-order-modal__option commerce-order-modal__option--compute"
-            :class="{ 'commerce-order-modal__option--active': selectionState.computePackageId === pkg.id }"
+            :class="{
+              'commerce-order-modal__option--active': selectionState.computePackageId === pkg.id,
+              'commerce-order-modal__option--disabled': pkg.canPurchase === false
+            }"
+            :disabled="pkg.canPurchase === false"
             @click="selectionState.computePackageId = pkg.id"
           >
             <div class="commerce-order-modal__option-copy commerce-order-modal__compute-head">
@@ -446,6 +457,9 @@ function submitOrder() {
                 <em>视频</em>
                 <strong>{{ formatBalanceAmount(pkg.includedVideoBalanceCny) }}</strong>
               </span>
+            </div>
+            <div v-if="pkg.purchaseBlockedReason" class="commerce-order-modal__compute-note">
+              {{ pkg.purchaseBlockedReason }}
             </div>
           </button>
         </div>
@@ -665,6 +679,18 @@ function submitOrder() {
   transform: translateY(-1px);
 }
 
+.commerce-order-modal__option--disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.commerce-order-modal__option--disabled:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  transform: none;
+}
+
 .commerce-order-modal__option-copy {
   display: grid;
   gap: 6px;
@@ -740,6 +766,12 @@ function submitOrder() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.commerce-order-modal__compute-note {
+  color: rgba(255, 196, 108, 0.96);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .commerce-order-modal__amount-presets {

@@ -55,11 +55,17 @@ const copy = {
   textBalance: decode('\\u6587\\u672c'),
   imageBalance: decode('\\u56fe\\u7247'),
   videoBalance: decode('\\u89c6\\u9891'),
+  subscriptionExpiry: decode('\\u5230\\u671f\\u65f6\\u95f4'),
+  subscriptionEarliestExpiry: decode('\\u6700\\u65e9\\u5230\\u671f'),
   unit: 'CNY'
 }
 
+function getWalletSummarySource() {
+  return props.walletSummary || props.activationState?.walletSummary || {}
+}
+
 function resolveWalletSourceBalance(resourceKey, sourceKey) {
-  const walletSummary = props.walletSummary || props.activationState?.walletSummary || {}
+  const walletSummary = getWalletSummarySource()
   const splitBalance = walletSummary?.splitBalances?.[resourceKey]
   if (splitBalance && typeof splitBalance === 'object') {
     return Math.max(0, Number(splitBalance?.[sourceKey] || 0)).toFixed(2)
@@ -73,11 +79,34 @@ function resolveWalletSourceBalance(resourceKey, sourceKey) {
   return Math.max(0, Number(walletSummary?.subscriptionBalances?.[resourceKey]) || 0).toFixed(2)
 }
 
+function resolveSubscriptionExpiryMeta() {
+  const walletSummary = getWalletSummarySource()
+  const ranges = ['text', 'image', 'video']
+    .map((resourceKey) => walletSummary?.splitBalances?.[resourceKey]?.subscription)
+    .filter((item) => item && typeof item === 'object')
+
+  const timestamps = ranges
+    .flatMap((item) => [item.earliestExpiresAt, item.latestExpiresAt])
+    .filter((value) => typeof value === 'string' && value.trim())
+    .sort()
+
+  if (!timestamps.length) {
+    return ''
+  }
+
+  const earliest = timestamps[0]
+  const latest = timestamps[timestamps.length - 1]
+  const prefix = earliest === latest ? copy.subscriptionExpiry : copy.subscriptionEarliestExpiry
+
+  return `${prefix} ${formatDateTime(earliest)}`
+}
+
 const walletPanels = computed(() => {
   return [
     {
       key: 'permanent',
       title: copy.permanentTitle,
+      meta: '',
       rows: [
         { key: 'text', label: copy.textBalance, value: resolveWalletSourceBalance('text', 'permanentBalanceCny') },
         { key: 'image', label: copy.imageBalance, value: resolveWalletSourceBalance('image', 'permanentBalanceCny') },
@@ -87,6 +116,7 @@ const walletPanels = computed(() => {
     {
       key: 'subscription',
       title: copy.subscriptionTitle,
+      meta: resolveSubscriptionExpiryMeta(),
       rows: [
         { key: 'text', label: copy.textBalance, value: resolveWalletSourceBalance('text', 'subscriptionBalanceCny') },
         { key: 'image', label: copy.imageBalance, value: resolveWalletSourceBalance('image', 'subscriptionBalanceCny') },
@@ -171,6 +201,7 @@ function handleRefresh() {
           <article v-for="panel in walletPanels" :key="panel.key" class="data-center-page__wallet-card">
             <header class="data-center-page__wallet-card-header">
               <strong>{{ panel.title }}</strong>
+              <span v-if="panel.meta" class="data-center-page__wallet-card-meta">{{ panel.meta }}</span>
             </header>
             <div class="data-center-page__wallet-rows">
               <div v-for="row in panel.rows" :key="`${panel.key}-${row.key}`" class="data-center-page__wallet-row">
@@ -372,6 +403,19 @@ function handleRefresh() {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
+}
+
+.data-center-page__wallet-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.data-center-page__wallet-card-meta {
+  color: rgba(205, 214, 238, 0.72);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .data-center-page__wallet-rows {
