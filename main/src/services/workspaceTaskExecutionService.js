@@ -22,7 +22,6 @@ function createWorkspaceTaskExecutionService({
   normalizeProjectRuns,
   upsertProjectRun,
   workspaceProjectRunService,
-  settingsService,
   workspaceCreditService,
   safeRuntimeLog,
   runtimeLogger

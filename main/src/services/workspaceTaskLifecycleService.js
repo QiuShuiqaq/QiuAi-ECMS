@@ -65,7 +65,6 @@ function assertSufficientWalletBalance({ menuKey, draft, dashboardCreditState })
 function createWorkspaceTaskLifecycleService({
   getStoredState,
   getStoredTasks,
-  settingsService,
   authorizationService,
   createId,
   createTaskNumber,
@@ -84,7 +83,6 @@ function createWorkspaceTaskLifecycleService({
   workspaceProjectRunService,
   upsertProjectRun,
   syncCreditStateWithRealtimeBalance,
-  workspaceCreditService,
   enqueueTaskExecution,
   outputDirectoryResolver
 } = {}) {
@@ -175,39 +173,35 @@ function createWorkspaceTaskLifecycleService({
       outputDirectory
     })
 
-    try {
-      await persistTaskAndState({
-        task: queuedTask,
-        formDraftPatch: {
-          [menuKey]: draft
-        },
-        resultsByMenuPatch: {
-          [menuKey]: createDefaultResultsByMenu()[menuKey]
-        },
-        exportItemsByMenuPatch: {
-          [menuKey]: []
-        },
-        productProjectsPatch: nextProductProjects,
-        activeProductProjectId: nextActiveProductProjectId,
-        projectRunsPatch: nextProjectRuns,
-        activeProjectRunId: nextActiveProjectRunId
-      })
+    await persistTaskAndState({
+      task: queuedTask,
+      formDraftPatch: {
+        [menuKey]: draft
+      },
+      resultsByMenuPatch: {
+        [menuKey]: createDefaultResultsByMenu()[menuKey]
+      },
+      exportItemsByMenuPatch: {
+        [menuKey]: []
+      },
+      productProjectsPatch: nextProductProjects,
+      activeProductProjectId: nextActiveProductProjectId,
+      projectRunsPatch: nextProjectRuns,
+      activeProjectRunId: nextActiveProjectRunId
+    })
 
-      enqueueTaskExecution({
-        menuKey,
-        draft,
-        taskId,
-        taskNumber,
-        createdAt,
-        inputDirectory,
-        outputDirectory,
-        projectRunId: draft.projectId && currentProjectForRun ? projectRunId : ''
-      })
+    enqueueTaskExecution({
+      menuKey,
+      draft,
+      taskId,
+      taskNumber,
+      createdAt,
+      inputDirectory,
+      outputDirectory,
+      projectRunId: draft.projectId && currentProjectForRun ? projectRunId : ''
+    })
 
-      return queuedTask
-    } catch (error) {
-      throw error
-    }
+    return queuedTask
   }
 
   return {

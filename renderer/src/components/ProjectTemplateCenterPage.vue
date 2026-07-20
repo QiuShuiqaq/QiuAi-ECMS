@@ -65,21 +65,8 @@ function submitRename() {
   cancelRename()
 }
 
-function formatDateTime(value = '') {
-  const text = String(value || '').trim()
-  if (!text) {
-    return '--'
-  }
-
-  return text.replace('T', ' ').slice(0, 19)
-}
-
 function resolveImagePreview(asset = null) {
   return String(asset?.preview || asset?.savedPath || asset?.path || '')
-}
-
-function resolveCountLabel(items = []) {
-  return String(Array.isArray(items) ? items.length : 0)
 }
 
 function resolveImagePromptAssignments(template = {}) {

@@ -153,8 +153,8 @@ function handleExportAll() {
     <article class="generator-column generator-column--settings">
       <header class="generator-column__header">
         <div class="generator-column__header-copy">
-        <strong>参数设置</strong>
-        <h2>{{ title }}</h2>
+          <strong>参数设置</strong>
+          <h2>{{ title }}</h2>
         </div>
       </header>
 

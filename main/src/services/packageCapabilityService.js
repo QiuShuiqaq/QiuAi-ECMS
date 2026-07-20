@@ -39,7 +39,7 @@ function getActiveCapabilityConfig(activationStatus = {}) {
   }
 }
 
-function ensureDraftWithinCapability({ menuKey = '', draft = {}, activationStatus = {}, runtimeSnapshot = null } = {}) {
+function ensureDraftWithinCapability({ menuKey = '', draft = {}, activationStatus = {} } = {}) {
   const capability = getActiveCapabilityConfig(activationStatus)
 
   if (menuKey === 'series-generate') {

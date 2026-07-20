@@ -238,24 +238,6 @@ function resolveDraftProductName() {
   return String(activeProjectEntry.value?.project?.baseInfo?.productName || '').trim()
 }
 
-function resolveDraftProjectName() {
-  return String(resolveDraftValue('projectName', activeProjectEntry.value?.project?.name || resolveDraftProductName())).trim()
-}
-
-function resolveDraftKeywords() {
-  const direct = String(resolveDraftValue('keywordsText', '')).trim()
-  if (direct) return direct
-
-  const keywords = Array.isArray(activeProjectEntry.value?.project?.baseInfo?.keywords)
-    ? activeProjectEntry.value.project.baseInfo.keywords
-    : []
-  return keywords.join('、').trim()
-}
-
-function resolveDraftNotes() {
-  return String(resolveDraftValue('notes', activeProjectEntry.value?.project?.generationConfig?.notes || '')).trim()
-}
-
 function resolveProjectTemplateSelection() {
   return {
     titleTemplateId: String(resolveDraftValue('titleTemplateId', '') || '').trim(),
@@ -936,12 +918,6 @@ function handlePromptTemplateApply(field, templateId) {
   })
 }
 
-function handleOpenStep(menuKey) {
-  const project = activeProjectEntry.value?.project
-  if (!project || !menuKey) return
-  emit('open-generator', { project, menuKey })
-}
-
 function handleRunProject(project) {
   if (!project?.id) return
   emit('run-project', project)
@@ -1095,11 +1071,6 @@ function handleExportInspectedProject() {
   emit('export-project', inspectedProjectEntry.value.project.id)
 }
 
-function handleFocusQueueProject(project) {
-  if (!project?.id) return
-  handleOpenProjectStorage(project)
-}
-
 onMounted(() => {
   window.addEventListener('pointerdown', closeStorageContextMenu)
   window.addEventListener('blur', closeStorageContextMenu)
@@ -1117,12 +1088,6 @@ onBeforeUnmount(() => {
   }
 })
 
-function resolveStageMenuKey(stage = '') {
-  if (stage === '标题') return 'title-generate'
-  if (stage === '描述') return 'description-generate'
-  if (stage === '套图') return 'series-generate'
-  return 'video-generate'
-}
 </script>
 
 <template>
@@ -1865,7 +1830,6 @@ function resolveStageMenuKey(stage = '') {
               </button>
             </div>
           </section>
-
         </div>
       </div>
     </article>
