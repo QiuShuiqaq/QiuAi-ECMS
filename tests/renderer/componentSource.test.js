@@ -78,12 +78,12 @@ describe('component sources', () => {
     expect(generationCenterSource).toContain('generator-column--export')
     expect(generationCenterSource).toContain('if (!candidateId) return null')
     expect(generationCenterSource).toContain('function resolveProjectLanguage(project = {})')
-    expect(generationCenterSource).toContain("emit('open-generator', { project, menuKey })")
     expect(generationCenterSource).toContain("emit('run-project', project)")
 
     expect(workbenchSource).toContain('workbench-plus-button')
     expect(workbenchSource).toContain('project-draft-grid')
     expect(workbenchSource).toContain('selection-panel__filters')
+    expect(workbenchSource).toContain("emit('open-generator', { project: item.project, menuKey: generator.key })")
     expect(workbenchSource).toContain("'publish-sync-task'")
     expect(workbenchSource).toContain('resolveLatestTaskOperatorGuidance')
 
